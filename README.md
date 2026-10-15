@@ -16,6 +16,12 @@ A demo plant for **Haltenberg Chemische Werke (HCW)**: a Linde-type **Air Separa
 
 The process model and control strategy follow `linde air seperation research.md`.
 
+## Easiest way to start
+Open Claude Code in this directory and run the following prompt:
+```
+read the CLAUDE.md file and README.md file and set up the environment
+```
+
 ## Prerequisites
 
 - Docker Desktop (or Docker Engine + Compose v2)
