@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HCW Haltenberg Systems</title>
+<style>
+  :root {
+    --bg: #eef0f2; --card: #fff; --line: #d3d7db; --text: #1c2024; --muted: #5f666d;
+    --brand: #1d4f91; --sim: #7c3aed; --mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+    --sans: "Inter", "Segoe UI", Roboto, system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 var(--sans); }
+  header { background: #1b2a3d; color: #fff; padding: 22px 16px 26px; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
+  header .wrap { display: flex; align-items: center; gap: 16px; }
+  header svg { width: 52px; height: 52px; flex: none; }
+  h1 { margin: 0; font-size: 24px; letter-spacing: .01em; }
+  header p { margin: 2px 0 0; color: #b8c4d2; }
+  h2 { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 28px 0 10px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+  a.card, .card { display: block; background: var(--card); border: 1px solid var(--line); border-top: 4px solid var(--brand); padding: 14px 16px; text-decoration: none; color: inherit; }
+  a.card:hover { border-color: #9fb0c4; border-top-color: var(--brand); box-shadow: 0 2px 10px #0001; }
+  .card.sim { border-top-color: var(--sim); }
+  .card.raw { border-top-color: #8a8f94; }
+  .card.nr { border-top-color: #8f1c1c; }
+  .card h3 { margin: 0 0 4px; font-size: 16px; }
+  .card .k { font: 600 11px var(--mono); color: var(--muted); letter-spacing: .04em; text-transform: uppercase; }
+  .card p { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+  .card code, code { font: 12px var(--mono); background: #f1f3f5; padding: 1px 5px; border: 1px solid #e1e4e7; word-break: break-all; }
+  .arch { background: var(--card); border: 1px solid var(--line); padding: 12px; overflow-x: auto; }
+  .arch svg { display: block; min-width: 860px; width: 100%; height: auto; }
+  .arch text { font-family: var(--sans); }
+  footer { color: var(--muted); font-size: 12px; padding: 26px 0 30px; }
+  button.copy { font: 600 11px var(--mono); border: 1px solid var(--line); background: #f7f8f9; padding: 2px 8px; cursor: pointer; margin-left: 4px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <svg viewBox="0 0 40 40" aria-hidden="true">
+      <rect x="1" y="1" width="38" height="38" rx="5" fill="#1d4f91"/>
+      <path d="M9 30V10M9 20h10M19 30V10M24 30l4-20 4 20" stroke="#fff" stroke-width="3" fill="none" stroke-linejoin="round"/>
+    </svg>
+    <div>
+      <h1>Haltenberg Chemische Werke</h1>
+      <p>Site Haltenberg · ASU1 Air Separation Unit (Linde-type, ~1,000 t/d O₂) · demo environment</p>
+    </div>
+  </div>
+</header>
+<div class="wrap">
+  <h2>Level 2 · Control — ASU1 DCS</h2>
+  <div class="grid">
+    <a class="card" href="/operator">
+      <span class="k">DCS · operator console</span>
+      <h3>ASU1 Operator Console</h3>
+      <p>Process overview, controller faceplates (MAN/AUTO/CAS), alarms, interlocks, the PPU switching sequence and equipment start/stop. <b>🎓 Training</b> (top right) walks students through the process step by step, with what each step is doing right now.</p>
+    </a>
+    <a class="card" href="/operator#trends">
+      <span class="k">DCS · built-in historian</span>
+      <h3>Historian trends</h3>
+      <p>Every PV, SP and OP, exception-reported into the DCS's own historian, plus the alarm & event journal. Up to 8 pens, 15 min – 7 days.</p>
+    </a>
+    <div class="card">
+      <span class="k">DCS · OPC UA server (read-only)</span>
+      <h3>OPC UA endpoint</h3>
+      <p><code id="opc">opc.tcp://localhost:4840/hcw/asu1/</code><button class="copy" data-copy="opc">copy</button></p>
+      <p>Anonymous, no security. Namespace <code>urn:haltenberg:hcw:asu1:dcs</code>, browse <code>Objects/HCW/Haltenberg/ASU1</code>. NodeIds look like <code>ns=2;s=HCW.ASU1.FIC-101.PV</code>. PV/SP/OP are AnalogItems with units and range, and support HistoryRead from the DCS historian.</p>
+    </div>
+  </div>
+
+  <h2>Level 3–4 · Integration — OPC UA clients</h2>
+  <div class="grid">
+    <a class="card nr" id="nodered" href="http://localhost:1880" target="_blank" rel="noopener">
+      <span class="k">Integration · Node-RED ↗</span>
+      <h3>Node-RED</h3>
+      <p>Flow editor. The pre-loaded flow <b>OPC UA → 15-min TWA → CSV</b> subscribes to six ASU1 tags on the DCS's OPC UA server and computes a time-weighted average per 15-minute window.</p>
+    </a>
+    <div class="card nr">
+      <span class="k">Integration · CSV export</span>
+      <h3>15-minute averages</h3>
+      <p><code>exports/asu1_twa_15min.csv</code> in the project folder — one row per window: air load, GOX send-out, header pressure, purity, CO₂, specific power, plus coverage % (how much of the window had good-quality data). The first row appears at the next quarter-hour.</p>
+    </div>
+  </div>
+
+  <h2>Level 0–1 · Process &amp; field I/O</h2>
+  <div class="grid">
+    <a class="card sim" id="instr" href="http://localhost:8111">
+      <span class="k">Training simulator · not part of the plant</span>
+      <h3>Instructor Station</h3>
+      <p>Starts fault and disturbance scenarios (MAC trip, mole-sieve breakthrough, demand steps, fouling, …) and shows the simulator's hidden ground truth. Nothing here is visible to the DCS or over OPC UA.</p>
+    </a>
+    <div class="card raw">
+      <span class="k">Field level · Modbus TCP</span>
+      <h3>Raw field I/O rack</h3>
+      <p><code id="mb">localhost:5020</code> unit 1 — float32 register pairs, no units, no hierarchy, no quality. The register map is listed on the instructor station. It's the raw layer the DCS turns into the modelled OPC UA view.</p>
+    </div>
+  </div>
+
+  <h2>How the systems connect</h2>
+  <div class="arch">
+    <svg viewBox="0 0 1060 290" role="img" aria-label="Architecture">
+      <defs><marker id="ar" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8z" fill="#5f666d"/></marker></defs>
+      <rect x="10" y="40" width="220" height="130" fill="#f5f0ff" stroke="#7c3aed"/>
+      <text x="22" y="64" font-weight="700" font-size="14">plant container</text>
+      <text x="22" y="86" font-size="12" fill="#5f666d">ASU process model (6 blocks)</text>
+      <text x="22" y="104" font-size="12" fill="#5f666d">real-time, 0.5 s step</text>
+      <text x="22" y="128" font-size="12" fill="#5f666d">instructor station :8111</text>
+      <text x="22" y="146" font-size="12" fill="#5f666d">(scenarios, ground truth)</text>
+      <rect x="290" y="70" width="150" height="70" fill="#f1f3f5" stroke="#8a8f94"/>
+      <text x="305" y="98" font-weight="700" font-size="13">Modbus TCP</text>
+      <text x="305" y="118" font-size="12" fill="#5f666d">:5020 raw registers</text>
+      <path d="M230 105H288" stroke="#5f666d" stroke-width="2" marker-end="url(#ar)"/>
+      <path d="M440 105H498" stroke="#5f666d" stroke-width="2" marker-end="url(#ar)"/>
+      <path d="M498 118H442" stroke="#5f666d" stroke-width="2" marker-end="url(#ar)"/>
+      <rect x="500" y="20" width="300" height="170" fill="#eef4fb" stroke="#1d4f91"/>
+      <text x="514" y="44" font-weight="700" font-size="14">dcs container</text>
+      <text x="514" y="66" font-size="12" fill="#5f666d">1 s scan · 16 controllers (PID, cascade, override)</text>
+      <text x="514" y="84" font-size="12" fill="#5f666d">interlocks I-100/I-300 · sequence KS-201</text>
+      <text x="514" y="102" font-size="12" fill="#5f666d">alarms (ISA-18.2-style, state-based)</text>
+      <text x="514" y="124" font-size="12" fill="#5f666d">historian: SQLite, exception reporting</text>
+      <text x="514" y="146" font-size="12" fill="#5f666d">operator console :8110</text>
+      <text x="514" y="170" font-size="12" fill="#5f666d">data/historian.db on the host</text>
+      <path d="M800 105H868" stroke="#5f666d" stroke-width="2" marker-end="url(#ar)"/>
+      <rect x="870" y="60" width="180" height="90" fill="#eef4fb" stroke="#1d4f91"/>
+      <text x="884" y="86" font-weight="700" font-size="13">OPC UA :4840</text>
+      <text x="884" y="106" font-size="12" fill="#5f666d">ISA-95 address space</text>
+      <text x="884" y="124" font-size="12" fill="#5f666d">DA + HistoryRead</text>
+      <text x="884" y="142" font-size="12" fill="#5f666d">→ agents, UaExpert, IT</text>
+      <path d="M960 150V208" stroke="#5f666d" stroke-width="2" marker-end="url(#ar)"/>
+      <rect x="870" y="210" width="180" height="70" fill="#fbeeee" stroke="#8f1c1c"/>
+      <text x="884" y="236" font-weight="700" font-size="13">Node-RED :1880</text>
+      <text x="884" y="256" font-size="12" fill="#5f666d">subscribe → 15-min TWA</text>
+      <text x="884" y="272" font-size="12" fill="#5f666d">→ exports/*.csv</text>
+    </svg>
+  </div>
+  <footer>HCW ASU1 demo simulator · all values representative, not design data.</footer>
+</div>
+<script>
+  // The only API call on this page: the endpoints a browser on the host should use.
+  fetch("/api/config").then(r => r.json()).then(c => {
+    document.getElementById("opc").textContent = c.links.opcua;
+    document.getElementById("mb").textContent = c.links.modbus;
+    document.getElementById("instr").href = c.links.instructor;
+    if (c.links.nodered) document.getElementById("nodered").href = c.links.nodered;
+  }).catch(() => {});
+  document.querySelectorAll("[data-copy]").forEach(b => b.addEventListener("click", () => {
+    const t = document.getElementById(b.dataset.copy).textContent;
+    try { navigator.clipboard.writeText(t); b.textContent = "copied"; setTimeout(() => b.textContent = "copy", 1500); } catch {}
+  }));
+</script>
+</body>
+</html>

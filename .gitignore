@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.DS_Store
+
+# runtime state (bind mounts)
+data/*
+!data/.gitkeep
+exports/*
+!exports/.gitkeep
+
+# Node-RED: only the hand-written flow is tracked
+nodered_data/*
+!nodered_data/flows.json

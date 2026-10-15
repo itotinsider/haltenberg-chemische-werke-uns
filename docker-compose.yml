@@ -1,0 +1,86 @@
+# HCW Haltenberg — ASU1 simulator stack.
+#
+#   plant  process model + Modbus TCP I/O rack + instructor station (fault scenarios)
+#   dcs    control system: I/O scan, controllers, interlocks, sequences, built-in historian,
+#          OPC UA server, operator console
+#   nodered  Node-RED as an OPC UA *client* (IT/OT integration demo): 15-min TWA -> CSV
+#
+# The DCS is the only system with a modelled data interface (OPC UA). The plant's Modbus
+# registers are the raw field level underneath it.
+
+x-asu-env: &asu-env
+  # Initial bed online time of the PPU (mole sieve). The plant's adsorption/regeneration rates and
+  # the DCS switching sequence both scale with it, so both containers start from this one value.
+  # 14400 s (4 h) is realistic. At runtime the instructor station's time-compression slider
+  # changes it (300 s … 14400 s); the DCS then persists it in data/dcs_state.json, and the plant
+  # follows the DCS.
+  PPU_CYCLE_SECONDS: "14400"
+
+services:
+  plant:
+    build:
+      context: .
+      dockerfile: plant/Dockerfile
+    image: hcw/asu1-plant:latest
+    container_name: hcw-asu1-plant
+    restart: unless-stopped
+    ports:
+      - "8111:8111"   # Instructor station: http://localhost:8111
+      - "5020:5020"   # Modbus TCP field I/O (raw registers), for teaching / inspection
+    environment:
+      <<: *asu-env
+      MODBUS_PORT: "5020"
+      WEB_PORT: "8111"
+      # Where the instructor's cycle-time slider pushes KS-201's cycle (compose service name).
+      DCS_URL: http://dcs:8110
+
+  dcs:
+    build:
+      context: .
+      dockerfile: dcs/Dockerfile
+    image: hcw/asu1-dcs:latest
+    container_name: hcw-asu1-dcs
+    restart: unless-stopped
+    ports:
+      - "8110:8110"   # Hub + operator console: http://localhost:8110
+      - "4840:4840"   # OPC UA: opc.tcp://localhost:4840/hcw/asu1/
+    environment:
+      <<: *asu-env
+      # The plant's compose service name — "localhost" inside a container is the container.
+      PLANT_HOST: plant
+      PLANT_PORT: "5020"
+      SCAN_SECONDS: "1"
+      WEB_PORT: "8110"
+      OPCUA_PORT: "4840"
+      DATA_DIR: /app/data
+      HISTORIAN_DEADBAND_PCT: "0.25"
+      HISTORIAN_MAX_INTERVAL_SECONDS: "60"
+      HISTORIAN_RETENTION_DAYS: "14"
+    volumes:
+      # Historian database + controller/sequence checkpoint: survive rebuilds, visible on host.
+      - ./data:/app/data
+    depends_on:
+      - plant
+
+  nodered:
+    build:
+      context: .
+      dockerfile: nodered/Dockerfile   # official image + node-red-contrib-opcua
+    image: hcw/nodered:latest
+    container_name: hcw-nodered
+    restart: unless-stopped
+    ports:
+      - "1880:1880"   # Flow editor: http://localhost:1880
+    environment:
+      # Pins the flow filename; the official image otherwise names it after the container's
+      # hostname, which is different every time the container is recreated.
+      FLOWS: flows.json
+      # Averaging window. Override for a quick demo: TWA_WINDOW_MINUTES=1 docker compose up -d nodered
+      TWA_WINDOW_MINUTES: ${TWA_WINDOW_MINUTES:-15}
+      TWA_CSV_FILE: /data/exports/asu1_twa_15min.csv
+    volumes:
+      - ./nodered_data:/data
+      # The CSV the flow writes — a plain host folder so it's easy to open.
+      - ./exports:/data/exports
+    depends_on:
+      - dcs

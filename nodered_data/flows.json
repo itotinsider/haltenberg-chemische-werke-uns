@@ -1,0 +1,230 @@
+[
+    {
+        "id": "tab-twa",
+        "type": "tab",
+        "label": "OPC UA → 15-min TWA → CSV",
+        "disabled": false,
+        "info": "Subscribes to six ASU1 tags on the DCS's OPC UA server, computes a **time-weighted average** per 15-minute window and appends one row per window to `exports/asu1_twa_15min.csv` (host folder).\n\nThe window length is `TWA_WINDOW_MINUTES` (docker-compose.yml)."
+    },
+    {
+        "id": "cfg-opcua",
+        "type": "OpcUa-Endpoint",
+        "name": "HCW ASU1 DCS",
+        "endpoint": "opc.tcp://dcs:4840/hcw/asu1/",
+        "secpol": "None",
+        "secmode": "None",
+        "none": true,
+        "login": false,
+        "usercert": false,
+        "usercertificate": "",
+        "userprivatekey": ""
+    },
+    {
+        "id": "cm-1",
+        "type": "comment",
+        "z": "tab-twa",
+        "name": "1 · subscribe to the DCS over OPC UA",
+        "info": "",
+        "x": 190,
+        "y": 60,
+        "wires": []
+    },
+    {
+        "id": "inj-start",
+        "type": "inject",
+        "z": "tab-twa",
+        "name": "on start",
+        "props": [],
+        "repeat": "",
+        "crontab": "",
+        "once": true,
+        "onceDelay": "5",
+        "topic": "",
+        "x": 130,
+        "y": 120,
+        "wires": [
+            [
+                "fn-tags"
+            ]
+        ]
+    },
+    {
+        "id": "fn-tags",
+        "type": "function",
+        "z": "tab-twa",
+        "name": "Tags to subscribe",
+        "func": "// The tags this flow follows: DCS NodeIds (namespace urn:haltenberg:hcw:asu1:dcs, ns=2)\n// plus the column name and unit for the CSV. Add a line here to add a column.\nconst tags = [\n    { nodeId: \"ns=2;s=HCW.ASU1.FIC-101.PV\", name: \"FIC-101.PV\", unit: \"kNm3/h\", desc: \"Air flow (MAC load)\" },\n    { nodeId: \"ns=2;s=HCW.ASU1.FIC-501.PV\", name: \"FIC-501.PV\", unit: \"kNm3/h\", desc: \"GOX send-out\" },\n    { nodeId: \"ns=2;s=HCW.ASU1.PIC-502.PV\", name: \"PIC-502.PV\", unit: \"bar(g)\", desc: \"GOX header pressure\" },\n    { nodeId: \"ns=2;s=HCW.ASU1.AI-601.PV\",  name: \"AI-601.PV\",  unit: \"%O2\",    desc: \"GOX purity\" },\n    { nodeId: \"ns=2;s=HCW.ASU1.AI-202.PV\",  name: \"AI-202.PV\",  unit: \"ppm\",    desc: \"CO2 after PPU\" },\n    { nodeId: \"ns=2;s=HCW.ASU1.KPI-701.PV\", name: \"KPI-701.PV\", unit: \"kWh/Nm3\", desc: \"Specific power\" },\n];\nflow.set(\"tags\", tags);\n// One subscription for all items (\"multiple\" mode of the OPC UA client node). The server then\n// pushes a data-change notification whenever a value changes, sampled every 1 s.\nmsg.topic = \"multiple\";\nmsg.payload = tags.map(t => ({ nodeId: t.nodeId }));\nmsg.interval = 1000;\nnode.status({ fill: \"blue\", shape: \"dot\", text: tags.length + \" tags\" });\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 320,
+        "y": 120,
+        "wires": [
+            [
+                "opc-client"
+            ]
+        ]
+    },
+    {
+        "id": "opc-client",
+        "type": "OpcUa-Client",
+        "z": "tab-twa",
+        "endpoint": "cfg-opcua",
+        "action": "subscribe",
+        "deadbandtype": "a",
+        "deadbandvalue": 1,
+        "time": 1,
+        "timeUnit": "s",
+        "certificate": "n",
+        "localfile": "",
+        "localkeyfile": "",
+        "securitymode": "None",
+        "securitypolicy": "None",
+        "useTransport": false,
+        "maxChunkCount": 1,
+        "maxMessageSize": 8192,
+        "receiveBufferSize": 8192,
+        "sendBufferSize": 8192,
+        "setstatusandtime": false,
+        "keepsessionalive": true,
+        "name": "DCS subscription",
+        "applicationName": "",
+        "applicationUri": "",
+        "x": 540,
+        "y": 120,
+        "wires": [
+            [
+                "fn-twa"
+            ],
+            [],
+            []
+        ]
+    },
+    {
+        "id": "cm-2",
+        "type": "comment",
+        "z": "tab-twa",
+        "name": "2 · time-weighted average per 15 min",
+        "info": "",
+        "x": 190,
+        "y": 200,
+        "wires": []
+    },
+    {
+        "id": "inj-tick",
+        "type": "inject",
+        "z": "tab-twa",
+        "name": "tick 5 s",
+        "props": [
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "5",
+        "crontab": "",
+        "once": true,
+        "onceDelay": "6",
+        "topic": "tick",
+        "x": 530,
+        "y": 260,
+        "wires": [
+            [
+                "fn-twa"
+            ]
+        ]
+    },
+    {
+        "id": "fn-twa",
+        "type": "function",
+        "z": "tab-twa",
+        "name": "TWA per window",
+        "func": "// Time-weighted average per window (TWA_WINDOW_MINUTES, default 15), computed from OPC UA\n// data-change notifications.\n//\n// A subscription only reports *changes*, so samples are not evenly spaced in time. A plain\n// average of the notifications would over-weight busy periods. Instead every value is held until\n// the next one arrives (sample-and-hold) and weighted by how long it was valid:\n//\n//     TWA = sum(value_i * duration_i) / sum(duration_i)\n//\n// Bad-quality periods (e.g. BadNoCommunication when the DCS loses its I/O) are left out of\n// both sums; the CSV's coverage column says how much of the window had good data.\n//\n// Input: OPC UA values (msg.topic = NodeId, msg.payload = DataValue), or a \"tick\" to close\n// windows on time even when nothing changes.\nconst WINDOW_MS = (Number(env.get(\"TWA_WINDOW_MINUTES\")) || 15) * 60000;\nconst tags = flow.get(\"tags\") || [];\nconst now = Date.now();\nlet st = context.get(\"st\");\nif (!st) {\n    st = { start: Math.floor(now / WINDOW_MS) * WINDOW_MS, samples: 0, tags: {} };\n}\nfor (const t of tags) {\n    if (!st.tags[t.nodeId]) st.tags[t.nodeId] = { v: null, t: now, sum: 0, dur: 0 };\n}\n\n// Integrate one tag's held value up to time `upto` (ms).\nfunction hold(s, upto) {\n    if (upto <= s.t) return;\n    if (s.v !== null) { s.sum += s.v * (upto - s.t); s.dur += upto - s.t; }\n    s.t = upto;\n}\n\n// Close every window that has ended (more than one after e.g. a laptop sleep).\nconst out = [];\nwhile (now >= st.start + WINDOW_MS) {\n    const end = st.start + WINDOW_MS;\n    const row = { start: st.start, end: end, samples: st.samples, values: {}, coverage: 100 };\n    for (const t of tags) {\n        const s = st.tags[t.nodeId];\n        hold(s, end);\n        row.values[t.name] = s.dur > 0 ? s.sum / s.dur : null;\n        row.coverage = Math.min(row.coverage, s.dur / WINDOW_MS * 100);\n        s.sum = 0; s.dur = 0;\n    }\n    out.push({ payload: row });\n    st.start = end;\n    st.samples = 0;\n}\n\n// A new value: integrate the old one up to the new one's source timestamp, then hold the new one.\nif (msg.topic !== \"tick\") {\n    const s = st.tags[msg.topic];\n    const dv = msg.payload || {};\n    if (s) {\n        const sc = dv.statusCode;\n        const good = !sc || (typeof sc.isGood === \"function\" ? sc.isGood() : (sc.value || 0) === 0);\n        const v = dv.value ? Number(dv.value.value) : NaN;\n        let ts = dv.sourceTimestamp ? new Date(dv.sourceTimestamp).getTime() : now;\n        ts = Math.min(Math.max(ts, s.t), now);   // never integrate backwards or into the future\n        hold(s, ts);\n        s.v = good && Number.isFinite(v) ? v : null;\n        st.samples += 1;\n    }\n}\ncontext.set(\"st\", st);\nconst left = Math.round((st.start + WINDOW_MS - now) / 1000);\nnode.status({ fill: \"green\", shape: \"dot\", text: `${st.samples} samples · window closes in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, \"0\")}` });\nreturn [out];\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 760,
+        "y": 180,
+        "wires": [
+            [
+                "fn-csv",
+                "dbg-row"
+            ]
+        ]
+    },
+    {
+        "id": "cm-3",
+        "type": "comment",
+        "z": "tab-twa",
+        "name": "3 · append one CSV row per window",
+        "info": "",
+        "x": 190,
+        "y": 340,
+        "wires": []
+    },
+    {
+        "id": "fn-csv",
+        "type": "function",
+        "z": "tab-twa",
+        "name": "CSV line (+ header if new)",
+        "func": "// One CSV line per window. The header is written when the file is new or empty, so the file\n// stays valid across Node-RED restarts and redeploys.\nconst FILE = env.get(\"TWA_CSV_FILE\") || \"/data/exports/asu1_twa_15min.csv\";\nconst tags = flow.get(\"tags\") || [];\nconst r = msg.payload;\nconst iso = ms => new Date(ms).toISOString().replace(\".000Z\", \"Z\");\nconst num = v => v === null ? \"\" : (Math.abs(v) >= 100 ? v.toFixed(2) : v.toFixed(4));\nlet header = \"\";\ntry { header = fs.statSync(FILE).size > 0 ? \"\" : \"x\"; } catch (e) { header = \"x\"; }\nif (header) {\n    header = [\"window_start_utc\", \"window_end_utc\"].concat(tags.map(t => `${t.name} [${t.unit}]`), [\"coverage_pct\", \"samples\"]).join(\",\") + \"\\n\";\n}\nmsg.filename = FILE;\nmsg.payload = header + [iso(r.start), iso(r.end)].concat(tags.map(t => num(r.values[t.name])), [r.coverage.toFixed(1), r.samples]).join(\",\");\nnode.status({ fill: \"green\", shape: \"dot\", text: \"last row \" + iso(r.end) });\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [
+            {
+                "var": "fs",
+                "module": "fs"
+            }
+        ],
+        "x": 790,
+        "y": 400,
+        "wires": [
+            [
+                "file-csv"
+            ]
+        ]
+    },
+    {
+        "id": "file-csv",
+        "type": "file",
+        "z": "tab-twa",
+        "name": "append to CSV",
+        "filename": "filename",
+        "filenameType": "msg",
+        "appendNewline": true,
+        "createDir": true,
+        "overwriteFile": "false",
+        "encoding": "utf8",
+        "x": 1020,
+        "y": 400,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "dbg-row",
+        "type": "debug",
+        "z": "tab-twa",
+        "name": "window result",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 1010,
+        "y": 180,
+        "wires": []
+    }
+]

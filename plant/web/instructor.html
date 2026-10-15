@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ASU1 Instructor Station</title>
+<style>
+  /* Deliberately NOT the DCS look: this is the training simulator's side of the glass. */
+  :root {
+    --bg: #17131f; --panel: #221c2e; --panel-2: #2b2439; --line: #3d3450; --text: #e7e2f0; --muted: #a197b5;
+    --sim: #a78bfa; --sim-2: #7c3aed; --on: #f472b6; --ok: #34d399; --warn: #fbbf24;
+    --mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace; --sans: "Inter", "Segoe UI", Roboto, system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.45 var(--sans); }
+  header { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; padding: 12px 16px; background: #0f0c15; border-bottom: 2px solid var(--sim-2); }
+  header b { font-size: 17px; }
+  header small { display: block; color: var(--muted); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
+  .spacer { flex: 1; }
+  .pill { font: 600 11px var(--mono); padding: 3px 9px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+  .pill.ok { color: var(--ok); border-color: #2c6b56; }
+  .pill.bad { color: var(--on); border-color: #8b2f63; }
+  .wrap { padding: 14px 16px 30px; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 14px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); }
+  .panel h3 { margin: 0; padding: 8px 12px; font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line); background: var(--panel-2); display: flex; gap: 10px; }
+  .panel h3 span { margin-left: auto; text-transform: none; letter-spacing: 0; }
+  .grp { padding: 8px 12px 2px; font: 700 10.5px var(--sans); letter-spacing: .1em; text-transform: uppercase; color: var(--sim); }
+  .sc { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; padding: 8px 12px; border-bottom: 1px solid #2f283d; align-items: center; }
+  .sc b { font-size: 13.5px; }
+  .sc p { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 12px; }
+  .sc .meta { font: 11px var(--mono); color: var(--muted); }
+  .sc.on { background: #2d1f37; box-shadow: inset 3px 0 0 var(--on); }
+  .sc.on .meta { color: var(--on); }
+  .sc button { font: 600 12px var(--sans); padding: 5px 12px; border: 1px solid var(--sim-2); background: transparent; color: var(--sim); cursor: pointer; white-space: nowrap; }
+  .sc button:hover { background: #2f2445; }
+  .sc.on button { border-color: var(--on); color: var(--on); }
+  .kv { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; padding: 8px 12px; font: 12px var(--mono); }
+  .kv span:nth-child(odd) { color: var(--muted); }
+  .kv span:nth-child(even) { text-align: right; }
+  .bars { padding: 6px 12px 10px; }
+  .bars .r { display: grid; grid-template-columns: 150px 1fr 60px; gap: 8px; align-items: center; font: 12px var(--mono); margin: 4px 0; }
+  .bars .b { height: 10px; background: #15111c; border: 1px solid var(--line); position: relative; }
+  .bars .b i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--sim); }
+  .bars .b i.hot { background: var(--on); }
+  table { width: 100%; border-collapse: collapse; font: 11.5px var(--mono); }
+  th, td { text-align: left; padding: 3px 10px; border-bottom: 1px solid #2f283d; white-space: nowrap; }
+  th { color: var(--muted); font-weight: 600; position: sticky; top: 0; background: var(--panel-2); }
+  td.n { text-align: right; }
+  td.hex { color: var(--muted); }
+  .scroll { max-height: 520px; overflow: auto; }
+  .note { color: var(--muted); font-size: 12px; padding: 8px 12px; margin: 0; }
+  .tabs { display: flex; gap: 2px; padding: 6px 12px 0; }
+  .tabs button { background: transparent; border: 1px solid var(--line); border-bottom: none; color: var(--muted); padding: 4px 10px; font: 600 11px var(--mono); cursor: pointer; }
+  .tabs button.on { color: var(--text); background: var(--panel-2); }
+  a { color: var(--sim); }
+  .tc { padding: 10px 12px 12px; }
+  .tc input[type=range] { width: 100%; accent-color: var(--sim); margin: 6px 0 2px; }
+  .tc .ends { display: flex; justify-content: space-between; font: 11px var(--mono); color: var(--muted); }
+  .tc .ticks { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .tc .ticks button { font: 600 11px var(--mono); padding: 3px 8px; border: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer; }
+  .tc .ticks button:hover { color: var(--sim); border-color: var(--sim-2); }
+  .tc .big { font: 700 20px var(--mono); color: var(--sim); }
+  .tc .row { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  @media (max-width: 1000px) { .wrap { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <div><b>ASU1 Instructor Station</b><small>Training simulator · Haltenberg Chemische Werke</small></div>
+  <div class="spacer"></div>
+  <span class="pill" id="dcs-pill">DCS —</span>
+  <span class="pill" id="mb-pill">Modbus —</span>
+  <span class="pill" id="clock">--:--:--</span>
+</header>
+<div class="wrap">
+  <div>
+    <div class="panel" style="margin-bottom:14px">
+      <h3>Time compression · PPU bed cycle <span id="tc-sync"></span></h3>
+      <div class="tc">
+        <div class="row"><span class="big" id="tc-cycle">—</span><span id="tc-speed" class="pill">×1</span><span class="note" style="padding:0" id="tc-round"></span></div>
+        <input type="range" id="tc-slider" min="0" max="100" step="1" value="0" aria-label="PPU cycle time">
+        <div class="ends"><span>◀ real time (4 h per bed)</span><span>really fast (5 min per bed) ▶</span></div>
+        <div class="ticks" id="tc-ticks"></div>
+        <p class="note" style="padding:8px 0 0">Compresses the mole-sieve adsorption / regeneration cycle only: bed loading, the regeneration heater and the DCS's KS-201 sequence timer all scale together. The rest of the ASU stays in real time. The new cycle time is pushed to the DCS as a KS-201 parameter, so it shows up in its event journal and on OPC UA (<code>KS-201.CycleTime</code>).</p>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Scenarios <span class="note" style="padding:0">Hidden from the DCS, the historian and OPC UA — they only see the process respond.</span></h3>
+      <div id="scen"></div>
+    </div>
+  </div>
+  <div>
+    <div class="panel">
+      <h3>Ground truth <span>what the control system can't see</span></h3>
+      <div class="bars" id="truth"></div>
+      <div class="kv" id="truthkv"></div>
+    </div>
+    <div class="panel" style="margin-top:14px">
+      <h3>Environment &amp; consumers</h3>
+      <div class="kv" id="env"></div>
+    </div>
+    <div class="panel" style="margin-top:14px">
+      <h3>Field I/O · Modbus TCP register map <span id="mbport"></span></h3>
+      <div class="tabs" id="iotabs"></div>
+      <div class="scroll"><table id="io"><thead></thead><tbody></tbody></table></div>
+      <p class="note">Float32 values are two consecutive registers, big-endian word order. This is all the DCS gets from the field: no tag hierarchy, no units, no quality — the DCS adds those before anything reaches OPC UA.</p>
+    </div>
+  </div>
+</div>
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+let ioTab = "input_registers", built = false, S = null;
+
+function hexRegs(v) {
+  const b = new DataView(new ArrayBuffer(4)); b.setFloat32(0, v);
+  return [b.getUint16(0), b.getUint16(2)].map(x => x.toString(16).toUpperCase().padStart(4, "0")).join(" ");
+}
+function buildScenarios(sc) {
+  const groups = [...new Set(Object.values(sc).map(s => s.group))];
+  $("#scen").innerHTML = groups.map(g => `<div class="grp">${esc(g)}</div>` + Object.entries(sc).filter(([, s]) => s.group === g).map(([k, s]) =>
+    `<div class="sc" data-k="${k}"><b>${esc(s.label)}</b><button data-act></button>
+       <p>${esc(s.description)}</p><span class="meta" data-meta></span></div>`).join("")).join("");
+  document.querySelectorAll(".sc [data-act]").forEach(b => b.addEventListener("click", async () => {
+    const el = b.closest(".sc"), k = el.dataset.k, s = S.scenarios[k];
+    const act = s.kind === "oneshot" || !s.active ? "start" : "stop";
+    await fetch(`/api/scenarios/${k}/${act}`, { method: "POST" });
+    poll();
+  }));
+  built = true;
+}
+function render() {
+  if (!built) buildScenarios(S.scenarios);
+  for (const el of document.querySelectorAll(".sc")) {
+    const s = S.scenarios[el.dataset.k], on = s.active;
+    el.classList.toggle("on", on);
+    const b = el.querySelector("[data-act]");
+    b.textContent = s.kind === "oneshot" ? "Trigger" : on ? "Stop" : "Start";
+    const el2 = el.querySelector("[data-meta]");
+    const since = s.started ? Math.round(S.sim_time - s.started) : null;
+    el2.textContent = s.kind === "oneshot" ? (since != null ? `one-shot · last fired ${fmtDur(since)} ago` : "one-shot")
+      : on ? `ACTIVE · ${fmtDur(since)}${s.kind === "timed" ? ` of ${fmtDur(s.duration)}` : ""}` : s.kind === "timed" ? `auto-ends after ${fmtDur(s.duration)}` : "latched until stopped";
+  }
+  const h = S.hidden;
+  const bar = (label, v, max, hot, txt) => `<div class="r"><span>${label}</span><span class="b"><i class="${hot ? "hot" : ""}" style="width:${Math.max(0, Math.min(100, v / max * 100))}%"></i></span><span style="text-align:right">${txt}</span></div>`;
+  $("#truth").innerHTML =
+    bar("MAC efficiency", h.mac_efficiency - 0.8, 0.2, h.mac_efficiency < 0.97, (h.mac_efficiency * 100).toFixed(1) + " %") +
+    bar("MAC bearing wear", h.mac_bearing_degradation, 1, h.mac_bearing_degradation > 0.3, (h.mac_bearing_degradation * 100).toFixed(0) + " %") +
+    bar("PPU bed A loading", h.ppu_loading.A, 1.1, h.ppu_loading.A > 0.85, (h.ppu_loading.A * 100).toFixed(0) + " %") +
+    bar("PPU bed B loading", h.ppu_loading.B, 1.1, h.ppu_loading.B > 0.85, (h.ppu_loading.B * 100).toFixed(0) + " %") +
+    bar("MHE fouling", h.mhe_fouling_K, 6, h.mhe_fouling_K > 1, "+" + h.mhe_fouling_K.toFixed(2) + " K") +
+    bar("Expander overspeed", h.expander_overspeed, 1.6, h.expander_overspeed > 0, h.expander_overspeed.toFixed(2));
+  $("#truthkv").innerHTML = [
+    ["MAC trip latched (motor relay)", h.mac_trip_latched ? "YES" : "no"],
+    ["Surge margin (true)", h.surge_margin_pct + " %"],
+    ["Cold-box temperature drift", (h.coldbox_dT_K >= 0 ? "+" : "") + h.coldbox_dT_K.toFixed(2) + " K"],
+    ["Main condenser ΔT", h.condenser_dT_K + " K"],
+    ["Waste N₂ flow", h.waste_n2 + " kNm³/h"],
+  ].map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join("");
+  const c = S.consumers;
+  $("#env").innerHTML = [
+    ["Ambient temperature", S.environment.ambient_C + " °C"],
+    ["Heatwave offset", "+" + S.environment.heatwave_offset_K + " K"],
+    ["O₂ demand · EO/EG plant", c["EO"] + " kNm³/h"],
+    ["O₂ demand · acetylene POX", c["Acetylene"] + " kNm³/h"],
+    ["O₂ demand · other", c["Other"] + " kNm³/h"],
+    ["O₂ demand total (at header pressure)", S.o2_demand + " kNm³/h"],
+    ["N₂ grid demand", S.n2_demand + " kNm³/h"],
+    ["Active N₂ purge jobs", S.purge_jobs],
+  ].map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join("");
+  const age = S.dcs_watchdog_age_s;
+  $("#dcs-pill").textContent = age == null ? "DCS not connected" : age < 5 ? "DCS writing outputs" : `DCS silent ${age}s · outputs held`;
+  $("#dcs-pill").className = "pill " + (age != null && age < 5 ? "ok" : "bad");
+  $("#mb-pill").textContent = `Modbus :${S.modbus.port} · ${S.modbus.requests.toLocaleString()} requests`;
+  renderCycle();
+  renderIO();
+}
+function renderIO() {
+  const tabs = [["input_registers", "Input regs (FC4)"], ["holding_registers", "Holding regs (FC3/16)"], ["discrete_inputs", "Discrete inputs (FC2)"], ["coils", "Coils (FC1/5/15)"]];
+  if (!$("#iotabs").children.length) {
+    $("#iotabs").innerHTML = tabs.map(([k, l]) => `<button data-t="${k}">${l}</button>`).join("");
+    document.querySelectorAll("#iotabs button").forEach(b => b.addEventListener("click", () => { ioTab = b.dataset.t; renderIO(); }));
+  }
+  document.querySelectorAll("#iotabs button").forEach(b => b.classList.toggle("on", b.dataset.t === ioTab));
+  const rows = S.io_map[ioTab];
+  const analog = ioTab.endsWith("registers");
+  $("#io thead").innerHTML = `<tr><th>Addr</th><th>Point</th>${analog ? "<th>Raw (hex)</th>" : ""}<th style="text-align:right">Value</th><th>Description</th></tr>`;
+  $("#io tbody").innerHTML = rows.map(r => {
+    let v;
+    if (ioTab === "input_registers") v = S.measurements[r.point];
+    else if (ioTab === "holding_registers") v = S.commands.ao[r.point];
+    else if (ioTab === "discrete_inputs") v = S.discretes[r.point];
+    else v = S.commands.do[r.point];
+    const addr = analog ? `${r.address}–${r.address + 1}` : r.address;
+    return `<tr><td>${addr}</td><td>${r.point}</td>${analog ? `<td class="hex">${hexRegs(v)}</td>` : ""}<td class="n">${analog ? Number(v).toFixed(3) : (v ? "1" : "0")}</td><td style="color:var(--muted)">${esc(r.desc)}</td></tr>`;
+  }).join("");
+  $("#mbport").textContent = `port ${S.modbus.port}, unit 1`;
+}
+// Time-compression slider: logarithmic, 0 = design cycle (real time), 100 = fastest.
+const tcToCycle = (v, c) => Math.round(c.max * Math.pow(c.min / c.max, v / 100));
+const tcToSlider = (sec, c) => Math.log(sec / c.max) / Math.log(c.min / c.max) * 100;
+let tcBusy = false;   // never move the slider from under the instructor's mouse
+function renderCycle() {
+  const c = S.ppu_cycle, sl = $("#tc-slider");
+  if (!$("#tc-ticks").children.length) {
+    $("#tc-ticks").innerHTML = [14400, 7200, 3600, 1800, 900, 600, 300].map(x => `<button data-s="${x}">${fmtDur(x)}</button>`).join("");
+    document.querySelectorAll("#tc-ticks button").forEach(b => b.addEventListener("click", () => applyCycle(+b.dataset.s)));
+    sl.addEventListener("input", () => { tcBusy = true; showCycle(tcToCycle(+sl.value, S.ppu_cycle)); });
+    sl.addEventListener("change", () => applyCycle(tcToCycle(+sl.value, S.ppu_cycle)));
+  }
+  if (!tcBusy) { sl.value = tcToSlider(c.seconds, c); showCycle(c.seconds); }
+  const sync = $("#tc-sync");
+  sync.textContent = c.pending ? "⏳ waiting for DCS" : c.dcs == null ? "DCS unreachable" : Math.abs(c.dcs - c.seconds) < 1 ? "✓ DCS in sync" : "syncing…";
+  sync.style.color = c.pending || c.dcs == null ? "var(--warn)" : "var(--ok)";
+}
+function showCycle(sec) {
+  const c = S.ppu_cycle;
+  $("#tc-cycle").textContent = fmtDur(sec) + " per bed";
+  $("#tc-speed").textContent = "×" + (c.design / sec).toFixed(c.design / sec < 10 ? 1 : 0);
+  $("#tc-round").textContent = `full A→B→A round: ${fmtDur(2 * sec)} · heating step ${fmtDur(0.4 * sec)}`;
+}
+async function applyCycle(sec) {
+  tcBusy = true; showCycle(sec);
+  try {
+    await fetch("/api/ppu_cycle", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ seconds: sec }) });
+  } catch {}
+  tcBusy = false; poll();
+}
+function fmtDur(s) { s = Math.max(0, Math.round(s)); const m = Math.floor(s / 60); return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : m ? `${m} min ${s % 60} s` : `${s} s`; }
+async function poll() {
+  try { S = await (await fetch("/api/plant")).json(); render(); } catch {}
+}
+setInterval(() => $("#clock").textContent = new Date().toLocaleTimeString("en-GB"), 250);
+poll(); setInterval(poll, 2000);
+</script>
+</body>
+</html>

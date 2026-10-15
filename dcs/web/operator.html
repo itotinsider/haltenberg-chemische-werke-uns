@@ -1,0 +1,1310 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ASU1 Operator Console</title>
+<style>
+  /* ISA-101 high-performance HMI: grey world, colour reserved for abnormal states.
+     Alarm colours (red / amber / violet) are used for alarms ONLY; HCW blue is brand only. */
+  :root {
+    --bg: #c9cbcd;
+    --panel: #dcdedf;
+    --panel-2: #e6e7e8;
+    --line: #9ea2a6;
+    --pipe: #6f7478;
+    --equip: #4b5054;
+    --equip-run: #5d6266;
+    --text: #1f2326;
+    --muted: #5d6368;
+    --value: #0d0f11;
+    --p1: #d7261e;
+    --p2: #f39c12;
+    --p3: #8e5cf0;
+    --bad: #c026d3;
+    --ok: #2f7d32;
+    --brand: #1d4f91;
+    --sel: #1d6fd6;
+    --mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+    --sans: "Inter", "Segoe UI", Roboto, system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.35 var(--sans); }
+  body { min-height: 100vh; }
+  button { font: inherit; cursor: pointer; }
+
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; padding: 8px 16px; background: #2a2e32; color: #e8eaec; }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand-mark { width: 34px; height: 34px; flex: none; }
+  .brand b { display: block; font-size: 16px; letter-spacing: .01em; }
+  .brand small { display: block; color: #a9afb5; font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; }
+  .spacer { flex: 1; }
+  .hstat { display: flex; align-items: center; gap: 6px; font: 11px var(--mono); color: #b9bfc4; text-transform: uppercase; white-space: nowrap; }
+  .led { width: 9px; height: 9px; border-radius: 50%; background: #777; }
+  .led.ok { background: #4caf50; } .led.bad { background: var(--p1); }
+  .clock { font: 600 15px var(--mono); color: #fff; }
+  .home { font: 600 11px var(--mono); color: #cfd4d8; text-decoration: none; border: 1px solid #586068; padding: 3px 8px; }
+  .home:hover { color: #fff; border-color: #9aa3ab; }
+
+  /* alarm banner */
+  #banner { display: flex; align-items: stretch; gap: 0; background: #303438; border-top: 1px solid #44494e; min-height: 30px; }
+  #banner .counts { display: flex; gap: 6px; align-items: center; padding: 0 12px; font: 600 11px var(--mono); color: #cfd4d8; }
+  .cnt { min-width: 26px; text-align: center; padding: 2px 6px; border-radius: 2px; background: #4a4f54; color: #fff; }
+  .cnt.p1 { background: var(--p1); } .cnt.p2 { background: var(--p2); color: #111; } .cnt.p3 { background: var(--p3); }
+  #banner .rows { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 3px 0; overflow: hidden; }
+  .brow { display: flex; gap: 12px; font: 11.5px var(--mono); color: #e8eaec; white-space: nowrap; overflow: hidden; padding: 1px 6px; cursor: pointer; }
+  .brow:hover { background: #3b4045; }
+  .brow .pr { width: 14px; height: 14px; flex: none; }
+  .brow .t { color: #a9afb5; }
+  #banner .ackall { margin: 4px 10px; padding: 0 12px; background: #4a4f54; color: #fff; border: 1px solid #6b7177; font: 600 11px var(--mono); }
+  #banner .ackall:hover { background: #5b6166; }
+  .blink { animation: blink 1s steps(2, start) infinite; }
+  @keyframes blink { to { visibility: hidden; } }
+
+  nav { display: flex; gap: 2px; padding: 6px 16px 0; background: var(--bg); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  nav button { background: #b9bcbf; border: 1px solid var(--line); border-bottom: none; padding: 6px 14px; color: var(--text); font-weight: 600; }
+  nav button.on { background: var(--panel); }
+  nav .status { margin-left: auto; display: flex; gap: 14px; align-items: center; font: 11px var(--mono); color: var(--muted); padding-bottom: 4px; flex-wrap: wrap; }
+  nav .status b { color: var(--value); font-weight: 700; }
+
+  main { display: flex; gap: 12px; padding: 12px 16px 16px; align-items: flex-start; }
+  #content { flex: 1; min-width: 0; }
+  .tab { display: none; } .tab.on { display: block; }
+  .panel { background: var(--panel); border: 1px solid var(--line); margin-bottom: 12px; }
+  .panel > h3 { margin: 0; padding: 6px 10px; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line); background: var(--panel-2); display: flex; align-items: center; gap: 10px; }
+  .panel > h3 .r { margin-left: auto; text-transform: none; letter-spacing: 0; }
+  .pad { padding: 10px; }
+
+  /* overview schematic */
+  #mimic { width: 100%; height: auto; display: block; background: var(--panel); }
+  .pipe { fill: none; stroke: var(--pipe); stroke-width: 2.2; }
+  .pipe.main { stroke-width: 3.4; }
+  .pipe.thin { stroke-width: 1.4; stroke-dasharray: 5 3; }
+  .vessel { fill: #eceded; stroke: var(--equip); stroke-width: 1.6; }
+  .equip { fill: #eceded; stroke: var(--equip); stroke-width: 1.8; }
+  .equip.run { fill: var(--equip-run); }
+  .equip.trans { stroke: var(--p2); stroke-width: 2.6; fill: #eceded; }
+  .equip.trip { stroke: var(--p1); stroke-width: 2.8; fill: #eceded; }
+  .lbl { font: 600 10.5px var(--sans); fill: var(--muted); }
+  .lbl.w { fill: #fff; }
+  .lbl.big { font-size: 12px; fill: var(--text); }
+  .coldbox { fill: none; stroke: #8a9095; stroke-width: 1.4; stroke-dasharray: 8 5; }
+  .liquid { fill: #a9b4bd; }
+  .valve { fill: #eceded; stroke: var(--equip); stroke-width: 1.4; }
+  .valve.open { fill: var(--equip-run); }
+  .db { cursor: pointer; }
+  .db rect.f { fill: #f2f3f3; stroke: #a5aaae; stroke-width: 1; }
+  .db:hover rect.f { stroke: var(--sel); }
+  .db.sel rect.f { stroke: var(--sel); stroke-width: 2.2; }
+  .db.bad rect.f { stroke: var(--bad); stroke-dasharray: 3 2; }
+  .db text { font-family: var(--mono); }
+  .db .tg { font-size: 9.5px; fill: var(--muted); font-weight: 600; }
+  .db .md { font-size: 9px; fill: var(--muted); }
+  .db .md.man { fill: var(--text); font-weight: 700; }
+  .db .vl { font-size: 14px; fill: var(--value); font-weight: 700; }
+  .db .un { font-size: 9px; fill: var(--muted); }
+  .db .sp { font-size: 9.5px; fill: var(--muted); }
+  .db.bad .vl { fill: var(--bad); }
+  .db .alm { display: none; }
+  .db.a1 .alm, .db.a2 .alm, .db.a3 .alm { display: inline; }
+  .db.a1 .alm { fill: var(--p1); } .db.a2 .alm { fill: var(--p2); } .db.a3 .alm { fill: var(--p3); }
+  .db.a1 rect.f { stroke: var(--p1); stroke-width: 2; } .db.a2 rect.f { stroke: var(--p2); stroke-width: 2; } .db.a3 rect.f { stroke: var(--p3); stroke-width: 2; }
+  .db .alm text { fill: #fff; font: 700 9px var(--sans); }
+  .db.a2 .alm text { fill: #111; }
+  .kpi-big { font: 700 26px var(--mono); fill: var(--value); }
+
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px; background: var(--line); }
+  .kpi { background: var(--panel); padding: 8px 10px; }
+  .kpi small { display: block; color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; }
+  .kpi b { display: block; font: 700 20px var(--mono); color: var(--value); margin-top: 2px; }
+  .kpi span { font: 11px var(--mono); color: var(--muted); }
+  .kpi.alarm b { color: var(--p1); }
+
+  .minis { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 10px; padding: 10px; }
+  .mini { background: #f2f3f3; border: 1px solid #b4b8bc; }
+  .mini .h { display: flex; justify-content: space-between; padding: 4px 8px; font: 600 11px var(--mono); color: var(--muted); }
+  .mini canvas { width: 100%; height: 110px; display: block; }
+
+  /* tables */
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid #c3c6c9; white-space: nowrap; }
+  th { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); background: var(--panel-2); position: sticky; top: 0; }
+  td.n { text-align: right; font-family: var(--mono); }
+  td.m { font-family: var(--mono); }
+  tr.click { cursor: pointer; } tr.click:hover td { background: #eef0f1; }
+  tr.sel td { background: #dde9f8; }
+  .bar { position: relative; width: 110px; height: 10px; background: #f2f3f3; border: 1px solid #a5aaae; display: inline-block; vertical-align: middle; }
+  .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: #7c8287; }
+  .tagcell { font: 700 12px var(--mono); }
+  .chip { display: inline-block; font: 700 10px var(--mono); padding: 1px 6px; border: 1px solid #8d9297; background: #f2f3f3; }
+  .chip.man { background: #fff; border-color: var(--text); }
+  .chip.forced { background: var(--p1); color: #fff; border-color: var(--p1); }
+  .chip.lim { background: #fff7e6; border-color: var(--p2); }
+  .scroll { max-height: calc(100vh - 230px); overflow: auto; }
+  .block-row td { background: #cfd2d4; font: 700 11px var(--sans); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+
+  /* faceplate */
+  #faceplate { width: 330px; flex: none; position: sticky; top: 12px; display: none; }
+  #faceplate.on { display: block; }
+  .fp-head { display: flex; align-items: baseline; gap: 8px; padding: 8px 10px; background: #2f3337; color: #fff; }
+  .fp-head b { font: 700 16px var(--mono); }
+  .fp-head small { color: #b9bfc4; flex: 1; }
+  .fp-head button { background: none; border: none; color: #cfd4d8; font-size: 18px; line-height: 1; }
+  .fp-body { padding: 10px; }
+  .fp-desc { color: var(--muted); margin-bottom: 8px; }
+  .fp-pv { display: flex; align-items: baseline; gap: 6px; }
+  .fp-pv b { font: 700 30px var(--mono); color: var(--value); }
+  .fp-pv span { font: 12px var(--mono); color: var(--muted); }
+  .fp-bar { position: relative; height: 22px; margin: 10px 0 18px; background: #f2f3f3; border: 1px solid #8d9297; }
+  .fp-bar .pv { position: absolute; left: 0; top: 0; bottom: 0; background: #7c8287; }
+  .fp-bar .spm { position: absolute; top: -5px; bottom: -5px; width: 0; border-left: 3px solid var(--text); }
+  .fp-bar .lim { position: absolute; top: 0; bottom: 0; width: 0; border-left: 2px dashed; }
+  .fp-bar .lim span { position: absolute; top: 22px; left: -8px; font: 9px var(--mono); }
+  .fp-bar .rng { position: absolute; top: 24px; font: 9px var(--mono); color: var(--muted); }
+  .fp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; margin: 8px 0; }
+  .fp-grid label { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; display: block; }
+  .fp-grid .v { font: 700 14px var(--mono); }
+  .modes { display: flex; gap: 4px; margin: 8px 0; }
+  .modes button { flex: 1; padding: 6px 0; background: #eceded; border: 1px solid #8d9297; font: 700 12px var(--mono); }
+  .modes button.on { background: #3a3f44; color: #fff; border-color: #3a3f44; }
+  .modes button:disabled { opacity: .45; cursor: not-allowed; }
+  .entry { display: flex; gap: 4px; align-items: center; margin: 4px 0; }
+  .entry label { width: 72px; font-size: 11px; color: var(--muted); }
+  .entry input { flex: 1; min-width: 0; padding: 4px 6px; font: 13px var(--mono); border: 1px solid #8d9297; background: #fff; }
+  .entry button, .btn { padding: 4px 10px; background: #eceded; border: 1px solid #8d9297; font-weight: 600; }
+  .entry button:hover, .btn:hover { background: #fff; }
+  .btn.primary { background: #3a3f44; color: #fff; border-color: #3a3f44; }
+  .btn.danger { background: #fff; border-color: var(--p1); color: var(--p1); }
+  .btn.danger.armed { background: var(--p1); color: #fff; }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  details { margin-top: 8px; border-top: 1px solid #c3c6c9; padding-top: 6px; }
+  summary { cursor: pointer; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .fp-trend canvas { width: 100%; height: 150px; display: block; background: #f2f3f3; border: 1px solid #b4b8bc; }
+  .note { font-size: 11px; color: var(--muted); margin: 6px 0; }
+  .note.warn { color: #7a4d00; }
+
+  /* interlocks & sequences */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; }
+  .ilk { background: var(--panel); border: 1px solid var(--line); }
+  .ilk.trip { border: 2px solid var(--p1); }
+  .ilk .h { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: var(--panel-2); border-bottom: 1px solid var(--line); }
+  .ilk .h b { font: 700 13px var(--mono); }
+  .ilk .h .st { margin-left: auto; font: 700 11px var(--mono); padding: 2px 8px; border: 1px solid #8d9297; }
+  .ilk.trip .h .st { background: var(--p1); color: #fff; border-color: var(--p1); }
+  .ilk ul { margin: 0; padding: 6px 10px 8px 26px; font: 11.5px var(--mono); }
+  .ilk li.on { color: var(--p1); font-weight: 700; }
+  .ilk .fo { padding: 6px 10px; font: 12px var(--mono); background: #fbeaea; border-bottom: 1px solid var(--line); }
+  .ilk .act { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--line); flex-wrap: wrap; align-items: center; }
+  .eqstate { font: 700 12px var(--mono); padding: 2px 8px; border: 1px solid #8d9297; }
+  .eqstate.RUNNING { background: var(--equip-run); color: #fff; }
+  .eqstate.TRIPPED { border-color: var(--p1); color: var(--p1); }
+  .eqstate.STARTING, .eqstate.STOPPING { border-color: var(--p2); }
+  .steps { display: flex; gap: 2px; margin: 10px 0; }
+  .steps div { flex: 1; text-align: center; padding: 6px 2px; font: 700 10.5px var(--mono); background: #eceded; border: 1px solid #b4b8bc; position: relative; overflow: hidden; }
+  .steps div.done { background: #cdd0d3; }
+  .steps div.cur { background: #fff; border: 2px solid var(--text); }
+  .steps div i { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--text); }
+  .progress { height: 12px; border: 1px solid #8d9297; background: #f2f3f3; position: relative; }
+  .progress i { position: absolute; left: 0; top: 0; bottom: 0; background: #7c8287; }
+
+  /* alarms */
+  .pr-ico { display: inline-block; width: 14px; height: 14px; vertical-align: middle; }
+  tr.unack td { font-weight: 700; }
+  tr.rtn td { color: var(--muted); }
+
+  /* trends */
+  .trend-layout { display: grid; grid-template-columns: 260px 1fr; gap: 12px; }
+  .picker { max-height: calc(100vh - 230px); overflow: auto; }
+  .picker label { display: flex; gap: 6px; align-items: center; padding: 2px 8px; font: 11.5px var(--mono); cursor: pointer; }
+  .picker label:hover { background: #eef0f1; }
+  .picker .grp { padding: 6px 8px 2px; font: 700 10.5px var(--sans); color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .ranges { display: flex; gap: 4px; flex-wrap: wrap; }
+  .ranges button { padding: 3px 9px; background: #eceded; border: 1px solid #8d9297; font: 600 11px var(--mono); }
+  .ranges button.on { background: #3a3f44; color: #fff; }
+  #bigtrend { width: 100%; height: 440px; display: block; background: #f2f3f3; border: 1px solid #b4b8bc; cursor: crosshair; }
+  .legend td { font: 11.5px var(--mono); }
+  .sw { display: inline-block; width: 18px; height: 3px; vertical-align: middle; }
+
+  /* training overlay — teal is the training colour only: never an alarm, never process state */
+  :root { --train: #0e7490; --train-2: #e6f4f7; }
+  .home.train-on { background: var(--train); border-color: var(--train); color: #fff; }
+  #mimic-wrap { position: relative; }
+  #train-layer { display: none; }
+  body.training #train-layer { display: inline; }
+  .tr-dim { fill: #1b2a33; opacity: .42; pointer-events: none; }
+  .tr-hole { fill: none; stroke: var(--train); stroke-width: 2.5; stroke-dasharray: 7 4; pointer-events: none; }
+  .tr-mk { cursor: pointer; }
+  .tr-mk circle { fill: #fff; stroke: var(--train); stroke-width: 2.5; }
+  .tr-mk.on circle { fill: var(--train); }
+  .tr-mk text { font: 700 13px var(--sans); fill: var(--train); text-anchor: middle; }
+  .tr-mk.on text { fill: #fff; }
+  #train-card { display: none; position: absolute; width: 380px; max-width: calc(100% - 16px); background: #fff; border: 2px solid var(--train); box-shadow: 0 6px 24px #0004; z-index: 5; font-size: 13px; line-height: 1.45; }
+  body.training #train-card { display: block; }
+  #train-card.stacked { position: static; width: auto; max-width: none; margin: 8px; box-shadow: none; }
+  .tc-h { display: flex; align-items: center; gap: 8px; padding: 7px 10px; background: var(--train); color: #fff; }
+  .tc-h b { font-size: 14px; flex: 1; }
+  .tc-h small { font: 600 10.5px var(--mono); opacity: .85; letter-spacing: .06em; }
+  .tc-h button { background: none; border: 1px solid #ffffff80; color: #fff; padding: 1px 8px; font-weight: 700; }
+  .tc-h button:disabled { opacity: .35; cursor: default; }
+  .tc-b { padding: 8px 12px 10px; overflow: auto; }
+  .tc-b p { margin: 0 0 7px; }
+  .tc-b .live { background: var(--train-2); border-left: 3px solid var(--train); padding: 6px 9px; margin: 8px 0; }
+  .tc-b .live h4, .tc-b h4 { margin: 0 0 3px; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--train); }
+  .tc-b .live ul { margin: 0; padding-left: 16px; }
+  .tc-b .live li { margin: 2px 0; }
+  .tc-b .watch { display: flex; flex-wrap: wrap; gap: 4px; }
+  .tc-b .watch button { font: 700 10.5px var(--mono); padding: 2px 7px; border: 1px solid var(--train); background: #fff; color: var(--train); }
+  .tc-b .watch button:hover { background: var(--train-2); }
+  .tc-b .think { color: var(--muted); font-style: italic; }
+
+  #toast { position: fixed; right: 16px; bottom: 16px; padding: 10px 14px; background: #2f3337; color: #fff; font: 12px var(--mono); display: none; max-width: 420px; border-left: 4px solid #4caf50; z-index: 10; }
+  #toast.err { border-left-color: var(--p1); }
+
+  @media (max-width: 1100px) {
+    main { flex-direction: column; }
+    #faceplate { width: 100%; position: static; }
+    .trend-layout { grid-template-columns: 1fr; }
+    .picker { max-height: 240px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true">
+      <rect x="1" y="1" width="38" height="38" rx="5" fill="#1d4f91"/>
+      <path d="M9 30V10M9 20h10M19 30V10M24 30l4-20 4 20" stroke="#fff" stroke-width="3" fill="none" stroke-linejoin="round"/>
+    </svg>
+    <div><b>Haltenberg Chemische Werke</b><small>ASU1 · Air Separation Unit · Operator Console</small></div>
+  </div>
+  <div class="spacer"></div>
+  <div class="hstat"><span class="led" id="led-io"></span><span id="io-txt">Field I/O</span></div>
+  <div class="hstat" id="scan-txt">scan —</div>
+  <div class="hstat" title="OPC UA endpoint (read-only)">OPC UA <span id="opc-txt">—</span></div>
+  <div class="clock" id="clock">--:--:--</div>
+  <button class="home" id="btn-train" title="Explains each process step in simple terms, for students">🎓 Training</button>
+  <a class="home" href="/">⌂ All systems</a>
+</header>
+<div id="banner">
+  <div class="counts"><span class="cnt p1" id="c1">0</span><span class="cnt p2" id="c2">0</span><span class="cnt p3" id="c3">0</span><span id="cu" style="margin-left:6px">0 unack</span></div>
+  <div class="rows" id="brows"></div>
+  <button class="ackall" id="ackall">ACK ALL</button>
+</div>
+<nav>
+  <button data-tab="overview" class="on">Overview</button>
+  <button data-tab="tags">Tag list</button>
+  <button data-tab="ilk">Interlocks &amp; sequences</button>
+  <button data-tab="alarms">Alarms &amp; events</button>
+  <button data-tab="trends">Trends</button>
+  <div class="status" id="navstat"></div>
+</nav>
+<main>
+  <div id="content">
+    <!-- ================= OVERVIEW ================= -->
+    <section class="tab on" id="tab-overview">
+      <div class="panel">
+        <div class="kpis" id="kpis"></div>
+      </div>
+      <div class="panel">
+        <h3>ASU1 process overview <span class="r note" style="margin:0">Click any value for its faceplate</span></h3>
+        <div id="mimic-wrap">
+        <svg id="mimic" viewBox="0 0 1520 672" role="img" aria-label="ASU1 process overview">
+          <!-- cold box outline -->
+          <rect class="coldbox" x="485" y="40" width="560" height="595"/>
+          <text class="lbl" x="495" y="58">COLD BOX</text>
+
+          <!-- ===== Block 1: intake + MAC ===== -->
+          <rect class="vessel" x="20" y="252" width="44" height="66" rx="2"/>
+          <path d="M26 262h32M26 272h32M26 282h32M26 292h32M26 302h32" stroke="#9aa0a5" stroke-width="1"/>
+          <text class="lbl" x="18" y="334">Intake filter</text>
+          <path class="pipe main" d="M64 285H112"/>
+          <polygon id="eq-MAC" class="equip" points="112,252 192,268 192,302 112,318"/>
+          <text class="lbl" x="118" y="246">K-101 MAC</text>
+          <rect class="equip" id="eq-MAC-motor" x="132" y="326" width="40" height="26" rx="2"/>
+          <text class="lbl" x="147" y="344">M</text>
+          <path class="pipe" d="M152 318V326"/>
+          <!-- antisurge recycle -->
+          <path class="pipe" d="M192 285H206V226H100V285"/>
+          <g id="v-UV-103" transform="translate(150,226)"><polygon class="valve" points="-9,-7 -9,7 9,-7 9,7"/></g>
+          <text class="lbl" x="160" y="219">UV-103</text>
+          <!-- to DCAC -->
+          <path class="pipe main" d="M206 285H246"/>
+          <rect class="vessel" x="246" y="222" width="38" height="140" rx="12"/>
+          <text class="lbl" x="236" y="378">C-102 DCAC</text>
+          <path class="pipe main" d="M265 222V196H380V230"/>
+
+          <!-- ===== Block 2: PPU ===== -->
+          <rect id="bed-A" class="vessel" x="332" y="230" width="42" height="122" rx="14"/>
+          <rect id="bed-B" class="vessel" x="388" y="230" width="42" height="122" rx="14"/>
+          <text id="bed-A-l" class="lbl" x="353" y="290" text-anchor="middle">A</text>
+          <text id="bed-B-l" class="lbl" x="409" y="290" text-anchor="middle">B</text>
+          <text id="bed-A-s" class="lbl" x="353" y="304" text-anchor="middle" style="font-size:8.5px"></text>
+          <text id="bed-B-s" class="lbl" x="409" y="304" text-anchor="middle" style="font-size:8.5px"></text>
+          <text class="lbl" x="332" y="368">R-201 A/B mole sieve</text>
+          <path class="pipe main" d="M430 291H522"/>
+          <text id="ks-txt" class="lbl big" x="332" y="388"></text>
+
+          <!-- ===== Block 3: MHE + expander ===== -->
+          <rect class="vessel" x="522" y="120" width="50" height="440"/>
+          <path d="M522 140l50 30M522 190l50 30M522 240l50 30M522 290l50 30M522 340l50 30M522 390l50 30M522 440l50 30M522 490l50 30" stroke="#b6bbbf" stroke-width="1"/>
+          <text class="lbl" x="522" y="112">E-301 MHE</text>
+                              <path class="pipe main" d="M547 560V605H710V520H742"/>
+          <path class="pipe" d="M572 430H612"/>
+          <polygon id="eq-EXP" class="equip" points="612,410 662,396 662,464 612,450"/>
+          <text class="lbl" x="606" y="480">X-303 Expander</text>
+          <path class="pipe" d="M662 430H716V232H742"/>
+          <g id="v-FV-303" transform="translate(592,430)"><polygon class="valve" points="-8,-6 -8,6 8,-6 8,6"/></g>
+
+          <!-- ===== Block 4: double column ===== -->
+          <rect class="vessel" x="742" y="62" width="80" height="258" rx="18"/>
+          <rect id="lvl-404" class="liquid" x="744" y="290" width="76" height="28"/>
+          <text class="lbl" x="752" y="80">C-402 LP</text>
+          <rect class="vessel" x="742" y="322" width="80" height="34" rx="4"/>
+          <text class="lbl" x="764" y="343">E-404</text>
+          <rect class="vessel" x="742" y="358" width="80" height="204" rx="18"/>
+          <rect id="lvl-403" class="liquid" x="744" y="520" width="76" height="40"/>
+          <text class="lbl" x="752" y="378">C-401 HP</text>
+          <!-- reflux HP top -> LP top -->
+          <path class="pipe" d="M822 368H872V76H822"/>
+          <g id="v-FV-405" transform="translate(872,250)"><polygon class="valve" points="-6,-8 6,-8 -6,8 6,8"/></g>
+          <!-- rich liquid HP sump -> LP middle -->
+          <path class="pipe" d="M822 548H902V200H822"/>
+          <g id="v-LV-403" transform="translate(902,470)"><polygon class="valve" points="-6,-8 6,-8 -6,8 6,8"/></g>
+          <!-- waste N2 -->
+          <path class="pipe" d="M782 62V24H1100"/>
+          <g id="v-PV-402" transform="translate(1000,24)"><polygon class="valve" points="-8,-6 -8,6 8,-6 8,6"/></g>
+          <text class="lbl" x="1112" y="28">Waste N₂ → PPU regen / atm.</text>
+
+          <!-- ===== Block 5: products ===== -->
+          <path class="pipe main" d="M822 282H1420"/>
+          <g id="v-FV-501" transform="translate(1040,282)"><polygon class="valve" points="-8,-6 -8,6 8,-6 8,6"/></g>
+          <path class="pipe" d="M822 392H1420"/>
+          <g id="v-FV-503" transform="translate(1040,392)"><polygon class="valve" points="-8,-6 -8,6 8,-6 8,6"/></g>
+          <path class="pipe" d="M822 332H1150V470"/>
+          <g id="v-LV-404" transform="translate(1040,332)"><polygon class="valve" points="-8,-6 -8,6 8,-6 8,6"/></g>
+          <text class="lbl big" x="1066" y="275">GOX header</text>
+          <text class="lbl big" x="1066" y="385">GAN header</text>
+          <text class="lbl" x="1066" y="326">LOX to storage</text>
+          <rect class="vessel" x="1420" y="246" width="94" height="28"/><text class="lbl big" x="1428" y="265">EO / EG plant</text>
+          <rect class="vessel" x="1420" y="290" width="94" height="28"/><text class="lbl big" x="1428" y="309">Acetylene POX</text>
+          <path class="pipe" d="M1420 282H1414V260H1420M1414 282V304H1420"/>
+          <rect class="vessel" x="1420" y="378" width="94" height="28"/><text class="lbl big" x="1428" y="397">Site N₂ grid</text>
+
+          <!-- ===== Block 6: storage + vaporizer ===== -->
+          <rect class="vessel" x="1112" y="470" width="78" height="132" rx="10"/>
+          <rect id="lvl-505" class="liquid" x="1114" y="540" width="74" height="60"/>
+          <text class="lbl" x="1118" y="488">T-505 LOX</text>
+          <path class="pipe" d="M1190 586H1236"/>
+          <rect class="equip" id="vap" x="1236" y="566" width="56" height="40" rx="3"/>
+          <path d="M1244 572v28M1252 572v28M1260 572v28M1268 572v28M1276 572v28M1284 572v28" stroke="#9aa0a5" stroke-width="1"/>
+          <text class="lbl" x="1232" y="622">E-507 vaporizer</text>
+          <path class="pipe" d="M1292 586H1330V282"/>
+          <g id="v-FV-507" transform="translate(1330,520)"><polygon class="valve" points="-6,-8 6,-8 -6,8 6,8"/></g>
+          <rect class="vessel" x="1412" y="470" width="78" height="132" rx="10"/>
+          <rect id="lvl-506" class="liquid" x="1414" y="540" width="74" height="60"/>
+          <text class="lbl" x="1420" y="488">T-506 LIN</text>
+          <path class="pipe" d="M872 368V640H1451V602"/>
+          <g id="v-FV-409" transform="translate(940,640)"><polygon class="valve" points="-8,-6 -8,6 8,-6 8,6"/></g>
+          <text class="lbl" x="1300" y="658">LIN to storage</text>
+
+          <g id="db-layer"></g>
+          <g id="train-layer"></g>
+        </svg>
+        <div id="train-card"></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>Key trends · last 60 min <span class="r note" style="margin:0">from the DCS historian</span></h3>
+        <div class="minis" id="minis"></div>
+      </div>
+    </section>
+
+    <!-- ================= TAG LIST ================= -->
+    <section class="tab" id="tab-tags">
+      <div class="panel">
+        <h3>All DCS tags <span class="r note" style="margin:0" id="tagcount"></span></h3>
+        <div class="scroll"><table id="tagtable">
+          <thead><tr><th>Tag</th><th>Description</th><th style="text-align:right">PV</th><th>Unit</th><th style="text-align:right">SP</th><th>Output</th><th>Mode</th><th>Status</th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </div>
+    </section>
+
+    <!-- ================= INTERLOCKS & SEQUENCES ================= -->
+    <section class="tab" id="tab-ilk">
+      <div class="panel">
+        <h3>Plant commands</h3>
+        <div class="pad" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <button class="btn" id="btn-lineup">Normal line-up</button>
+          <span class="note" style="margin:0">Restores design controller modes (AUTO / CAS) on running equipment. Setpoints are not changed.</span>
+          <span class="spacer" style="flex:1"></span>
+          <button class="btn danger" id="btn-esd">ESD — ASU shutdown</button>
+        </div>
+      </div>
+      <div class="cards" id="ilkcards"></div>
+      <div class="panel" style="margin-top:12px">
+        <h3>KS-201 · PPU bed switching sequence</h3>
+        <div class="pad" id="seq"></div>
+      </div>
+    </section>
+
+    <!-- ================= ALARMS & EVENTS ================= -->
+    <section class="tab" id="tab-alarms">
+      <div class="panel">
+        <h3>Alarm summary <span class="r"><button class="btn" id="ack2">Acknowledge all</button></span></h3>
+        <div class="scroll" style="max-height:340px"><table id="almtable">
+          <thead><tr><th></th><th>Time</th><th>Tag</th><th>Type</th><th>Message</th><th style="text-align:right">Limit</th><th style="text-align:right">Value</th><th>State</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </div>
+      <div class="panel">
+        <h3>Event journal <span class="r note" style="margin:0">alarms, trips, sequence steps and operator actions — stored in the historian</span></h3>
+        <div class="pad" style="display:flex;gap:6px;flex-wrap:wrap" id="evfilter"></div>
+        <div class="scroll" style="max-height:calc(100vh - 560px);min-height:200px"><table id="evtable">
+          <thead><tr><th>Time</th><th>Kind</th><th>Source</th><th>Message</th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </div>
+    </section>
+
+    <!-- ================= TRENDS ================= -->
+    <section class="tab" id="tab-trends">
+      <div class="trend-layout">
+        <div class="panel">
+          <h3>Historian points <span class="r note" style="margin:0" id="selcount"></span></h3>
+          <div class="picker" id="picker"></div>
+        </div>
+        <div>
+          <div class="panel">
+            <h3>Trend <span class="r ranges" id="ranges"></span></h3>
+            <div class="pad"><canvas id="bigtrend"></canvas></div>
+          </div>
+          <div class="panel">
+            <table class="legend" id="legend">
+              <thead><tr><th></th><th>Point</th><th>Description</th><th style="text-align:right">Cursor</th><th style="text-align:right">Min</th><th style="text-align:right">Max</th><th style="text-align:right">Scale</th></tr></thead>
+              <tbody></tbody>
+            </table>
+            <div class="pad note" id="histstat"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ================= FACEPLATE ================= -->
+  <aside id="faceplate" class="panel">
+    <div class="fp-head"><b id="fp-tag"></b><small id="fp-kind"></small><button id="fp-close" aria-label="Close">×</button></div>
+    <div class="fp-body" id="fp-body"></div>
+  </aside>
+</main>
+<div id="toast"></div>
+
+<script>
+"use strict";
+/* ---------------------------------------------------------------- data blocks on the mimic
+   Positions in mimic viewBox units. Layout lives here, not in markup: add a tag → add a row. */
+const PLACEMENTS = [
+  ["TI-109", 18, 206], ["PIC-102", 18, 96], ["FIC-101", 18, 148], ["UIC-103", 120, 148],
+  ["JI-104", 120, 360], ["VI-105", 18, 400], ["TI-106", 120, 400], ["PI-107", 18, 438], ["FI-103", 120, 438],
+  ["TI-108", 220, 400],
+  ["TIC-204", 332, 92], ["AI-202", 332, 400], ["PDI-203", 332, 438], ["ZI-205", 332, 476],
+  ["TDI-302", 580, 140], ["FIC-303", 578, 330], ["SI-304", 580, 490], ["TI-301", 580, 528], ["VI-305", 580, 566],
+  ["AI-603", 602, 62], ["AI-604", 602, 100], ["TDI-410", 602, 176], ["TI-406", 602, 214],
+  ["PIC-402", 922, 44], ["FIC-405", 922, 94], ["LIC-404", 922, 154], ["TI-407", 922, 420],
+  ["LIC-403", 922, 470], ["PI-401", 922, 524],
+  ["FIC-501", 1066, 200], ["PIC-502", 1170, 200], ["AI-601", 1274, 200],
+  ["FIC-503", 1066, 312], ["PIC-504", 1170, 312], ["AIC-602", 1274, 312], ["FI-408", 1172, 420],
+  ["LI-505", 1112, 612], ["FIC-507", 1236, 470], ["LI-506", 1412, 612], ["FIC-409", 960, 600],
+  ["KPI-701", 1380, 96], ["TI-306", 680, 566],
+];
+const VALVES = {
+  "UV-103": "UIC-103", "FV-303": "FIC-303", "FV-405": "FIC-405", "LV-403": "LIC-403", "PV-402": "PIC-402",
+  "FV-501": "FIC-501", "FV-503": "FIC-503", "LV-404": "LIC-404", "FV-507": "FIC-507", "FV-409": "FIC-409",
+};
+const LEVELS = { "lvl-404": ["LIC-404", 290, 28], "lvl-403": ["LIC-403", 520, 40], "lvl-505": ["LI-505", 470, 132], "lvl-506": ["LI-506", 470, 132] };
+const MINIS = [
+  { title: "Load · air flow", pts: ["FIC-101.PV", "FIC-101.SP"] },
+  { title: "GOX purity", pts: ["AI-601.PV"] },
+  { title: "GOX header pressure", pts: ["PIC-502.PV", "FIC-507.PV"] },
+  { title: "Specific power", pts: ["KPI-701.PV"] },
+  { title: "Reboiler level", pts: ["LIC-404.PV", "LIC-404.SP"] },
+  { title: "PPU outlet CO₂", pts: ["AI-202.PV"] },
+];
+const COLORS = ["#1f2326", "#1d6fd6", "#0f8a6c", "#b5528f", "#8a6d00", "#5a4fcf", "#c2410c", "#4b7f99"];
+const RANGES = [["15m", 15], ["1h", 60], ["4h", 240], ["12h", 720], ["24h", 1440], ["7d", 10080]];
+
+let CFG = null, TAG = {}, ST = null, SEL = null, TAB = "overview";
+let trendSel = [], trendMin = 60, trendCache = null, evKind = "all";
+
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const store = { get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+                set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
+
+function fmt(tag, v, extra = 0) {
+  if (v === null || v === undefined || Number.isNaN(v)) return "####";
+  const d = TAG[tag] ? TAG[tag].dec : 2;
+  return Number(v).toFixed(Math.max(0, d + extra));
+}
+const tstr = ts => ts ? new Date(ts * 1000).toLocaleTimeString("en-GB") : "";
+const dtstr = ts => ts ? new Date(ts * 1000).toLocaleString("en-GB", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "";
+const dur = s => { s = Math.max(0, Math.round(s)); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return h ? `${h} h ${String(m).padStart(2, "0")} min` : `${m} min ${String(s % 60).padStart(2, "0")} s`; };
+
+function toast(msg, ok = true) {
+  const t = $("#toast"); t.textContent = msg; t.className = ok ? "" : "err"; t.style.display = "block";
+  clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = "none", 3500);
+}
+async function post(path, body = {}) {
+  try {
+    const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const j = await r.json();
+    toast(j.message || (j.ok ? "ok" : "rejected"), !!j.ok);
+    poll();
+    return j;
+  } catch (e) { toast("Command failed: " + e, false); }
+}
+const prioSvg = p => p === 1
+  ? `<svg class="pr-ico" viewBox="0 0 14 14"><polygon points="7,1 13,13 1,13" fill="var(--p1)"/><text x="7" y="12" text-anchor="middle" font-size="8" font-weight="700" fill="#fff">1</text></svg>`
+  : p === 2 ? `<svg class="pr-ico" viewBox="0 0 14 14"><rect x="1" y="1" width="12" height="12" fill="var(--p2)"/><text x="7" y="11" text-anchor="middle" font-size="8" font-weight="700" fill="#111">2</text></svg>`
+  : `<svg class="pr-ico" viewBox="0 0 14 14"><circle cx="7" cy="7" r="6" fill="var(--p3)"/><text x="7" y="10" text-anchor="middle" font-size="8" font-weight="700" fill="#fff">3</text></svg>`;
+
+/* ---------------------------------------------------------------- tag alarm state */
+function tagAlarm(tag) {
+  let best = null;
+  for (const a of ST.alarms) if (a.tag === tag && a.active && (!best || a.priority < best.priority)) best = a;
+  return best;
+}
+
+/* ---------------------------------------------------------------- build once */
+function buildMimic() {
+  const layer = $("#db-layer");
+  let html = "";
+  for (const [tag, x, y] of PLACEMENTS) {
+    const t = TAG[tag]; if (!t) continue;
+    const pid = t.kind === "PID", big = tag === "KPI-701";
+    const w = big ? 128 : 96, h = big ? 58 : pid ? 48 : 34;
+    html += `<g class="db" data-tag="${tag}" transform="translate(${x},${y})">
+      <rect class="f" width="${w}" height="${h}"/>
+      <text class="tg" x="4" y="11">${tag}</text>
+      ${pid ? `<text class="md" x="${w - 4}" y="11" text-anchor="end" data-f="mode"></text>` : ""}
+      <text class="${big ? "kpi-big" : "vl"}" x="${w - 4}" y="${big ? 42 : 27}" text-anchor="end" data-f="pv"></text>
+      <text class="un" x="4" y="${big ? 54 : 27}">${esc(t.unit)}</text>
+      ${pid ? `<text class="sp" x="4" y="42" data-f="sp"></text>` : ""}
+      <g class="alm" transform="translate(${w - 16},${h - 14})"><rect width="14" height="12"/><text x="7" y="9.5" text-anchor="middle" data-f="alm"></text></g>
+    </g>`;
+  }
+  layer.innerHTML = html;
+  $$(".db", layer).forEach(g => g.addEventListener("click", () => select(g.dataset.tag)));
+  $("#minis").innerHTML = MINIS.map((m, i) => `<div class="mini"><div class="h"><span>${m.title}</span><span data-mini="${i}"></span></div><canvas data-c="${i}"></canvas></div>`).join("");
+}
+
+function buildTagTable() {
+  const tb = $("#tagtable tbody");
+  let html = "";
+  for (const b of CFG.blocks) {
+    html += `<tr class="block-row"><td colspan="8">${esc(b.label)}</td></tr>`;
+    for (const t of CFG.tags.filter(t => t.block === b.id)) {
+      html += `<tr class="click" data-tag="${t.tag}"><td class="tagcell">${t.tag}</td><td>${esc(t.desc)}</td>
+        <td class="n" data-f="pv"></td><td class="m">${esc(t.unit)}</td><td class="n" data-f="sp"></td>
+        <td data-f="op"></td><td data-f="mode"></td><td data-f="st"></td></tr>`;
+    }
+  }
+  tb.innerHTML = html;
+  $$("tr.click", tb).forEach(r => r.addEventListener("click", () => select(r.dataset.tag)));
+  $("#tagcount").textContent = `${CFG.tags.length} tags · ${CFG.tags.filter(t => t.kind === "PID").length} controllers`;
+}
+
+function buildPicker() {
+  const pts = [];
+  for (const t of CFG.tags) {
+    pts.push([t.block, `${t.tag}.PV`, t]);
+    if (t.kind === "PID") { pts.push([t.block, `${t.tag}.SP`, t]); pts.push([t.block, `${t.tag}.OP`, t]); }
+  }
+  let html = "";
+  for (const b of CFG.blocks) {
+    html += `<div class="grp">${esc(b.label)}</div>`;
+    for (const [blk, name, t] of pts.filter(p => p[0] === b.id))
+      html += `<label title="${esc(t.desc)}"><input type="checkbox" value="${name}"> ${name}</label>`;
+  }
+  $("#picker").innerHTML = html;
+  $$("#picker input").forEach(cb => {
+    cb.checked = trendSel.includes(cb.value);
+    cb.addEventListener("change", () => {
+      if (cb.checked) { if (trendSel.length >= 8) { cb.checked = false; toast("Max 8 points per trend", false); return; } trendSel.push(cb.value); }
+      else trendSel = trendSel.filter(n => n !== cb.value);
+      store.set("hcw.trend.sel", trendSel); loadTrend();
+    });
+  });
+  $("#ranges").innerHTML = RANGES.map(([l, m]) => `<button data-m="${m}" class="${m === trendMin ? "on" : ""}">${l}</button>`).join("");
+  $$("#ranges button").forEach(b => b.addEventListener("click", () => {
+    trendMin = +b.dataset.m; store.set("hcw.trend.min", trendMin);
+    $$("#ranges button").forEach(x => x.classList.toggle("on", x === b)); loadTrend();
+  }));
+}
+
+/* ---------------------------------------------------------------- render (every poll) */
+function render() {
+  const s = ST;
+  $("#led-io").className = "led " + (s.io_ok ? "ok" : "bad");
+  $("#io-txt").textContent = s.io_ok ? `Field I/O ${s.io.plant}` : "Field I/O LOST";
+  $("#scan-txt").textContent = `scan ${s.scan.count} · ${s.scan.ms} ms`;
+  renderBanner(); renderKpis(); renderNavStat();
+  if (TAB === "overview") { renderMimic(); renderTraining(); }
+  if (TAB === "tags") renderTagTable();
+  if (TAB === "ilk") renderIlk();
+  if (TAB === "alarms") renderAlarms();
+  if (SEL) renderFaceplate();
+}
+
+function renderBanner() {
+  const al = ST.alarms;
+  const act = p => al.filter(a => a.active && a.priority === p).length;
+  $("#c1").textContent = act(1); $("#c2").textContent = act(2); $("#c3").textContent = act(3);
+  const un = al.filter(a => !a.acked).length;
+  $("#cu").textContent = `${un} unack`;
+  $("#brows").innerHTML = al.slice(0, 3).map(a => `<div class="brow ${a.acked ? "" : "blink-row"}" data-tag="${a.tag}">
+      <span class="${a.acked ? "" : "blink"}">${prioSvg(a.priority)}</span><span class="t">${tstr(a.since)}</span>
+      <b>${esc(a.tag)}</b><span>${esc(a.message)}</span><span class="t">${a.active ? (a.acked ? "ACK" : "UNACK") : "RTN · UNACK"}</span></div>`).join("")
+    || `<div class="brow"><span class="t">No active alarms</span></div>`;
+  $$("#brows .brow[data-tag]").forEach(r => r.addEventListener("click", () => { if (TAG[r.dataset.tag]) select(r.dataset.tag); }));
+}
+
+function pv(tag) { return ST.tags[tag] ? ST.tags[tag].pv : null; }
+
+function renderKpis() {
+  const load = pv("FIC-101"), pur = pv("AI-601"), kpi = pv("KPI-701"), gox = pv("FIC-501"), co2 = pv("AI-202");
+  const eq = ST.equipment, q = ST.sequences["KS-201"];
+  const items = [
+    ["ASU load", load == null ? "####" : (load / 145 * 100).toFixed(1) + " %", `air ${fmt("FIC-101", load)} kNm³/h`, false],
+    ["GOX product", fmt("FIC-501", gox), "kNm³/h", false],
+    ["GOX purity", fmt("AI-601", pur), "% O₂ · spec ≥ 99.5", pur != null && pur < 99.5],
+    ["Specific power", fmt("KPI-701", kpi), "kWh/Nm³ O₂", kpi != null && kpi > 0.40],
+    ["Main air compressor", eq.MAC.state, `${fmt("JI-104", pv("JI-104"))} MW`, eq.MAC.state !== "RUNNING"],
+    ["Expander", eq.EXP.state, `${fmt("SI-304", pv("SI-304"))} rpm`, eq.EXP.state !== "RUNNING"],
+    ["PPU · KS-201", q.display, `CO₂ ${fmt("AI-202", co2)} ppm`, co2 != null && co2 >= 1],
+  ];
+  $("#kpis").innerHTML = items.map(([l, v, u, bad]) => `<div class="kpi ${bad ? "alarm" : ""}"><small>${l}</small><b style="${v.length > 10 ? "font-size:14px" : ""}">${esc(v)}</b><span>${esc(u)}</span></div>`).join("");
+}
+
+function renderNavStat() {
+  const il = Object.entries(ST.interlocks).filter(([, v]) => v.latched).map(([k]) => k);
+  $("#navstat").innerHTML = `<span>Interlocks: <b style="color:${il.length ? "var(--p1)" : "inherit"}">${il.length ? il.join(", ") + " TRIPPED" : "healthy"}</b></span>
+    <span>Historian: <b>${(ST.historian.samples_written || 0).toLocaleString()}</b> samples written</span>`;
+}
+
+function renderMimic() {
+  for (const g of $$("#db-layer .db")) {
+    const tag = g.dataset.tag, row = ST.tags[tag], t = TAG[tag];
+    const a = tagAlarm(tag);
+    g.classList.toggle("bad", row.pv === null || !ST.io_ok);
+    g.classList.toggle("sel", tag === SEL);
+    g.classList.remove("a1", "a2", "a3");
+    if (a) g.classList.add("a" + a.priority);
+    $('[data-f="pv"]', g).textContent = fmt(tag, row.pv);
+    const alm = $('[data-f="alm"]', g); if (alm) alm.textContent = a ? a.limit : "";
+    if (t.kind === "PID") {
+      const md = $('[data-f="mode"]', g);
+      md.textContent = row.mode + (row.forced ? " ILK" : row.limited ? " LIM" : "");
+      md.classList.toggle("man", row.mode === "MAN");
+      $('[data-f="sp"]', g).textContent = `SP ${fmt(tag, row.sp)} · ${row.op.toFixed(0)}%`;
+    }
+  }
+  for (const [v, tag] of Object.entries(VALVES)) {
+    const el = $(`#v-${v} polygon`); if (!el) continue;
+    el.classList.toggle("open", ST.tags[tag].op > 2);
+  }
+  for (const [id, [tag, y0, h]] of Object.entries(LEVELS)) {
+    const v = pv(tag), el = $("#" + id); if (v == null) continue;
+    const hh = Math.max(0, Math.min(1, v / 100)) * h;
+    el.setAttribute("y", y0 + h - hh); el.setAttribute("height", hh);
+  }
+  const eqCls = e => e.state === "RUNNING" ? "equip run" : e.state === "TRIPPED" ? "equip trip" : e.state === "STOPPED" ? "equip" : "equip trans";
+  $("#eq-MAC").setAttribute("class", eqCls(ST.equipment.MAC));
+  $("#eq-MAC-motor").setAttribute("class", eqCls(ST.equipment.MAC));
+  $("#eq-EXP").setAttribute("class", eqCls(ST.equipment.EXP));
+  $("#vap").setAttribute("class", "equip" + (ST.tags["FIC-507"].op > 2 ? " run" : ""));
+  const q = ST.sequences["KS-201"];
+  for (const b of ["A", "B"]) {
+    const on = q.online === b;
+    $("#bed-" + b).setAttribute("class", "vessel" + (on ? " equip run" : ""));
+    $(`#bed-${b}-l`).setAttribute("class", "lbl" + (on ? " w" : ""));
+    $(`#bed-${b}-s`).setAttribute("class", "lbl" + (on ? " w" : ""));
+    $(`#bed-${b}-s`).textContent = on ? "ONLINE" : q.step;
+  }
+  $("#ks-txt").textContent = `KS-201 ${q.display}`;
+}
+
+function renderTagTable() {
+  for (const r of $$("#tagtable tr.click")) {
+    const tag = r.dataset.tag, row = ST.tags[tag], t = TAG[tag], a = tagAlarm(tag);
+    r.classList.toggle("sel", tag === SEL);
+    $('[data-f="pv"]', r).innerHTML = `<b style="color:${row.pv === null ? "var(--bad)" : a ? `var(--p${a.priority})` : "inherit"}">${fmt(tag, row.pv)}</b>`;
+    if (t.kind === "PID") {
+      $('[data-f="sp"]', r).textContent = fmt(tag, row.sp);
+      $('[data-f="op"]', r).innerHTML = `<span class="bar"><i style="width:${row.op}%"></i></span> <span class="m">${row.op.toFixed(1)}%</span>`;
+      $('[data-f="mode"]', r).innerHTML = `<span class="chip ${row.mode === "MAN" ? "man" : ""}">${row.mode}</span>`;
+    }
+    const st = [];
+    if (a) st.push(`${prioSvg(a.priority)} ${a.limit}`);
+    if (row.forced) st.push(`<span class="chip forced">ILK</span>`);
+    if (row.limited) st.push(`<span class="chip lim">OVERRIDE LIM</span>`);
+    $('[data-f="st"]', r).innerHTML = st.join(" ");
+  }
+}
+
+/* ---------------------------------------------------------------- interlocks & sequences */
+let ilkBuilt = false, esdArmed = 0;
+function renderIlk() {
+  const box = $("#ilkcards");
+  if (!ilkBuilt) {
+    box.innerHTML = Object.entries(CFG.interlocks).map(([k, il]) => {
+      const eqs = Object.entries(CFG.equipment).filter(([, e]) => e.trip === k);
+      return `<div class="ilk" data-ilk="${k}">
+        <div class="h"><b>${k}</b><span>${esc(il.label)}</span><span class="st" data-f="st"></span></div>
+        <div class="fo" data-f="fo" style="display:none"></div>
+        <ul data-f="causes"></ul>
+        <div class="act">
+          <button class="btn" data-reset="${k}">Reset ${k}</button>
+          ${eqs.map(([ek, e]) => `<span style="flex:1"></span><span>${esc(e.label)}</span><span class="eqstate" data-eq="${ek}"></span>
+            <button class="btn primary" data-start="${ek}">Start</button><button class="btn" data-stop="${ek}">Stop</button>`).join("")}
+        </div></div>`;
+    }).join("");
+    $$("[data-reset]", box).forEach(b => b.addEventListener("click", () => post(`/api/interlocks/${b.dataset.reset}/reset`)));
+    $$("[data-start]", box).forEach(b => b.addEventListener("click", () => post(`/api/equipment/${b.dataset.start}/start`)));
+    $$("[data-stop]", box).forEach(b => b.addEventListener("click", () => post(`/api/equipment/${b.dataset.stop}/stop`)));
+    ilkBuilt = true;
+  }
+  for (const card of $$(".ilk", box)) {
+    const k = card.dataset.ilk, il = ST.interlocks[k];
+    card.classList.toggle("trip", il.latched);
+    $('[data-f="st"]', card).textContent = il.latched ? "TRIPPED" : "HEALTHY";
+    const fo = $('[data-f="fo"]', card);
+    fo.style.display = il.latched ? "block" : "none";
+    fo.innerHTML = il.latched ? `<b>First out:</b> ${esc(il.first_out)} <span class="note">· ${dtstr(il.tripped_at)}</span>` : "";
+    const active = il.active_causes.map(c => c.split(" ").slice(0, 2).join(" "));
+    $('[data-f="causes"]', card).innerHTML = il.causes.map(c => `<li class="${active.includes(c.split(" ").slice(0, 2).join(" ")) ? "on" : ""}">${esc(c)}</li>`).join("")
+      + il.active_causes.filter(c => !il.causes.some(x => c.startsWith(x.split(" ").slice(0, 2).join(" ")))).map(c => `<li class="on">${esc(c)}</li>`).join("");
+    $("[data-reset]", card).disabled = !il.latched;
+  }
+  for (const el of $$("[data-eq]", box)) {
+    const e = ST.equipment[el.dataset.eq];
+    el.textContent = e.state; el.className = "eqstate " + e.state;
+    $(`[data-start="${el.dataset.eq}"]`, box).disabled = e.cmd;
+    $(`[data-stop="${el.dataset.eq}"]`, box).disabled = !e.cmd;
+  }
+  const q = ST.sequences["KS-201"];
+  const stepIdx = q.steps.indexOf(q.step);
+  const frac = q.step_duration ? Math.min(1, q.step_time / q.step_duration) : 1;
+  $("#seq").innerHTML = `
+    <div style="display:flex;gap:30px;flex-wrap:wrap;align-items:flex-end">
+      <div><div class="note" style="margin:0">Online bed</div><div style="font:700 26px var(--mono)">${q.online}</div></div>
+      <div style="flex:1;min-width:260px"><div class="note" style="margin:0 0 3px">Online time ${dur(q.online_time)} of ${dur(q.cycle)}</div>
+        <div class="progress"><i style="width:${Math.min(100, q.online_time / q.cycle * 100)}%"></i></div></div>
+      <div><button class="btn primary" id="btn-switch" ${q.step === "STANDBY" || ST.equipment.MAC.state !== "RUNNING" ? "" : "disabled"}>Switch beds now</button></div>
+    </div>
+    <div class="note">Offline bed ${q.offline}:</div>
+    <div class="steps">${q.steps.map((s, i) => `<div class="${i < stepIdx ? "done" : i === stepIdx ? "cur" : ""}">${s}${i === stepIdx ? `<i style="width:${frac * 100}%"></i>` : ""}</div>`).join("")}</div>
+    <div class="note">Step time ${dur(q.step_time)}${q.step_duration ? " of " + dur(q.step_duration) : ""} · last heat peak ${q.heat_peak} °C (min 160 °C) · ${q.switches} switch-overs since start${q.regen_incomplete ? ` · <b style="color:var(--p2)">REGENERATION INCOMPLETE</b>` : ""}</div>
+    <div class="note">Switch-over happens automatically at the end of the online time, only when the offline bed is in STANDBY. The operator may switch early from STANDBY (or at any time while the MAC is stopped).</div>`;
+  $("#btn-switch").addEventListener("click", () => post("/api/sequences/KS-201/switch"));
+}
+
+/* ---------------------------------------------------------------- alarms & events */
+async function renderAlarms() {
+  $("#almtable tbody").innerHTML = ST.alarms.map(a => `<tr class="${a.acked ? "" : "unack"} ${a.active ? "" : "rtn"}">
+      <td>${a.acked ? prioSvg(a.priority) : `<span class="blink">${prioSvg(a.priority)}</span>`}</td><td class="m">${dtstr(a.since)}</td>
+      <td class="tagcell">${esc(a.tag)}</td><td class="m">${a.limit === "DISC" ? "" : a.limit}</td><td>${esc(a.message)}</td>
+      <td class="n">${a.setpoint != null ? fmt(a.tag, a.setpoint) : ""}</td><td class="n">${a.value != null ? fmt(a.tag, a.value) : ""}</td>
+      <td class="m">${a.active ? (a.acked ? "ACTIVE · ACK" : "ACTIVE · UNACK") : "RTN · UNACK"}</td>
+      <td>${a.acked ? "" : `<button class="btn" data-ack="${a.id}">Ack</button>`}</td></tr>`).join("")
+    || `<tr><td colspan="9" class="note">No active or unacknowledged alarms.</td></tr>`;
+  $$("#almtable [data-ack]").forEach(b => b.addEventListener("click", () => post("/api/alarms/ack", { id: b.dataset.ack })));
+}
+async function loadEvents() {
+  try {
+    const ev = await (await fetch("/api/events?limit=400")).json();
+    const rows = ev.filter(e => evKind === "all" || e.kind === evKind);
+    $("#evtable tbody").innerHTML = rows.map(e => `<tr><td class="m">${dtstr(e.ts)}</td><td class="m">${esc(e.kind)}</td>
+        <td class="tagcell">${esc(e.source)}</td><td style="white-space:normal;color:${e.priority === 1 ? "var(--p1)" : "inherit"}">${esc(e.message)}</td></tr>`).join("");
+  } catch {}
+}
+
+/* ---------------------------------------------------------------- faceplate */
+let fpBuiltFor = null;
+function select(tag) {
+  SEL = tag; fpBuiltFor = null;
+  $("#faceplate").classList.add("on");
+  render(); loadFpTrend();
+}
+$("#fp-close").addEventListener("click", () => { SEL = null; $("#faceplate").classList.remove("on"); render(); });
+
+function buildFaceplate() {
+  const t = TAG[SEL], pid = t.kind === "PID";
+  $("#fp-tag").textContent = SEL;
+  $("#fp-kind").textContent = { PID: "Controller", AI: "Indicator", CALC: "Calculated" }[t.kind];
+  const al = Object.entries(t.alarms || {});
+  let casc = "";
+  if (pid && t.cascade.length) casc = `<div class="note">Cascade master → ${t.cascade.map(c => `${c.slave} (OP ${c.op[0]}–${c.op[1]} %)`).join(", ")}</div>`;
+  const master = CFG.tags.find(m => m.cascade && m.cascade.some(c => c.slave === SEL));
+  if (master) casc += `<div class="note">CAS setpoint from ${master.tag}</div>`;
+  if (pid && t.limits) casc += `<div class="note">Override: limits ${t.limits} output (low select)</div>`;
+  const limiter = CFG.tags.find(m => m.limits === SEL);
+  if (limiter) casc += `<div class="note">Output limited by override ${limiter.tag}</div>`;
+  $("#fp-body").innerHTML = `
+    <div class="fp-desc">${esc(t.desc)}</div>
+    <div class="fp-pv"><b data-f="pv"></b><span>${esc(t.unit)}</span></div>
+    <div class="fp-bar" data-f="bar">
+      <div class="pv" data-f="barpv"></div>
+      ${pid ? `<div class="spm" data-f="barsp" title="SP"></div>` : ""}
+      ${al.map(([l, v]) => `<div class="lim" style="left:${pct(t, v)}%;border-color:${l.length === 2 ? "var(--p1)" : "var(--p2)"}"><span>${l}</span></div>`).join("")}
+      <span class="rng" style="left:0">${t.lo}</span><span class="rng" style="right:0">${t.hi}</span>
+    </div>
+    ${pid ? `
+      <div class="fp-grid">
+        <div><label>Setpoint</label><span class="v" data-f="sp"></span> <span class="note" data-f="target"></span></div>
+        <div><label>Output</label><span class="v" data-f="op"></span></div>
+      </div>
+      <div class="modes">${["MAN", "AUTO", "CAS"].map(m => `<button data-mode="${m}" ${t.modes.includes(m) ? "" : "disabled"}>${m}</button>`).join("")}</div>
+      <div class="note warn" data-f="warn"></div>
+      <div class="entry"><label>New SP</label><input data-in="sp" inputmode="decimal" placeholder="${t.unit}"><button data-set="sp">Set</button></div>
+      <div class="entry"><label>New OP %</label><input data-in="op" inputmode="decimal" placeholder="MAN only"><button data-set="op">Set</button></div>
+      ${casc}
+      <details><summary>Limits &amp; tuning</summary>
+        <div class="entry"><label>SP low</label><input data-in="sp_lo"><button data-set="sp_lo">Set</button></div>
+        <div class="entry"><label>SP high</label><input data-in="sp_hi"><button data-set="sp_hi">Set</button></div>
+        <div class="entry"><label>SP ramp /min</label><input data-in="sp_rate" placeholder="none = step"><button data-set="sp_rate">Set</button></div>
+        <div class="entry"><label>Gain Kc</label><input data-in="kc"><button data-set="kc">Set</button></div>
+        <div class="entry"><label>Ti s</label><input data-in="ti"><button data-set="ti">Set</button></div>
+        <div class="note">Action: ${t.action} · velocity-form PI, error in % of span · output ${t.out || (t.cascade.length ? "cascade" : t.limits ? "override" : "—")}</div>
+      </details>` : casc}
+    ${al.length ? `<div class="note">Alarm limits: ${al.map(([l, v]) => `${l} ${v}`).join(" · ")}${t.suppress ? ` · suppressed while ${t.suppress} not running` : ""}</div>` : ""}
+    <div class="fp-trend"><div class="note" style="display:flex;justify-content:space-between"><span>Last 30 min</span><span>${pid ? "PV · SP · OP(%)" : "PV"}</span></div><canvas id="fp-canvas"></canvas></div>
+    <div class="note">OPC UA: <span class="m">ns=${CFG.opcua_namespace} ; s=${CFG.opcua_prefix}.${SEL}.PV</span></div>`;
+  $$("[data-mode]").forEach(b => b.addEventListener("click", () => post(`/api/loops/${SEL}`, { mode: b.dataset.mode })));
+  $$("[data-set]").forEach(b => b.addEventListener("click", () => {
+    const k = b.dataset.set, inp = $(`[data-in="${k}"]`), raw = inp.value.trim().replace(",", ".");
+    if (raw === "" && k !== "sp_rate") return;
+    const v = raw === "" ? "" : Number(raw);
+    if (raw !== "" && !Number.isFinite(v)) { toast("Not a number", false); return; }
+    post(`/api/loops/${SEL}`, { [k]: v }).then(j => { if (j && j.ok) { inp.value = ""; inp.dataset.dirty = ""; } });
+  }));
+  $$("[data-in]").forEach(i => {
+    i.addEventListener("input", () => i.dataset.dirty = "1");
+    i.addEventListener("keydown", e => { if (e.key === "Enter") $(`[data-set="${i.dataset.in}"]`).click(); });
+  });
+  fpBuiltFor = SEL;
+}
+function pct(t, v) { return Math.max(0, Math.min(100, (v - t.lo) / (t.hi - t.lo) * 100)); }
+
+function renderFaceplate() {
+  // Built once per selected tag; polls only patch values — never rebuild an input the operator is typing in.
+  if (fpBuiltFor !== SEL) buildFaceplate();
+  const t = TAG[SEL], row = ST.tags[SEL], body = $("#fp-body");
+  $('[data-f="pv"]', body).textContent = fmt(SEL, row.pv);
+  $('[data-f="pv"]', body).style.color = row.pv === null ? "var(--bad)" : (tagAlarm(SEL) ? `var(--p${tagAlarm(SEL).priority})` : "");
+  $('[data-f="barpv"]', body).style.width = (row.pv == null ? 0 : pct(t, row.pv)) + "%";
+  if (t.kind !== "PID") return;
+  $('[data-f="barsp"]', body).style.left = pct(t, row.sp) + "%";
+  $('[data-f="sp"]', body).textContent = fmt(SEL, row.sp);
+  $('[data-f="target"]', body).textContent = Math.abs(row.target - row.sp) > 1e-6 && row.mode === "AUTO" ? `→ ${fmt(SEL, row.target)} (ramp ${row.sp_rate}/min)` : "";
+  $('[data-f="op"]', body).textContent = row.op.toFixed(1) + " %";
+  $$("[data-mode]", body).forEach(b => b.classList.toggle("on", b.dataset.mode === row.mode));
+  const warn = [];
+  if (row.forced) warn.push("Held in MAN by an interlock — reset the interlock first.");
+  if (row.limited) warn.push("Output clamped by the override controller.");
+  if (row.mode === "MAN") warn.push("MAN: SP tracks PV; operator sets the output.");
+  if (row.mode === "CAS") warn.push("CAS: setpoint comes from the cascade master.");
+  $('[data-f="warn"]', body).textContent = warn.join(" ");
+  for (const k of ["sp_lo", "sp_hi", "sp_rate", "kc", "ti"]) {
+    const i = $(`[data-in="${k}"]`, body);
+    if (i && document.activeElement !== i && !i.dataset.dirty) i.value = row[k] ?? "";
+  }
+}
+
+async function loadFpTrend() {
+  if (!SEL) return;
+  const t = TAG[SEL], names = [`${SEL}.PV`].concat(t.kind === "PID" ? [`${SEL}.SP`, `${SEL}.OP`] : []);
+  const h = await history(names, 30, 300);
+  if (!h || !SEL || names[0] !== `${SEL}.PV`) return;
+  const series = names.map((n, i) => ({ name: n, color: COLORS[i], data: withLive(h.series[n], n, h.end),
+    lo: n.endsWith(".OP") ? 0 : t.lo, hi: n.endsWith(".OP") ? 100 : t.hi, dashed: n.endsWith(".SP") }));
+  autoscale(series.filter(s => !s.name.endsWith(".OP")), t);
+  drawTrend($("#fp-canvas"), series, h.start, h.end, { leftLabelsFrom: 0, right: t.kind === "PID" ? 2 : null });
+}
+
+/* ---------------------------------------------------------------- trends */
+async function history(names, minutes, points) {
+  try { return await (await fetch(`/api/history?tags=${encodeURIComponent(names.join(","))}&minutes=${minutes}&points=${points}`)).json(); }
+  catch { return null; }
+}
+function liveValue(name) {
+  const [tag, attr] = [name.slice(0, name.lastIndexOf(".")), name.slice(name.lastIndexOf(".") + 1)];
+  const row = ST && ST.tags[tag]; if (!row) return null;
+  return attr === "PV" ? row.pv : attr === "SP" ? row.sp : row.op;
+}
+function withLive(data, name, end) {
+  const v = liveValue(name);
+  return v == null ? data : data.concat([[end, v, v]]);
+}
+function autoscale(series, t) {
+  // Zoom to the data with 10 % margin, but never tighter than 2 % of the tag span.
+  let lo = Infinity, hi = -Infinity;
+  for (const s of series) for (const [, a, b] of s.data) { if (a != null) { lo = Math.min(lo, a); hi = Math.max(hi, b); } }
+  if (!Number.isFinite(lo)) return;
+  const span = t.hi - t.lo, min = span * 0.02, pad = Math.max((hi - lo) * 0.1, min / 2);
+  for (const s of series) { s.lo = Math.max(t.lo, lo - pad); s.hi = Math.min(t.hi, hi + pad); }
+}
+
+function drawTrend(canvas, series, start, end, opts = {}) {
+  const dpr = window.devicePixelRatio || 1, W = canvas.clientWidth, H = canvas.clientHeight;
+  if (!W) return;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  const c = canvas.getContext("2d"); c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const L = 46, R = opts.right != null ? 34 : 8, T = 6, B = 18, pw = W - L - R, ph = H - T - B;
+  c.clearRect(0, 0, W, H); c.font = "10px Menlo, monospace"; c.fillStyle = "#5d6368"; c.strokeStyle = "#d5d8da"; c.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = T + ph * i / 4; c.beginPath(); c.moveTo(L, y); c.lineTo(L + pw, y); c.stroke();
+    const s = series[opts.leftLabelsFrom || 0];
+    if (s) { const v = s.hi - (s.hi - s.lo) * i / 4; c.textAlign = "right"; c.fillText(niceNum(v), L - 4, y + 3); }
+    const r = opts.right != null && series[opts.right];
+    if (r) { const v = r.hi - (r.hi - r.lo) * i / 4; c.textAlign = "left"; c.fillStyle = r.color; c.fillText(v.toFixed(0) + "%", L + pw + 4, y + 3); c.fillStyle = "#5d6368"; }
+  }
+  const span = end - start;
+  for (let i = 0; i <= 4; i++) {
+    const x = L + pw * i / 4, ts = start + span * i / 4;
+    c.beginPath(); c.moveTo(x, T); c.lineTo(x, T + ph); c.stroke();
+    c.textAlign = i === 0 ? "left" : i === 4 ? "right" : "center";
+    c.fillText(new Date(ts * 1000).toLocaleTimeString("en-GB", span > 86400 ? { day: "2-digit", month: "2-digit", hour: "2-digit" } : { hour: "2-digit", minute: "2-digit" }), x, H - 4);
+  }
+  const X = ts => L + (ts - start) / span * pw;
+  for (const s of series) {
+    const Y = v => T + ph - (v - s.lo) / ((s.hi - s.lo) || 1) * ph;
+    c.strokeStyle = s.color; c.lineWidth = 1.6; c.setLineDash(s.dashed ? [5, 3] : []);
+    c.beginPath(); let pen = false;
+    for (const [ts, a, b] of s.data) {
+      if (a == null) { pen = false; continue; }
+      const x = X(ts), y = Y((a + b) / 2);
+      if (!pen) { c.moveTo(x, y); pen = true; } else c.lineTo(x, y);
+    }
+    c.stroke(); c.setLineDash([]);
+    c.globalAlpha = .35; c.lineWidth = 1; c.beginPath();
+    for (const [ts, a, b] of s.data) { if (a == null || a === b) continue; const x = X(ts); c.moveTo(x, Y(a)); c.lineTo(x, Y(b)); }
+    c.stroke(); c.globalAlpha = 1;
+  }
+  if (opts.cursor != null) { c.strokeStyle = "#1f2326"; c.setLineDash([3, 3]); c.beginPath(); c.moveTo(opts.cursor, T); c.lineTo(opts.cursor, T + ph); c.stroke(); c.setLineDash([]); }
+  c.strokeStyle = "#a5aaae"; c.strokeRect(L, T, pw, ph);
+  canvas._geom = { L, pw, start, span };
+}
+function niceNum(v) { const a = Math.abs(v); return a >= 1000 ? v.toFixed(0) : a >= 100 ? v.toFixed(1) : a >= 1 ? v.toFixed(2) : v.toFixed(3); }
+
+async function loadMinis() {
+  const names = [...new Set(MINIS.flatMap(m => m.pts))];
+  const h = await history(names, 60, 240); if (!h) return;
+  MINIS.forEach((m, i) => {
+    const t = TAG[m.pts[0].split(".")[0]];
+    const series = m.pts.map((n, j) => ({ name: n, color: COLORS[j], data: withLive(h.series[n] || [], n, h.end), lo: t.lo, hi: t.hi, dashed: n.endsWith(".SP") }));
+    const own = series.filter(s => s.name.startsWith(t.tag + "."));
+    autoscale(own, t);
+    for (const s of series.filter(s => !own.includes(s))) { const tt = TAG[s.name.split(".")[0]]; s.lo = tt.lo; s.hi = tt.hi; autoscale([s], tt); }
+    drawTrend($(`[data-c="${i}"]`), series, h.start, h.end);
+    $(`[data-mini="${i}"]`).textContent = m.pts.map(n => `${n.replace(".PV", "")} ${fmt(n.split(".")[0], liveValue(n))}`).join(" · ");
+  });
+}
+
+async function loadTrend() {
+  $("#selcount").textContent = `${trendSel.length}/8 selected`;
+  if (!trendSel.length) { trendCache = null; drawTrend($("#bigtrend"), [], Date.now() / 1000 - trendMin * 60, Date.now() / 1000); $("#legend tbody").innerHTML = `<tr><td colspan="7" class="note">Pick up to 8 points on the left.</td></tr>`; return; }
+  const h = await history(trendSel, trendMin, 800); if (!h) return;
+  const series = trendSel.map((n, i) => {
+    const t = TAG[n.split(".")[0]], s = { name: n, color: COLORS[i % COLORS.length], data: withLive(h.series[n] || [], n, h.end), lo: n.endsWith(".OP") ? 0 : t.lo, hi: n.endsWith(".OP") ? 100 : t.hi, t };
+    if (!n.endsWith(".OP")) autoscale([s], t);
+    return s;
+  });
+  trendCache = { series, start: h.start, end: h.end };
+  drawBig();
+}
+function drawBig(cursorX) {
+  if (!trendCache) return;
+  const { series, start, end } = trendCache, cv = $("#bigtrend");
+  drawTrend(cv, series, start, end, { cursor: cursorX });
+  let cts = null;
+  if (cursorX != null && cv._geom) cts = cv._geom.start + (cursorX - cv._geom.L) / cv._geom.pw * cv._geom.span;
+  $("#legend tbody").innerHTML = series.map(s => {
+    const vals = s.data.filter(d => d[1] != null);
+    const mn = Math.min(...vals.map(d => d[1])), mx = Math.max(...vals.map(d => d[2]));
+    let cur = null;
+    if (cts != null) { let best = null; for (const d of vals) if (!best || Math.abs(d[0] - cts) < Math.abs(best[0] - cts)) best = d; cur = best && (best[1] + best[2]) / 2; }
+    else cur = vals.length ? (vals[vals.length - 1][1] + vals[vals.length - 1][2]) / 2 : null;
+    const tag = s.name.split(".")[0];
+    return `<tr><td><span class="sw" style="background:${s.color}"></span></td><td class="tagcell">${s.name}</td><td>${esc(s.t.desc)}</td>
+      <td class="n">${cur == null ? "" : fmt(tag, cur)}</td><td class="n">${vals.length ? fmt(tag, mn) : ""}</td><td class="n">${vals.length ? fmt(tag, mx) : ""}</td>
+      <td class="n">${niceNum(s.lo)} … ${niceNum(s.hi)} ${s.name.endsWith(".OP") ? "%" : esc(s.t.unit)}</td></tr>`;
+  }).join("");
+}
+$("#bigtrend").addEventListener("mousemove", e => { const r = e.target.getBoundingClientRect(); drawBig(e.clientX - r.left); });
+$("#bigtrend").addEventListener("mouseleave", () => drawBig());
+async function loadHistStat() {
+  try {
+    const s = await (await fetch("/api/historian")).json();
+    $("#histstat").textContent = `Historian: ${s.points.length} points · ${s.samples.toLocaleString()} samples since ${dtstr(s.first_ts)} · ${(s.size_bytes / 1e6).toFixed(1)} MB · exception reporting, deadband ${s.deadband_pct} % of span, heartbeat ${s.max_interval_s} s, retention ${s.retention_days} d · also served over OPC UA HistoryRead.`;
+  } catch {}
+}
+
+/* ---------------------------------------------------------------- tabs, polling */
+function showTab(name) {
+  TAB = name;
+  $$("nav button[data-tab]").forEach(b => b.classList.toggle("on", b.dataset.tab === name));
+  $$(".tab").forEach(s => s.classList.toggle("on", s.id === "tab-" + name));
+  store.set("hcw.tab", name);
+  if (ST) render();
+  if (name === "trends") { loadTrend(); loadHistStat(); }
+  if (name === "alarms") loadEvents();
+  if (name === "overview") loadMinis();
+}
+$$("nav button[data-tab]").forEach(b => b.addEventListener("click", () => showTab(b.dataset.tab)));
+$("#ackall").addEventListener("click", () => post("/api/alarms/ack"));
+$("#ack2").addEventListener("click", () => post("/api/alarms/ack"));
+$("#btn-lineup").addEventListener("click", () => post("/api/lineup"));
+$("#btn-esd").addEventListener("click", () => {
+  // Two-step arm/confirm instead of a browser dialog.
+  const b = $("#btn-esd");
+  if (Date.now() - esdArmed < 4000) { esdArmed = 0; b.classList.remove("armed"); b.textContent = "ESD — ASU shutdown"; post("/api/esd"); return; }
+  esdArmed = Date.now(); b.classList.add("armed"); b.textContent = "Confirm ESD (click again)";
+  setTimeout(() => { if (esdArmed && Date.now() - esdArmed >= 4000) { esdArmed = 0; b.classList.remove("armed"); b.textContent = "ESD — ASU shutdown"; } }, 4100);
+});
+$("#evfilter").innerHTML = ["all", "alarm", "trip", "operator", "sequence", "equipment"].map(k => `<button class="btn ${k === "all" ? "primary" : ""}" data-ev="${k}">${k}</button>`).join("");
+$$("#evfilter [data-ev]").forEach(b => b.addEventListener("click", () => {
+  evKind = b.dataset.ev; $$("#evfilter [data-ev]").forEach(x => x.classList.toggle("primary", x === b)); loadEvents();
+}));
+
+/* ---------------------------------------------------------------- training overlay
+   For students: explains, in plain words, what each process step does and what it is doing
+   right now. "Right now" is built ONLY from DCS data (ST) — like everything on this console it
+   never knows about instructor scenarios. Regions are mimic viewBox rects [x, y, w, h]. */
+const TRAIN = [
+  { title: "The big picture", regions: [], marker: null, watch: ["FIC-101", "FIC-501", "AI-601", "FIC-503"],
+    text: `<p>Air is a mixture: about <b>78 % nitrogen, 21 % oxygen</b> and 1 % argon. This plant separates it by making air so cold that it turns into a liquid (about <b>−180 °C</b>), then distilling it — the same idea as a still separating alcohol from water. Nitrogen boils at −196 °C and oxygen at −183 °C, so the nitrogen boils off first and the oxygen stays behind as a liquid.</p>
+      <p>Follow the air from left to right: <b>①</b> compress it, <b>②</b> clean it, <b>③</b> cool it down, <b>④</b> distil it, <b>⑤</b> deliver the products to the customers, <b>⑥</b> keep liquid in tanks as a backup. <b>⑦</b> shows how much energy all of this costs.</p>`,
+    think: "Use ◀ ▶ or click the numbered circles to walk through the plant." },
+  { title: "Air intake & main air compressor", regions: [[10, 88, 308, 392]], marker: [44, 72],
+    watch: ["FIC-101", "PIC-102", "UIC-103", "JI-104", "TI-108"],
+    text: `<p>Outside air is filtered and squeezed to about <b>6 bar</b> by the main air compressor (MAC), a 12 MW machine — by far the biggest energy user on the site. The <b>inlet guide vanes</b> (FIC-101) decide how much air goes in: this is the <b>load</b> of the whole plant.</p>
+      <p>A compressor can <b>surge</b> if the flow gets too low: the air flow briefly reverses with heavy banging. The antisurge controller (UIC-103) prevents this by opening a recycle valve. Compressing air makes it hot, so the <b>direct-contact aftercooler</b> (DCAC) washes it with cold water down to about 12 °C.</p>`,
+    think: "Think of the guide vanes as the plant's accelerator pedal." },
+  { title: "Front-end purification (mole sieve)", regions: [[326, 84, 118, 436]], marker: [380, 70],
+    watch: ["AI-202", "TIC-204", "PDI-203", "ZI-205"],
+    text: `<p>Water vapour and CO₂ would <b>freeze solid</b> at −180 °C and block the cold equipment, just like ice in a frozen pipe. Two vessels filled with <b>molecular sieve</b> — a sponge of tiny crystals — catch them.</p>
+      <p>One bed cleans the air while the other is being cleaned (<b>regenerated</b>) with hot, dry nitrogen. After a fixed time the two swap. The DCS sequence <b>KS-201</b> runs this automatically: depressurise → heat → cool → repressurise → stand by.</p>`,
+    think: "A sponge that is full has to be wrung out before it can soak up more." },
+  { title: "Main heat exchanger & expander", regions: [[514, 104, 82, 510], [574, 322, 204, 290]], marker: [499, 128],
+    watch: ["TI-301", "TDI-302", "FIC-303", "SI-304"],
+    text: `<p>The <b>main heat exchanger</b> is a large block of aluminium plates. Cold products leaving the plant flow one way and warm incoming air flows the other way, so the air leaves the cold end at about <b>−173 °C</b> and the products leave warm. Almost no energy is lost.</p>
+      <p>Heat always leaks in through the insulation, so the plant needs its own refrigerator. That is the <b>expander</b>: a small turbine where part of the air expands and does work. That makes it colder, the same reason a spray can feels cold when you use it.</p>`,
+    think: "A small temperature difference at the warm end (TDI-302) means the exchanger is clean and works well." },
+  { title: "Linde double column", regions: [[736, 40, 290, 532], [598, 56, 106, 198]], marker: [722, 48],
+    watch: ["PI-401", "PIC-402", "LIC-404", "FIC-405", "TDI-410", "AI-603"],
+    text: `<p>Two distillation columns stand on top of each other. In the <b>high-pressure column</b> (bottom, ~5.6 bar) the air splits into almost pure nitrogen at the top and an oxygen-rich liquid at the bottom. The <b>low-pressure column</b> (top, ~1.3 bar) finishes the job and makes pure oxygen.</p>
+      <p>The clever bit is the <b>main condenser</b> between them. At higher pressure nitrogen condenses at a higher temperature, so nitrogen from the bottom column can condense while it boils the liquid oxygen in the top column. One heat exchanger does two jobs. Liquid nitrogen <b>reflux</b> (FIC-405) washes oxygen out of the top of the LP column.</p>
+      <p>Safety: hydrocarbons from the air collect in the boiling liquid oxygen. Analysers AI-603 and AI-604 watch them, because too much can ignite.</p>`,
+    think: "No reboiler fuel, no condenser cooling water: the column heats and cools itself." },
+  { title: "Product delivery", regions: [[1040, 190, 480, 268]], marker: [1052, 168],
+    watch: ["FIC-501", "PIC-502", "AI-601", "FIC-503", "AIC-602"],
+    text: `<p>Gaseous oxygen (<b>GOX</b>) goes over a pipeline header at about 29 bar to the EO/EG plant and the acetylene plant. Gaseous nitrogen (<b>GAN</b>) goes to the site nitrogen grid for inerting and purging.</p>
+      <p>The header pressure controller <b>PIC-502</b> works in <b>split range</b>. First it opens the GOX valve from the cold box. If that isn't enough, it starts the backup vaporizer (step ⑥). Analysers check that the oxygen is pure enough (AI-601, spec ≥ 99.5 %).</p>`,
+    think: "Customers see only the header pressure: if it holds, they are happy." },
+  { title: "Backup & storage", regions: [[1104, 462, 412, 206], [930, 592, 140, 62]], marker: [1096, 448],
+    watch: ["LI-505", "LI-506", "FIC-507", "FIC-409"],
+    text: `<p>Part of the product is kept as a <b>liquid</b> in insulated tanks: liquid oxygen (LOX) and liquid nitrogen (LIN). This is the plant's insurance.</p>
+      <p>If the ASU trips, or a customer suddenly needs more oxygen than the cold box can make, the <b>backup vaporizer</b> (FIC-507) turns LOX back into gas and feeds the GOX header. Customers can then carry on for hours while the operators restart the plant.</p>`,
+    think: "A full LOX tank buys the operators time." },
+  { title: "Energy", regions: [[1370, 86, 148, 74]], marker: [1356, 80],
+    watch: ["KPI-701", "JI-104", "FIC-501"],
+    text: `<p>Nearly all the energy goes into the air compressor. <b>Specific power</b> (KPI-701) is the compressor's power divided by the oxygen made, in kWh per Nm³ of O₂. Lower is better.</p>
+      <p>It goes up when the compressor gets dirty, on hot days (warm air is harder to compress), or when the plant runs a lot of air for little product.</p>`,
+    think: "Electricity is the biggest running cost of an air separation unit." },
+];
+const PPU_STEP_TEXT = {
+  DEPRESS: b => `Bed ${b} is being <b>depressurised</b>: its pressure is let down from 6 bar to almost atmospheric, so it can be regenerated.`,
+  HEAT: (b, t) => `Bed ${b} is being <b>heated</b>: hot, dry waste nitrogen (target 180 °C, now ${t}) flows through it backwards and drives the trapped water and CO₂ out. It must reach at least 160 °C or the bed will not be fully clean.`,
+  COOL: b => `Bed ${b} is <b>cooling down</b> with cold nitrogen. A hot sieve cannot adsorb anything, so the bed must be cold before it goes back online.`,
+  REPRESS: b => `Bed ${b} is slowly brought back up to <b>pressure</b>, so the switch-over won't cause a pressure bump downstream.`,
+  STANDBY: b => `Bed ${b} is clean and <b>ready</b>, waiting for the other bed to finish its online time.`,
+};
+
+let trainOn = false, trainStep = 0, trainBuilt = -1;
+
+function u(tag, extra = 0) { const t = TAG[tag]; return `${fmt(tag, pv(tag), extra)} ${t ? esc(t.unit) : ""}`; }
+function running(k) { return ST.equipment[k].state === "RUNNING"; }
+
+function trainLive(i) {
+  const L = [], eq = ST.equipment, ilk = ST.interlocks;
+  const tripped = Object.entries(ilk).filter(([, v]) => v.latched);
+  if (!ST.io_ok) L.push(`<b>The DCS has lost contact with the field I/O.</b> All values are frozen and shown as bad quality (magenta ####). This is a communication fault, not a process upset.`);
+  if (tripped.length && (i === 0 || i === 1 || i === 3))
+    L.push(`<b>The plant is tripped</b> (${tripped.map(([k]) => k).join(", ")}). An interlock stopped the machines for safety. First out: <i>${esc(tripped[0][1].first_out || "")}</i>. The interlock must be reset and the machines restarted on the Interlocks tab.`);
+  const air = pv("FIC-101"), load = air == null ? null : air / 145 * 100;
+  if (i === 0) {
+    if (running("MAC")) L.push(`The plant is taking in <b>${u("FIC-101", -1)}</b> of air — about <b>${load.toFixed(0)} %</b> of its design load.`);
+    else L.push(`The main air compressor is <b>${eq.MAC.state.toLowerCase()}</b>: no air is being separated.`);
+    L.push(`It delivers <b>${u("FIC-501", -1)}</b> of oxygen gas at <b>${u("AI-601", -1)}</b> purity and ${u("FIC-503", -1)} of nitrogen gas.`);
+    if (pv("FIC-507") > 0.5) L.push(`The backup vaporizer is helping out with ${u("FIC-507", -1)}: the cold box alone can't keep up with demand.`);
+    const al = ST.alarms.filter(a => a.active).length;
+    L.push(al ? `${al} alarm${al > 1 ? "s are" : " is"} active — see the banner at the top.` : `No alarms are active: the plant is in a steady, normal state.`);
+  }
+  if (i === 1) {
+    if (!running("MAC")) L.push(`The compressor is <b>${eq.MAC.state.toLowerCase()}</b>.`);
+    else {
+      const p = ST.tags["FIC-101"];
+      L.push(`Air flow <b>${u("FIC-101", -1)}</b> (set point ${fmt("FIC-101", p.sp, -1)}), controller in <b>${p.mode}</b>${p.mode === "MAN" ? " — the operator sets the vane position by hand" : ""}.`);
+      if (p.limited) L.push(`The <b>discharge pressure override</b> (PIC-102) is holding the air flow back: the pressure is near its limit, so the compressor can't give more air right now.`);
+      L.push(`Discharge pressure ${u("PIC-102", -1)}, motor power <b>${u("JI-104", -1)}</b>.`);
+      const sm = pv("UIC-103");
+      if (sm != null) L.push(sm < 10 ? `Surge margin is only <b>${sm.toFixed(1)} %</b>: the antisurge valve is opening to protect the machine.` : `Surge margin ${sm.toFixed(0)} %: comfortably away from surge.`);
+      L.push(`Air leaves the aftercooler at ${u("TI-108", -1)} (outside it is ${u("TI-109", -1)}).`);
+    }
+  }
+  if (i === 2) {
+    const q = ST.sequences["KS-201"];
+    L.push(`Bed <b>${q.online}</b> is cleaning the air: online for ${dur(q.online_time)} of ${dur(q.cycle)}.`);
+    L.push(PPU_STEP_TEXT[q.step](q.offline, u("TIC-204", -1)));
+    const co2 = pv("AI-202");
+    if (co2 != null) L.push(co2 >= 1 ? `<b>CO₂ after the sieve is ${co2.toFixed(2)} ppm — too high!</b> The online bed is full ("breakthrough"). CO₂ will freeze in the cold box; at 10 ppm the plant trips.`
+      : `CO₂ after the sieve is ${co2.toFixed(3)} ppm. It creeps up slowly towards the end of each cycle as the bed fills, then drops after the switch: the normal "sawtooth" (see the CO₂ trend below).`);
+    if (q.regen_incomplete) L.push(`<b>Last regeneration was incomplete</b> (peak ${q.heat_peak} °C, needs 160 °C). That bed will fill up sooner next time.`);
+    if (q.cycle < 14400) L.push(`<i>Training time-lapse: the bed cycle is set to ${dur(q.cycle)} instead of the real 4 h, so you can watch a full cycle.</i>`);
+  }
+  if (i === 3) {
+    if (running("EXP")) L.push(`The expander turns at <b>${u("SI-304", -2)}</b> with ${u("FIC-303", -1)} of air, making the cold that keeps the plant running.`);
+    else L.push(`The expander is <b>${eq.EXP.state.toLowerCase()}</b>: no refrigeration is being made. The cold box slowly warms up and the liquid levels drop, so it must be restarted within hours.`);
+    L.push(`Air leaves the cold end at <b>${u("TI-301", -1)}</b>. Warm-end temperature difference ${u("TDI-302")}${pv("TDI-302") > 4 ? " — higher than normal: the exchanger may be fouling" : " (small = efficient)"}.`);
+  }
+  if (i === 4) {
+    L.push(`HP column at <b>${u("PI-401")}</b>, LP column at <b>${u("PIC-402")}</b>.`);
+    L.push(`Liquid oxygen in the reboiler: <b>${u("LIC-404", -1)}</b> full${pv("LIC-404") < 40 ? " — low; the condenser surface isn't fully covered" : ""}. Condenser temperature difference ${u("TDI-410")}.`);
+    L.push(`Reflux ${u("FIC-405", -1)}. Hydrocarbons in LOX ${u("AI-603", -1)}, acetylene ${u("AI-604")}${pv("AI-604") > 0.5 ? " — <b>elevated, watch closely</b>" : " (safe)"}.`);
+  }
+  if (i === 5) {
+    const pur = pv("AI-601"), p = pv("PIC-502"), sp = ST.tags["PIC-502"].sp;
+    L.push(`GOX header at <b>${u("PIC-502")}</b> (set point ${fmt("PIC-502", sp)})${p != null && p < sp - 1 ? " — <b>below set point</b>: customers are taking more than is supplied" : ""}.`);
+    L.push(`Oxygen send-out <b>${u("FIC-501", -1)}</b> at <b>${u("AI-601", -1)}</b>${pur != null && pur < 99.5 ? " — <b>off spec!</b> Too much oxygen is being drawn for the air going in" : " — on spec"}.`);
+    L.push(pv("FIC-507") > 0.5 ? `The <b>backup vaporizer</b> is running (${u("FIC-507", -1)}) — the split range has moved into its second half.` : `The backup vaporizer is closed: the cold box covers the whole demand.`);
+    L.push(`Nitrogen send-out ${u("FIC-503", -1)}, ${u("AIC-602", -1)} oxygen left in it.`);
+  }
+  if (i === 6) {
+    L.push(`LOX tank <b>${u("LI-505", -1)}</b> full, LIN tank <b>${u("LI-506", -1)}</b> full.`);
+    L.push(pv("FIC-507") > 0.5 ? `The vaporizer is sending out <b>${u("FIC-507", -1)}</b> of oxygen from the tank, so the tank level is falling.` : `The vaporizer is on standby, ready to take over automatically if the header pressure drops.`);
+  }
+  if (i === 7) {
+    const k = pv("KPI-701");
+    L.push(k == null ? `No specific power right now: no oxygen is being produced.` : `Specific power <b>${k.toFixed(3)} kWh/Nm³</b>${k > 0.40 ? " — <b>high</b>: the plant is using more energy than it should for this output" : " — normal for this plant"}.`);
+    L.push(`Compressor power ${u("JI-104", -1)}.`);
+  }
+  return L;
+}
+
+function placeTrainCard() {
+  const card = $("#train-card"), wrap = $("#mimic-wrap"), st = TRAIN[trainStep];
+  const W = wrap.clientWidth, H = wrap.clientHeight, k = W / 1520;
+  card.classList.toggle("stacked", W < 900);
+  $(".tc-b", card).style.maxHeight = W < 900 ? "" : Math.max(220, H - 70) + "px";
+  if (W < 900) { card.style.left = card.style.top = ""; return; }
+  const cw = card.offsetWidth, ch = card.offsetHeight;
+  let x, y;
+  if (!st.regions.length) { x = W - cw - 10; y = 10; }
+  else {
+    const xs = st.regions.flatMap(r => [r[0], r[0] + r[2]]), ys = st.regions.map(r => r[1]);
+    const x1 = Math.min(...xs) * k, x2 = Math.max(...xs) * k;
+    x = x2 + 12 + cw <= W ? x2 + 12 : x1 - 12 - cw;
+    y = Math.min(...ys) * k;
+  }
+  card.style.left = Math.max(8, Math.min(W - cw - 8, x)) + "px";
+  card.style.top = Math.max(8, Math.min(H - ch - 8, y)) + "px";
+}
+
+function buildTraining() {
+  const st = TRAIN[trainStep];
+  // dim everything except this step's regions (mask: white = dimmed, black = hole)
+  const holes = st.regions.map(([x, y, w, h]) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="#000"/>`).join("");
+  $("#train-layer").innerHTML = `
+    <defs><mask id="tr-mask"><rect width="1520" height="672" fill="#fff"/>${holes}</mask></defs>
+    ${st.regions.length ? `<rect class="tr-dim" width="1520" height="672" mask="url(#tr-mask)"/>` : ""}
+    ${st.regions.map(([x, y, w, h]) => `<rect class="tr-hole" x="${x}" y="${y}" width="${w}" height="${h}" rx="6"/>`).join("")}
+    ${TRAIN.map((t, i) => t.marker ? `<g class="tr-mk ${i === trainStep ? "on" : ""}" data-i="${i}" transform="translate(${t.marker[0]},${t.marker[1]})"><circle r="13"/><text y="4.5">${i}</text></g>` : "").join("")}`;
+  $$("#train-layer .tr-mk").forEach(g => g.addEventListener("click", e => { e.stopPropagation(); goTrain(+g.dataset.i); }));
+  $("#train-card").innerHTML = `
+    <div class="tc-h"><small>STEP ${trainStep} / ${TRAIN.length - 1}</small><b>${esc(st.title)}</b>
+      <button data-tr="-1" ${trainStep === 0 ? "disabled" : ""} aria-label="Previous step">◀</button>
+      <button data-tr="1" ${trainStep === TRAIN.length - 1 ? "disabled" : ""} aria-label="Next step">▶</button>
+      <button data-tr="x" aria-label="Close training">×</button></div>
+    <div class="tc-b">${st.text}
+      <div class="live"><h4>Right now in ASU1</h4><ul data-live></ul></div>
+      <h4>Watch these tags</h4>
+      <div class="watch">${st.watch.filter(t => TAG[t]).map(t => `<button data-tag="${t}" title="${esc(TAG[t].desc)}">${t}</button>`).join("")}</div>
+      <p class="think" style="margin-top:8px">${esc(st.think)}</p></div>`;
+  $$("#train-card [data-tr]").forEach(b => b.addEventListener("click", () => b.dataset.tr === "x" ? setTraining(false) : goTrain(trainStep + +b.dataset.tr)));
+  $$("#train-card [data-tag]").forEach(b => b.addEventListener("click", () => select(b.dataset.tag)));
+  trainBuilt = trainStep;
+}
+
+function renderTraining() {
+  if (!trainOn || !ST) return;
+  if (trainBuilt !== trainStep) buildTraining();
+  // Polls only patch the live list; the card itself (buttons, scroll position) stays put.
+  $("#train-card [data-live]").innerHTML = trainLive(trainStep).map(l => `<li>${l}</li>`).join("");
+  placeTrainCard();
+}
+
+function goTrain(i) {
+  trainStep = Math.max(0, Math.min(TRAIN.length - 1, i));
+  store.set("hcw.train.step", trainStep);
+  renderTraining();
+}
+
+function setTraining(on) {
+  trainOn = on;
+  store.set("hcw.train", on);
+  document.body.classList.toggle("training", on);
+  $("#btn-train").classList.toggle("train-on", on);
+  if (on) { if (TAB !== "overview") showTab("overview"); trainBuilt = -1; renderTraining(); }
+}
+$("#btn-train").addEventListener("click", () => setTraining(!trainOn));
+document.addEventListener("keydown", e => {
+  if (!trainOn || TAB !== "overview" || /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
+  if (e.key === "ArrowRight") goTrain(trainStep + 1);
+  if (e.key === "ArrowLeft") goTrain(trainStep - 1);
+  if (e.key === "Escape") setTraining(false);
+});
+
+async function poll() {
+  try {
+    ST = await (await fetch("/api/state")).json();
+    if (ST.tags) render();
+  } catch {
+    $("#led-io").className = "led bad"; $("#io-txt").textContent = "DCS unreachable";
+  }
+}
+setInterval(() => { $("#clock").textContent = new Date().toLocaleTimeString("en-GB"); }, 250);
+
+(async function init() {
+  CFG = await (await fetch("/api/config")).json();
+  for (const t of CFG.tags) TAG[t.tag] = t;
+  $("#opc-txt").textContent = CFG.links.opcua;
+  trendSel = store.get("hcw.trend.sel", ["FIC-101.PV", "AI-601.PV", "KPI-701.PV"]).filter(n => TAG[n.split(".")[0]]);
+  trendMin = store.get("hcw.trend.min", 60);
+  buildMimic(); buildTagTable(); buildPicker();
+  await poll();
+  const hashTab = location.hash.slice(1), qTag = new URLSearchParams(location.search).get("tag");
+  if (qTag && TAG[qTag]) select(qTag);
+  showTab(["overview", "tags", "ilk", "alarms", "trends"].includes(hashTab) ? hashTab : store.get("hcw.tab", "overview"));
+  // ?training=1&step=n opens the training overlay (deep link for screenshots and lesson plans)
+  const qp = new URLSearchParams(location.search);
+  trainStep = Math.max(0, Math.min(TRAIN.length - 1, +(qp.get("step") ?? store.get("hcw.train.step", 0)) || 0));
+  if (qp.get("training") === "1" || (qp.get("training") !== "0" && store.get("hcw.train", false))) setTraining(true);
+  setInterval(poll, 1000);
+  setInterval(() => { if (TAB === "overview") loadMinis(); if (TAB === "trends") loadTrend(); if (TAB === "alarms") loadEvents(); if (SEL) loadFpTrend(); }, 5000);
+  window.addEventListener("resize", () => { if (TAB === "overview") { loadMinis(); if (trainOn) placeTrainCard(); } drawBig(); });
+})();
+</script>
+</body>
+</html>
