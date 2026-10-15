@@ -1,5 +1,15 @@
 # HCW Haltenberg — ASU1 simulator & DCS
 
+> **Disclaimer.** This code is part of the [IT/OT Academy](https://itot.academy), offered by
+> [The IT/OT Insider](https://itotinsider.com). It is a generated, vibe-coded system made **only for
+> demo purposes**. It may not be used for anything other than demonstration or training: not in
+> production, not connected to real equipment, and not as the basis for any real control, quality
+> or maintenance decision.
+>
+> Its main purpose is to explain the **classic process-industry stack**: field I/O over raw Modbus
+> TCP, a DCS that turns it into modelled controller tags, a built-in historian, and OPC UA as the
+> interface IT-side clients (here Node-RED) consume.
+
 A demo plant for **Haltenberg Chemische Werke (HCW)**: a Linde-type **Air Separation Unit**
 (~1,000 t/d O₂, ~145,000 Nm³/h air) simulated in real time, controlled by a small but complete
 **DCS** with a **built-in historian**, which exposes its data over **OPC UA**.
