@@ -47,6 +47,57 @@ Then open the hub at **http://localhost:8110**.
 | Node-RED (OPC UA client flows) | http://localhost:1880 |
 | 15-min averages (CSV, written by Node-RED) | `exports/asu1_twa_15min.csv` |
 
+## Screenshots
+
+**Hub** — one page linking every system, grouped by ISA-95 level.
+
+![Hub](docs/screenshots/hub.png)
+
+**DCS operator console — process overview.** ISA-101 style: grey by default, colour only for
+alarms. Click any value to open its faceplate.
+
+![Operator console overview](docs/screenshots/operator-overview.png)
+
+**Tag list and controller faceplate** — every DCS tag with PV, SP, output and mode. The faceplate
+switches MAN/AUTO/CAS, changes setpoints and shows a 30-minute trend.
+
+![Tag list with PIC-502 faceplate](docs/screenshots/operator-faceplate.png)
+
+**Interlocks & sequences** — I-100 (ASU shutdown) and I-300 (expander trip) with their causes,
+equipment start/stop, ESD, and the KS-201 mole-sieve bed switching sequence.
+
+![Interlocks and sequences](docs/screenshots/operator-interlocks.png)
+
+**Alarms & events** — alarm summary with acknowledge, and the event journal stored in the
+historian.
+
+![Alarms and events](docs/screenshots/operator-alarms.png)
+
+**Historian trends** — up to 8 points, 15 min to 7 days. Here: the PPU cycle compressed to
+5 min per bed: CO₂ at the PPU outlet, regeneration gas temperature, bed ΔP and valve stroke time over three bed switch-overs.
+
+![Historian trends](docs/screenshots/operator-trends.png)
+
+**🎓 Training overlay** — walks students through the process step by step, with live values from
+the DCS.
+
+![Training overlay](docs/screenshots/operator-training.png)
+
+**Instructor station** — the simulator side of the glass: PPU time compression, fault scenarios,
+the plant's hidden ground truth and the raw Modbus register map.
+
+![Instructor station](docs/screenshots/instructor.png)
+
+**Node-RED** — OPC UA client flow: subscribe to the DCS, compute 15-minute time-weighted averages,
+append them to a CSV.
+
+![Node-RED flow](docs/screenshots/nodered.png)
+
+Screenshots are taken with headless Chrome. Deep links select each view without clicking:
+`/operator#overview|tags|ilk|alarms|trends`, `?tag=PIC-502` (faceplate),
+`?training=1&step=1`, and `?trend=AI-202.PV,TIC-204.PV&range=15` (trend points and window in
+minutes).
+
 ## Architecture
 
 ```

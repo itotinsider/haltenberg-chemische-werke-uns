@@ -1292,6 +1292,10 @@ setInterval(() => { $("#clock").textContent = new Date().toLocaleTimeString("en-
   $("#opc-txt").textContent = CFG.links.opcua;
   trendSel = store.get("hcw.trend.sel", ["FIC-101.PV", "AI-601.PV", "KPI-701.PV"]).filter(n => TAG[n.split(".")[0]]);
   trendMin = store.get("hcw.trend.min", 60);
+  // ?trend=A.PV,B.PV&range=15 preselects trend points and window (deep link for screenshots)
+  const qt = new URLSearchParams(location.search);
+  if (qt.get("trend")) trendSel = qt.get("trend").split(",").filter(n => TAG[n.split(".")[0]]).slice(0, 8);
+  if (RANGES.some(([, m]) => m === +qt.get("range"))) trendMin = +qt.get("range");
   buildMimic(); buildTagTable(); buildPicker();
   await poll();
   const hashTab = location.hash.slice(1), qTag = new URLSearchParams(location.search).get("tag");

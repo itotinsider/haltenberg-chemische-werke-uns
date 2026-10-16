@@ -63,7 +63,7 @@ docker run --rm --network itot-hcw_default -v /path/to/script:/s --entrypoint py
 # connect to opc.tcp://dcs:4840/hcw/asu1/, namespace "urn:haltenberg:hcw:asu1:dcs"
 ```
 
-**Screenshots** (headless Chrome; Playwright is not installed). `?tag=<TAG>` opens a faceplate and `#overview|tags|ilk|alarms|trends` selects a tab, so every view can be captured without clicking:
+**Screenshots** (headless Chrome; Playwright is not installed). `?tag=<TAG>` opens a faceplate, `?trend=A.PV,B.PV&range=<min>` preselects trend points and window (a RANGES value), and `#overview|tags|ilk|alarms|trends` selects a tab, so every view can be captured without clicking. README screenshots live in `docs/screenshots/`; for a lively trend, compress the PPU cycle to 300 s for ~15 min first, then restore 14400:
 ```bash
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --disable-gpu --hide-scrollbars \
   --window-size=1600,1000 --virtual-time-budget=6000 --screenshot=out.png "http://localhost:8110/operator?tag=PIC-502#tags"
