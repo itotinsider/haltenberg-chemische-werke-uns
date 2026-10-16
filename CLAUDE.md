@@ -28,7 +28,7 @@ dcs/historian.py         SQLite historian (exception reporting) + event journal
 dcs/opcua_server.py      asyncua server, address space generated from config, HistoryRead → historian
 dcs/main.py              asyncio scan loop (pymodbus client), checkpointing, HTTP :8110
 dcs/web/index.html       hub (the only page that isn't a persona HMI)
-dcs/web/operator.html    operator console (overview mimic, tag list, interlocks, alarms/events, trends)
+dcs/web/operator.html    operator console (overview mimic + L3 detail displays, tag list, interlocks, alarms/events, trends)
 tools/offline_sim.py     plant model + control layer coupled directly, faster than real time
 nodered/Dockerfile       official Node-RED image + node-red-contrib-opcua (baked in, /data is a bind mount)
 nodered_data/flows.json  the only tracked file in nodered_data/ (runtime state is git-ignored)
@@ -59,11 +59,12 @@ TWA_WINDOW_MINUTES=1 docker compose up -d nodered   # Node-RED CSV rows every mi
 
 **OPC UA client checks:** the DCS image has asyncua installed, so a throwaway client container on the compose network works:
 ```bash
-docker run --rm --network itot-hcw_default -v /path/to/script:/s --entrypoint python hcw/asu1-dcs:latest /s/client.py
+docker run --rm --network <repo-folder>_default -v /path/to/script:/s --entrypoint python hcw/asu1-dcs:latest /s/client.py
+# network = compose project (folder) name + _default, e.g. haltenberg-chemische-werke-uns_default
 # connect to opc.tcp://dcs:4840/hcw/asu1/, namespace "urn:haltenberg:hcw:asu1:dcs"
 ```
 
-**Screenshots** (headless Chrome; Playwright is not installed). `?tag=<TAG>` opens a faceplate, `?trend=A.PV,B.PV&range=<min>` preselects trend points and window (a RANGES value), and `#overview|tags|ilk|alarms|trends` selects a tab, so every view can be captured without clicking. README screenshots live in `docs/screenshots/`; for a lively trend, compress the PPU cycle to 300 s for ~15 min first, then restore 14400:
+**Screenshots** (headless Chrome; Playwright is not installed). `?tag=<TAG>` opens a faceplate, `?trend=A.PV,B.PV&range=<min>` preselects trend points and window (a RANGES value), `#overview|tags|ilk|alarms|trends` selects a tab and `#detail/<id>` (e.g. `#detail/C-401`) a detail display, so every view can be captured without clicking. README screenshots live in `docs/screenshots/`; for a lively trend, compress the PPU cycle to 300 s for ~15 min first, then restore 14400:
 ```bash
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --disable-gpu --hide-scrollbars \
   --window-size=1600,1000 --virtual-time-budget=6000 --screenshot=out.png "http://localhost:8110/operator?tag=PIC-502#tags"
@@ -173,6 +174,12 @@ Tuning facts that are easy to break:
   - Teal (`--train`) is the training colour only.
 - **Deep link:** `?training=1&step=n`. On/off and the current step are kept in localStorage.
 - **Maintenance:** when you move mimic elements, check the `regions`/`marker` coordinates.
+
+**Detail displays (ISA-101 L3, `operator.html`).**
+- **Registry:** `DETAILS` holds one entry per display: title, block, `aliases` (every equipment tag it covers), overview `hot` rects + `navBtn`, its own `svg` markup, `placements`, `valves` (ids `dv-<valve>`), `levels`, an optional boiling-point `ladder`, and `minis` (`shared: true` = one scale for all points). Data blocks, faceplate, banner and polling are shared with the overview.
+- **Routing:** the hash is the display address (`#overview`, `#tags`, …, `#detail/<id or alias>`). In-app navigation goes through `go()`, which pushes history entries marked `{app: true}`; the first entry is marked `{root: true}`. The detail Back button uses `history.back()` only when the current entry is ours, otherwise it closes to the overview. Close and Esc always go to the overview.
+- **Gotcha:** never declare a global function named `history` (or another `window` property) in the page script: it replaces `window.history`. The historian fetch is `fetchHistory()`.
+- **C-401 column display:** calc tags `TY-411` (N₂ condensing at PI-401), `TY-412` (O₂ boiling at PIC-402) and `TY-413` (N₂ boiling at PIC-402) use the DCS's own Clausius-Clapeyron `t_sat()` in `control.py`, with the same constants as the plant model. So TI-407 ≈ TY-411 (pure N₂ at saturation), and TI-406 sits below TY-412 by the LOX impurity.
 
 **Hidden faults.** The SHT rule carries over: scenarios live only in the plant (`SCENARIOS`, instructor HTTP), never in Modbus, the historian or OPC UA. Don't add a status point for them.
 
