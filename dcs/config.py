@@ -114,6 +114,14 @@ TAGS = [
     ai("TI-407", "HP column top (N2) temperature", "°C", -200, -150, "TT-407", "DoubleColumn", dec=2, suppress="MAC"),
     calc("TDI-410", "Main condenser ΔT (TI-407 − TI-406)", "K", 0, 6, "DoubleColumn", dec=2,
          alarms={"L": 1.0}, suppress="MAC"),
+    # Boiling points from the column pressures (ISA-5.1: Y = compute). No alarms: they are references
+    # for the column detail display, compared there with the measured TI-407 / TI-406.
+    calc("TY-411", "N2 condensing temperature at HP pressure (PI-401)", "°C", -200, -150, "DoubleColumn",
+         dec=2, suppress="MAC"),
+    calc("TY-412", "O2 boiling temperature at LP pressure (PIC-402)", "°C", -200, -150, "DoubleColumn",
+         dec=2, suppress="MAC"),
+    calc("TY-413", "N2 boiling temperature at LP pressure (LIN after FV-405)", "°C", -200, -150, "DoubleColumn",
+         dec=2, suppress="MAC"),
     ai("FI-408", "LOX draw to storage", "kNm³/h", 0, 3, "FT-408", "DoubleColumn", dec=3),
     pid("FIC-409", "LIN draw to storage", "kNm³/h", 0, 2, "DoubleColumn", io="FT-409", out="FV-409",
         kc=0.5, ti=8, sp=0.6, op=30, dec=3),

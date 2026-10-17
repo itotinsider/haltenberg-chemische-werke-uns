@@ -9,6 +9,7 @@ Callers must hold `DCS.lock` around scan() and every command — the HTTP server
 commands while the scan loop runs.
 """
 
+import math
 import threading
 
 import config as C
@@ -18,6 +19,21 @@ MODE_CODE = {"MAN": 0, "AUTO": 1, "CAS": 2}
 
 def clamp(x, lo, hi):
     return max(lo, min(hi, x))
+
+
+def t_sat(p_bar, t_boil_k, dh_vap):
+    """Saturation temperature (degC) at p_bar(a): Clausius-Clapeyron around the normal boiling point.
+
+    The DCS's own copy of the engineering formula (same constants as the plant model), so that the
+    calculated boiling points are a fair reference for the measured column temperatures."""
+    if p_bar is None or p_bar <= 0.05:
+        return None
+    inv = 1.0 / t_boil_k - 8.314 / dh_vap * math.log(p_bar / 1.013)
+    return round(1.0 / inv - 273.15, 4)
+
+
+T_SAT_N2 = (77.36, 5570.0)   # normal boiling point K, heat of vaporisation J/mol
+T_SAT_O2 = (90.19, 6820.0)
 
 
 class PID:
@@ -298,6 +314,10 @@ class DCS:
         v["UIC-103"] = v["surge_margin"]
         t407, t406 = v.get("TI-407"), v.get("TI-406")
         v["TDI-410"] = None if t407 is None or t406 is None else round(t407 - t406, 4)
+        p_hp, p_lp = v.get("PI-401"), v.get("PIC-402")
+        v["TY-411"] = t_sat(p_hp, *T_SAT_N2)
+        v["TY-412"] = t_sat(p_lp, *T_SAT_O2)
+        v["TY-413"] = t_sat(p_lp, *T_SAT_N2)
         p, f = v.get("JI-104"), v.get("FIC-501")
         v["KPI-701"] = round(p / f, 5) if p is not None and f is not None and f > 3.0 else None
 

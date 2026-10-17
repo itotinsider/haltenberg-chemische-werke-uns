@@ -28,7 +28,7 @@ dcs/historian.py         SQLite historian (exception reporting) + event journal
 dcs/opcua_server.py      asyncua server, address space generated from config, HistoryRead → historian
 dcs/main.py              asyncio scan loop (pymodbus client), checkpointing, HTTP :8110
 dcs/web/index.html       hub (the only page that isn't a persona HMI)
-dcs/web/operator.html    operator console (overview mimic, tag list, interlocks, alarms/events, trends)
+dcs/web/operator.html    operator console (overview mimic + L3 detail displays, tag list, interlocks, alarms/events, trends)
 tools/offline_sim.py     plant model + control layer coupled directly, faster than real time
 nodered/Dockerfile       official Node-RED image + node-red-contrib-opcua (baked in, /data is a bind mount)
 nodered_data/flows.json  the only tracked file in nodered_data/ (runtime state is git-ignored)
@@ -59,11 +59,12 @@ TWA_WINDOW_MINUTES=1 docker compose up -d nodered   # Node-RED CSV rows every mi
 
 **OPC UA client checks:** the DCS image has asyncua installed, so a throwaway client container on the compose network works:
 ```bash
-docker run --rm --network itot-hcw_default -v /path/to/script:/s --entrypoint python hcw/asu1-dcs:latest /s/client.py
+docker run --rm --network <repo-folder>_default -v /path/to/script:/s --entrypoint python hcw/asu1-dcs:latest /s/client.py
+# network = compose project (folder) name + _default, e.g. haltenberg-chemische-werke-uns_default
 # connect to opc.tcp://dcs:4840/hcw/asu1/, namespace "urn:haltenberg:hcw:asu1:dcs"
 ```
 
-**Screenshots** (headless Chrome; Playwright is not installed). `?tag=<TAG>` opens a faceplate, `?trend=A.PV,B.PV&range=<min>` preselects trend points and window (a RANGES value), and `#overview|tags|ilk|alarms|trends` selects a tab, so every view can be captured without clicking. README screenshots live in `docs/screenshots/`; for a lively trend, compress the PPU cycle to 300 s for ~15 min first, then restore 14400:
+**Screenshots** (headless Chrome; Playwright is not installed). `?tag=<TAG>` opens a faceplate, `?trend=A.PV,B.PV&range=<min>` preselects trend points and window (a RANGES value), `#overview|tags|ilk|alarms|trends` selects a tab and `#detail/<id>` (e.g. `#detail/C-401`) a detail display, so every view can be captured without clicking. README screenshots live in `docs/screenshots/`; for a lively trend, compress the PPU cycle to 300 s for ~15 min first, then restore 14400:
 ```bash
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --disable-gpu --hide-scrollbars \
   --window-size=1600,1000 --virtual-time-budget=6000 --screenshot=out.png "http://localhost:8110/operator?tag=PIC-502#tags"
@@ -174,6 +175,20 @@ Tuning facts that are easy to break:
 - **Deep link:** `?training=1&step=n`. On/off and the current step are kept in localStorage.
 - **Maintenance:** when you move mimic elements, check the `regions`/`marker` coordinates.
 
+**Detail displays (ISA-101 L3, `operator.html`).**
+- **Displays:** K-101 (MAC + DCAC), R-201 (mole sieve + KS-201 panel), E-301 (MHE + X-303), C-401 (columns + E-404), `products` (GOX/GAN headers + PIC-502 split-range bar), T-505 (tanks + E-507). Graphics only: they use existing tags and DCS state (equipment, interlocks, KS-201), no new model data.
+- **Registry:** `DETAILS` holds one entry per display, in process order:
+  - **Identity:** `title`, `short` (display-bar label), `block`, `aliases` (every equipment tag it covers) and the overview `hot` rects.
+  - **Drawing:** its own `svg` markup, plus `placements`, `valves` (ids `dv-<valve>`) and `levels`.
+  - **Optional:** `equip` (element id → equipment key), `status` (equipment/interlock lines that link to `#ilk`), `ladder` (boiling points), `build(d)` / `render(root, d)` hooks for display-specific graphics (`renderPPU`, `splitHtml`/`renderSplit`).
+  - **Trends:** `minis` (`shared: true` = one scale for all points).
+  - Data blocks, faceplate, banner and polling are shared with the overview.
+- **Off-page connectors:** `opc(x, y, text, to, {w, left})` links to display `to`, so streams can be followed from display to display. `left` is an inbound arrow from the right.
+- **Display bar** (`.dnav`, on the overview and on every detail display): lateral navigation; each button shows the highest active alarm among that display's placements.
+- **Routing:** the hash is the display address (`#overview`, `#tags`, …, `#detail/<id or alias>`). In-app navigation goes through `go()`, which pushes history entries marked `{app: true}`; the first entry is marked `{root: true}`. The detail Back button uses `history.back()` only when the current entry is ours, otherwise it closes to the overview. Close and Esc always go to the overview.
+- **Gotcha:** never declare a global function named `history` (or another `window` property) in the page script: it replaces `window.history`. The historian fetch is `fetchHistory()`.
+- **C-401 column display:** calc tags `TY-411` (N₂ condensing at PI-401), `TY-412` (O₂ boiling at PIC-402) and `TY-413` (N₂ boiling at PIC-402) use the DCS's own Clausius-Clapeyron `t_sat()` in `control.py`, with the same constants as the plant model. So TI-407 ≈ TY-411 (pure N₂ at saturation), and TI-406 sits below TY-412 by the LOX impurity.
+
 **Hidden faults.** The SHT rule carries over: scenarios live only in the plant (`SCENARIOS`, instructor HTTP), never in Modbus, the historian or OPC UA. Don't add a status point for them.
 
 ## Conventions carried over from SHT
@@ -187,7 +202,11 @@ Tuning facts that are easy to break:
   - **Reference data:** pages fetch it from the API (`/api/config`) rather than hardcoding it.
   - **Mimic config:** layout lives in JS consts (`PLACEMENTS`, `VALVES`, `LEVELS`, `MINIS`).
 - **Styling:**
-  - **Operator console:** ISA-101, a grey world with colour only for alarms (P1 red, P2 amber, P3 violet, bad quality magenta). HCW blue is brand only.
+  - **Operator console:** ISA-101 high-performance HMI. Background, equipment and text are grey. Saturated colour is reserved for alarms (P1 red, P2 amber, P3 violet, bad quality magenta). HCW blue is brand only.
+  - **Process media** get muted colours for line and liquid identification only (CSS vars `--air`, `--o2`, `--n2`, `--rich`, `--util` and the fills `--lox`, `--lin`, `--richliq`; classes `.pipe.o2|n2|rich|util`, `.liquid.lox|lin|rich`). O₂ blue follows DIN 2403; N₂ is muted green because DIN's yellow would clash with alarm amber. The legend sits at the right of the display bar. Every new line needs its media class.
+  - **Analog bars** in every data block (except KPI-701): the tag's full range as a 4 px grey track. Zones beyond L/H are medium grey, beyond LL/HH dark grey (from `alarms` in `config.py`). There is a PV pointer and, for controllers, a hollow SP triangle. Built by `barHtml()`, positioned each poll by `barX()`. Data blocks keep their 96 × 34 / 48 size; the alarm badge sits top-right.
+  - **Flow arrows** are generated, not drawn: `addFlowArrows()` puts one small arrowhead per `path.pipe`, half-way along its longest straight run and moved off valves, in the media colour. So **draw every pipe in flow direction**. Shafts get `.noarrow`; `.thin` signal lines and runs < 50 units get none. `pathSegments()` understands M/H/V/L and the `hop()` arc only.
+  - **Liquids** are clipped to their vessel's inner shape (`clipPath`; `clip()` helper on detail displays). Level spans (`LEVELS`, `levels`) are the *inner* height, so 0 % is the inside bottom.
   - **Instructor station:** deliberately dark and violet ("simulator side of the glass"), so nobody mistakes it for the DCS.
 - **Never rebuild an open form from under the user on a poll.**
   - **Faceplate:** built once per selected tag; polls only patch text, and tuning inputs are skipped while focused or dirty.
@@ -195,5 +214,28 @@ Tuning facts that are easy to break:
 
 ## Not built yet / open
 
-- **Not built:** OPC UA writes and an APC/MPC layer; OPC UA Alarms & Conditions (alarms are only exposed as `AlarmState` strings and `Diagnostics` counts); the argon column; LIN backup for the GAN header (it collapses on a MAC trip); tank truck loadouts (tank levels only drift); business systems (LIMS purity cross-checks, SAP-PM, ERP volumes — research §6).
+- **Not built:** OPC UA writes and an APC/MPC layer; OPC UA Alarms & Conditions (alarms are only exposed as `AlarmState` strings and `Diagnostics` counts); the argon column; LIN backup for the GAN header (it collapses on a MAC trip; planned in roadmap step 2); tank truck loadouts (deliberately not planned) (tank levels only drift); business systems (LIMS purity cross-checks, SAP-PM, ERP volumes — research §6).
 - **Only the PPU is compressible:** the instructor slider speeds up the mole-sieve cycle. Everything else runs in real time. A load change at the default ramp takes ~40 min, and purity recovery after a restart ~1 h. That's intentional (research §4.4) but slow for live demos.
+
+## Roadmap: physically complete displays (started Oct 2026)
+
+Working agreement: one branch and one PR per step. Verify each step with the offline sim, the API, an OPC UA client and a headless screenshot.
+
+- **Done, step 1:** L3 navigation framework, C-401 column display, `TY-411/412/413` calc tags.
+- **Done, step 1b:** graphics-only detail displays for every unit (no new tags or model data), display bar, linked off-page connectors.
+- **Step 2: physically correct products.** It changes `model.py`, `iomap.py`, `config.py`, the overview and the products/storage displays.
+  - **Open decision (ask Willem first):** product compressors or internal compression (LOX pump + vaporizing in E-301).
+  - **Why:** today GOX goes from the LP column (~1.3 bar(a)) through only FV-501 into a 30 bar(g) header, and GAN from the HP column (~5.3 bar(a)) into an 8 bar(g) header. A valve can't raise pressure; the model hides this because product flow = valve % × constant.
+  - **Also in step 2: LIN backup vaporizer.** Add E-508 / `FIC-508` from T-506 into the GAN header. PIC-504 becomes split range like PIC-502: FIC-503 at OP 0–80 %, FIC-508 at OP 80–100 %. The storage display then gets T-506's outlet (today the tank only fills, about +0.09 %/h), and the products display gets a second split-range bar. No truck loadouts.
+  - **Also in step 2: overview (L2) drawing fixes.** The L3 displays already draw these correctly:
+    - LOX is drawn leaving at the condenser's height instead of from the LP sump.
+    - LIN is not drawn as coming from E-404.
+    - GOX, GAN and waste N₂ bypass E-301 on the overview.
+- **Step 3: MHE + expander tags.**
+  - Every stream through E-301 gets in/out temperatures, so the E-301 display gets data blocks.
+  - X-303 gets inlet/outlet temperature and pressure tags (≈ −110 °C at 5.5 bar(a) in, ≈ −178 °C at 1.3 bar(a) out).
+- **Step 4: training.**
+  - Link the `TRAIN` steps to their detail displays.
+  - The column step gets a boiling-point table: N₂ −196 / O₂ −183 °C at 1 atm; HP-top N₂ ≈ −177 °C vs LP-sump O₂ ≈ −180 °C.
+  - It also gets the LP feed temperatures before/after their valves: rich liquid −174 → ≈ −189 °C, LIN −177 → ≈ −193 °C. The rich-liquid flash needs a composition estimate; TY-413 already gives the LIN value.
+- **Step 5:** README, CLAUDE.md, screenshots.
