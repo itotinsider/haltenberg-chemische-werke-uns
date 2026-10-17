@@ -202,7 +202,11 @@ Tuning facts that are easy to break:
   - **Reference data:** pages fetch it from the API (`/api/config`) rather than hardcoding it.
   - **Mimic config:** layout lives in JS consts (`PLACEMENTS`, `VALVES`, `LEVELS`, `MINIS`).
 - **Styling:**
-  - **Operator console:** ISA-101, a grey world with colour only for alarms (P1 red, P2 amber, P3 violet, bad quality magenta). HCW blue is brand only.
+  - **Operator console:** ISA-101 high-performance HMI. Background, equipment and text are grey. Saturated colour is reserved for alarms (P1 red, P2 amber, P3 violet, bad quality magenta). HCW blue is brand only.
+  - **Process media** get muted colours for line and liquid identification only (CSS vars `--air`, `--o2`, `--n2`, `--rich`, `--util` and the fills `--lox`, `--lin`, `--richliq`; classes `.pipe.o2|n2|rich|util`, `.liquid.lox|lin|rich`). O₂ blue follows DIN 2403; N₂ is muted green because DIN's yellow would clash with alarm amber. The legend sits at the right of the display bar. Every new line needs its media class.
+  - **Analog bars** in every data block (except KPI-701): the tag's full range as a 4 px grey track. Zones beyond L/H are medium grey, beyond LL/HH dark grey (from `alarms` in `config.py`). There is a PV pointer and, for controllers, a hollow SP triangle. Built by `barHtml()`, positioned each poll by `barX()`. Data blocks keep their 96 × 34 / 48 size; the alarm badge sits top-right.
+  - **Flow arrows** are generated, not drawn: `addFlowArrows()` puts one small arrowhead per `path.pipe`, half-way along its longest straight run and moved off valves, in the media colour. So **draw every pipe in flow direction**. Shafts get `.noarrow`; `.thin` signal lines and runs < 50 units get none. `pathSegments()` understands M/H/V/L and the `hop()` arc only.
+  - **Liquids** are clipped to their vessel's inner shape (`clipPath`; `clip()` helper on detail displays). Level spans (`LEVELS`, `levels`) are the *inner* height, so 0 % is the inside bottom.
   - **Instructor station:** deliberately dark and violet ("simulator side of the glass"), so nobody mistakes it for the DCS.
 - **Never rebuild an open form from under the user on a poll.**
   - **Faceplate:** built once per selected tag; polls only patch text, and tuning inputs are skipped while focused or dirty.
