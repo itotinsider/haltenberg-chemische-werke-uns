@@ -113,13 +113,15 @@
   .db.a2 .alm text { fill: #111; }
   .kpi-big { font: 700 26px var(--mono); fill: var(--value); }
 
-  /* L2 → L3 navigation: invisible hotspots on the overview equipment, plus a nav button */
+  /* L2 → L3 navigation: invisible hotspots on the overview equipment, plus the display bar */
   .hot rect { fill: #000; fill-opacity: 0; cursor: pointer; }
   .hot.on rect { stroke: var(--sel); stroke-width: 2; stroke-dasharray: 6 3; }
-  .navbtn { cursor: pointer; }
-  .navbtn rect { fill: #eceded; stroke: var(--equip); stroke-width: 1.2; }
-  .navbtn text { font: 600 10.5px var(--sans); fill: var(--text); }
-  .navbtn.on rect { stroke: var(--sel); stroke-width: 2; }
+  .dnav { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; padding: 5px 10px; border-bottom: 1px solid var(--line); }
+  .dnav > span { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-right: 4px; }
+  .dnav button { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; background: #eceded; border: 1px solid #8d9297; font: 600 11px var(--mono); }
+  .dnav button:hover { background: #fff; }
+  .dnav button.on { background: #3a3f44; color: #fff; border-color: #3a3f44; }
+  .dnav button .pr-ico { width: 12px; height: 12px; }
 
   /* L3 detail displays */
   .dhead { display: flex; align-items: center; gap: 10px; padding: 6px 10px; background: var(--panel-2); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
@@ -131,6 +133,17 @@
   .node { fill: var(--pipe); }
   .opc polygon { fill: #f2f3f3; stroke: var(--equip); stroke-width: 1.2; }
   .opc text { font: 600 10px var(--sans); fill: var(--text); }
+  .opc.link { cursor: pointer; }
+  .opc.link:hover polygon { stroke: var(--sel); stroke-width: 2; }
+  .dstat text { cursor: pointer; }
+  .dstat text:hover { text-decoration: underline; }
+  .ks-s { fill: #eceded; stroke: #b4b8bc; }
+  .ks-s.done { fill: #cdd0d3; }
+  .ks-s.cur { fill: #fff; stroke: var(--text); stroke-width: 2; }
+  .ks-bar { fill: #f2f3f3; stroke: #8d9297; }
+  .ks-fill { fill: #7c8287; }
+  .sr-seg { fill: #f2f3f3; stroke: #8d9297; }
+  .sr-mk { fill: var(--text); stroke: var(--text); stroke-width: 2; }
   .lad-bg { fill: var(--panel-2); stroke: var(--line); }
   .lad-axis { stroke: var(--equip); stroke-width: 2; }
   .lad-tick { stroke: var(--equip); stroke-width: 1; }
@@ -340,6 +353,7 @@
       </div>
       <div class="panel">
         <h3>ASU1 process overview <span class="r note" style="margin:0">Click a value for its faceplate · click equipment for its detail display</span></h3>
+        <div class="dnav" id="dnav-ov"></div>
         <div id="mimic-wrap">
         <svg id="mimic" viewBox="0 0 1520 672" role="img" aria-label="ASU1 process overview">
           <!-- cold box outline -->
@@ -463,6 +477,7 @@
           <span class="note" style="margin:0">Click a value for its faceplate</span>
           <button class="btn" id="d-close" title="Close and return to the overview (Esc)">✕ Close</button>
         </div>
+        <div class="dnav" id="dnav-d"></div>
         <svg id="dmimic" viewBox="0 0 1520 630" role="img"></svg>
       </div>
       <div class="panel">
@@ -590,17 +605,173 @@ const MINIS = [
    shared. Off-page connectors (opc) name where a stream goes. Valve ids are "dv-<valve>". */
 const vH = (id, x, y) => `<g id="dv-${id}" transform="translate(${x},${y})"><polygon class="valve" points="-8,-6 -8,6 8,-6 8,6"/></g>`;
 const vV = (id, x, y) => `<g id="dv-${id}" transform="translate(${x},${y})"><polygon class="valve" points="-6,-8 6,-8 -6,8 6,8"/></g>`;
-const opc = (x, y, text, w = 132) => `<g class="opc"><polygon points="${x},${y - 12} ${x + w - 12},${y - 12} ${x + w},${y} ${x + w - 12},${y + 12} ${x},${y + 12}"/><text x="${x + 8}" y="${y + 4}">${text}</text></g>`;
+// Off-page connector at (x, y) = where the pipe attaches. `to` = display id it links to; `left` = arrow
+// points left (a stream arriving from the right: x is then the tip, the pipe leaves to the left).
+const opc = (x, y, text, to, { w = 132, left = false } = {}) => {
+  const pts = left ? `${x},${y} ${x + 12},${y - 12} ${x + w},${y - 12} ${x + w},${y + 12} ${x + 12},${y + 12}`
+                   : `${x},${y - 12} ${x + w - 12},${y - 12} ${x + w},${y} ${x + w - 12},${y + 12} ${x},${y + 12}`;
+  return `<g class="opc${to ? " link" : ""}"${to ? ` data-go="#detail/${to}"` : ""}>${to ? `<title>Open detail display ${to}</title>` : ""}<polygon points="${pts}"/><text x="${x + (left ? 18 : 8)}" y="${y + 4}">${text}</text></g>`;
+};
 const hop = x => `H${x - 6}a6 6 0 0 1 12 0`;   // line hop over a crossing pipe at x
 const trays = (x1, x2, y1, y2, dy) => { let d = ""; for (let y = y1; y <= y2; y += dy) d += `M${x1} ${y}H${x2}`; return `<path class="tray" d="${d}"/>`; };
 
 const DETAILS = {
+  "K-101": {
+    title: "K-101 / C-102 · Main air compressor & aftercooler", short: "K-101 Air compressor",
+    block: "MainAirCompressor", aliases: ["C-102", "F-101"],
+    hot: [[104, 240, 96, 118, "K-101 main air compressor"], [240, 216, 50, 152, "C-102 aftercooler"], [16, 248, 52, 74, "F-101 intake filter"]],
+    svg: `
+      <!-- intake filter → inlet guide vanes → compressor -->
+      <rect class="vessel" x="60" y="250" width="60" height="100" rx="2"/>
+      <path d="M68 264h44M68 280h44M68 296h44M68 312h44M68 328h44" stroke="#9aa0a5" stroke-width="1"/>
+      <text class="lbl" x="60" y="242">Ambient air</text>
+      <text class="lbl" x="60" y="368">F-101 intake filter</text>
+      <path class="pipe main" d="M120 300H340"/>${vH("FV-101", 200, 300)}
+      <text class="lbl" x="182" y="288">IGV</text>
+      <polygon id="dq-MAC" class="equip" points="340,240 500,270 500,330 340,360"/>
+      <text class="lbl big" x="340" y="230">K-101 main air compressor</text>
+      <path class="pipe" d="M420 345V390"/>
+      <rect id="dq-MAC-m" class="equip" x="390" y="390" width="60" height="40" rx="3"/>
+      <text class="lbl" x="420" y="414" text-anchor="middle">M</text>
+      <!-- antisurge recycle: discharge → UV-103 → suction -->
+      <path class="pipe" d="M620 300V160H260V300"/>${vH("UV-103", 440, 160)}
+      <circle class="node" cx="620" cy="300" r="3.5"/><circle class="node" cx="260" cy="300" r="3.5"/>
+      <text class="lbl" x="270" y="152">antisurge recycle</text>
+      <!-- discharge → direct-contact aftercooler -->
+      <path class="pipe main" d="M500 300H760V400H820"/>
+      <rect class="vessel" x="820" y="180" width="64" height="260" rx="14"/>
+      <path d="M828 250h48M828 270h48M828 290h48M828 310h48M828 330h48" stroke="#b6bbbf" stroke-width="1" stroke-dasharray="4 3"/>
+      <text class="lbl big" x="852" y="462" text-anchor="middle">C-102 DCAC</text>
+      <text class="lbl" x="852" y="478" text-anchor="middle">direct-contact aftercooler</text>
+      <path class="pipe" d="M960 210H884"/><text class="lbl" x="966" y="214">cooling water in</text>
+      <path class="pipe" d="M884 420H960"/><text class="lbl" x="966" y="424">to cooling tower</text>
+      <path class="pipe main" d="M852 180V130H1100"/>${opc(1100, 130, "Air → R-201 PPU", "R-201")}`,
+    placements: [
+      ["FIC-101", 150, 196], ["FI-103", 150, 320], ["TI-109", 40, 390], ["UIC-103", 392, 98], ["PIC-102", 650, 226],
+      ["JI-104", 470, 392], ["VI-105", 290, 450], ["TI-106", 392, 450], ["PI-107", 494, 450], ["TI-108", 950, 146],
+    ],
+    valves: { "FV-101": "FIC-101", "UV-103": "UIC-103" },
+    levels: {},
+    equip: { "dq-MAC": "MAC", "dq-MAC-m": "MAC" },
+    status: { x: 40, y: 560, items: [["eq", "MAC"], ["ilk", "I-100"]] },
+    minis: [
+      { title: "Air flow (load)", pts: ["FIC-101.PV", "FIC-101.SP"] },
+      { title: "Discharge pressure", pts: ["PIC-102.PV", "PIC-102.SP"] },
+      { title: "Surge margin", pts: ["UIC-103.PV", "UIC-103.SP"] },
+      { title: "Motor power", pts: ["JI-104.PV"] },
+      { title: "Bearing vibration", pts: ["VI-105.PV"] },
+      { title: "Air after DCAC vs ambient", pts: ["TI-108.PV", "TI-109.PV"], shared: true },
+    ],
+  },
+  "R-201": {
+    title: "R-201 A/B · Front-end purification (mole sieve)", short: "R-201 Mole sieve",
+    block: "FrontEndPurification", aliases: ["KS-201", "E-204"],
+    hot: [[326, 224, 110, 134, "R-201 A/B mole sieve"]],
+    svg: `
+      <!-- air in → top of the online bed -->
+      ${opc(40, 120, "Air from C-102", "K-101")}
+      <path class="pipe main" d="M172 120${hop(380)}H660V160"/><path class="pipe main" d="M460 120V160"/>
+      ${vV("in-A", 460, 140)}${vV("in-B", 660, 140)}
+      <!-- beds -->
+      <rect id="d-bed-A" class="vessel" x="420" y="160" width="80" height="280" rx="30"/>
+      <rect id="d-bed-B" class="vessel" x="620" y="160" width="80" height="280" rx="30"/>
+      <text id="d-bed-A-l" class="lbl big" x="460" y="300" text-anchor="middle">R-201A</text>
+      <text id="d-bed-B-l" class="lbl big" x="660" y="300" text-anchor="middle">R-201B</text>
+      <text id="d-bed-A-s" class="lbl" x="460" y="318" text-anchor="middle"></text>
+      <text id="d-bed-B-s" class="lbl" x="660" y="318" text-anchor="middle"></text>
+      <!-- clean air from the bed bottoms → cold box -->
+      <path class="pipe main" d="M460 440V480${hop(740)}H860"/><path class="pipe main" d="M660 440V480"/>
+      ${vV("out-A", 460, 460)}${vV("out-B", 660, 460)}${opc(860, 480, "Air → E-301", "E-301")}
+      <!-- regeneration: waste N2 → E-204 heater → offline bed (bottom up) → atmosphere -->
+      ${opc(40, 560, "Waste N₂ from E-301", "E-301", { w: 150 })}
+      <path class="pipe" d="M190 560H220"/>
+      <rect class="equip" x="220" y="540" width="80" height="40" rx="3"/>
+      <text class="lbl" x="260" y="564" text-anchor="middle">E-204</text>
+      <text class="lbl" x="214" y="532">regeneration heater</text>
+      <path class="pipe" d="M260 625V580"/>${vV("TV-204", 260, 604)}<text class="lbl" x="250" y="622" text-anchor="end">LP steam</text>
+      <path class="pipe" d="M300 560H740V420H700"/><path class="pipe" d="M380 560V420H420"/>
+      ${vV("rg-A", 380, 500)}${vV("rg-B", 740, 530)}
+      <path class="pipe" d="M420 180H380V80H760"/><path class="pipe" d="M700 180H740V80"/>
+      ${vV("vt-A", 380, 150)}${vV("vt-B", 740, 130)}${opc(760, 80, "Regen gas → atmosphere", null, { w: 160 })}
+      <!-- KS-201 sequence panel -->
+      <rect class="lad-bg" x="1040" y="30" width="460" height="280"/>
+      <text class="lbl big" x="1056" y="54">KS-201 · bed switching sequence</text>
+      <text id="d-ks-online" class="lad-dt" x="1056" y="82"></text>
+      <text id="d-ks-time" class="lbl" x="1056" y="102"></text>
+      <rect class="ks-bar" x="1056" y="110" width="428" height="10"/><rect id="d-ks-prog" class="ks-fill" x="1056" y="110" width="0" height="10"/>
+      <text class="lbl" x="1056" y="146">Offline bed steps</text>
+      ${[0, 1, 2, 3, 4].map(i => `<rect id="d-ks-s${i}" class="ks-s" x="${1056 + i * 86}" y="154" width="84" height="28"/><text id="d-ks-t${i}" class="lbl" x="${1098 + i * 86}" y="172" text-anchor="middle"></text>`).join("")}
+      <rect id="d-ks-sp" class="ks-fill" x="1056" y="179" width="0" height="3"/>
+      <text id="d-ks-step" class="lbl" x="1056" y="206"></text>
+      <text id="d-ks-peak" class="lbl" x="1056" y="226"></text>
+      <text class="lbl" x="1056" y="256">Switch-over is automatic at the end of the online time, only from STANDBY.</text>
+      <text class="lbl" x="1056" y="274">Early switching: Interlocks &amp; sequences tab.</text>`,
+    placements: [
+      ["ZI-205", 512, 196], ["PDI-203", 512, 300], ["AI-202", 770, 494], ["TIC-204", 300, 580],
+    ],
+    valves: { "TV-204": "TIC-204" },
+    levels: {},
+    status: { x: 1056, y: 350, items: [["eq", "MAC"], ["ilk", "I-100"]] },
+    render: renderPPU,
+    minis: [
+      { title: "CO₂ after the sieve", pts: ["AI-202.PV"] },
+      { title: "Regeneration gas temperature", pts: ["TIC-204.PV", "TIC-204.SP"] },
+      { title: "Bed differential pressure", pts: ["PDI-203.PV"] },
+      { title: "Air temperature after DCAC (water load)", pts: ["TI-108.PV"] },
+      { title: "Switching valve stroke time", pts: ["ZI-205.PV"] },
+      { title: "Air flow (load)", pts: ["FIC-101.PV"] },
+    ],
+  },
+  "E-301": {
+    title: "E-301 / X-303 · Main heat exchanger & expander", short: "E-301 Heat exchanger",
+    block: "ColdBoxHeatExchange", aliases: ["X-303"],
+    hot: [[516, 116, 62, 450, "E-301 main heat exchanger"], [606, 392, 62, 80, "X-303 expander"]],
+    svg: `
+      <rect class="vessel" x="560" y="50" width="120" height="470"/>
+      <path d="M560 70l120 40M560 130l120 40M560 190l120 40M560 250l120 40M560 310l120 40M560 370l120 40M560 430l120 40" stroke="#b6bbbf" stroke-width="1"/>
+      <text class="lbl big" x="620" y="40" text-anchor="middle">E-301 main heat exchanger</text>
+      <text class="lbl" x="552" y="64" text-anchor="end">warm end ≈ +12 °C</text>
+      <text class="lbl" x="552" y="514" text-anchor="end">cold end ≈ −173 °C</text>
+      <!-- air: warm end → cold end → HP column -->
+      ${opc(40, 100, "Air from R-201", "R-201")}<path class="pipe main" d="M172 100H560"/>
+      <path class="pipe main" d="M600 520V560H1100"/>${opc(1100, 560, "Air → C-401 HP column", "C-401", { w: 160 })}
+      <!-- side draw: part-cooled air → FV-303 → X-303 expander → LP column -->
+      <path class="pipe" d="M680 300H780"/>${vH("FV-303", 730, 300)}
+      <polygon id="dq-EXP" class="equip" points="780,280 860,262 860,338 780,320"/>
+      <text class="lbl big" x="868" y="258">X-303 expander</text>
+      <path class="pipe" d="M860 300H1100"/>${opc(1100, 300, "Air → C-402 LP column", "C-401", { w: 160 })}
+      <path class="pipe" d="M820 330V400"/>
+      <rect id="dq-EXP-b" class="equip" x="800" y="400" width="40" height="28" rx="2"/>
+      <text class="lbl" x="848" y="418">brake</text>
+      <!-- cold products: cold end in → warm end out -->
+      <path class="pipe main" d="M1100 440H680"/>${opc(1100, 440, "GOX from C-402", "C-401", { left: true, w: 140 })}
+      <path class="pipe" d="M1100 470H680"/>${opc(1100, 470, "GAN from C-401", "C-401", { left: true, w: 140 })}
+      <path class="pipe" d="M1100 500H680"/>${opc(1100, 500, "Waste N₂ from C-402", "C-401", { left: true, w: 160 })}
+      <path class="pipe main" d="M680 80H1100"/>${opc(1100, 80, "GOX → products", "products")}
+      <path class="pipe" d="M680 110H1100"/>${opc(1100, 110, "GAN → products", "products")}
+      <path class="pipe" d="M680 140H1100"/>${opc(1100, 140, "Waste N₂ → R-201 regen", "R-201", { w: 160 })}`,
+    placements: [
+      ["TDI-302", 380, 120], ["TI-301", 620, 572], ["FIC-303", 690, 216],
+      ["SI-304", 860, 350], ["VI-305", 962, 350], ["TI-306", 1064, 350],
+    ],
+    valves: { "FV-303": "FIC-303" },
+    levels: {},
+    equip: { "dq-EXP": "EXP", "dq-EXP-b": "EXP" },
+    status: { x: 40, y: 470, items: [["eq", "EXP"], ["ilk", "I-300"], ["eq", "MAC"]] },
+    minis: [
+      { title: "Cold-end air temperature", pts: ["TI-301.PV"] },
+      { title: "Warm-end ΔT", pts: ["TDI-302.PV"] },
+      { title: "Expander flow", pts: ["FIC-303.PV", "FIC-303.SP"] },
+      { title: "Expander speed", pts: ["SI-304.PV"] },
+      { title: "Expander vibration", pts: ["VI-305.PV"] },
+      { title: "Expander bearing temperature", pts: ["TI-306.PV"] },
+    ],
+  },
   "C-401": {
-    title: "C-401 / C-402 / E-404 · Double column & main condenser",
+    title: "C-401 / C-402 / E-404 · Double column & main condenser", short: "C-401 Columns",
     block: "DoubleColumn", aliases: ["C-402", "E-404"],
-    // overview hotspots [x, y, w, h, name] and nav button [x, y, w, label], in overview viewBox units
+    // overview hotspots [x, y, w, h, name], in overview viewBox units
     hot: [[738, 58, 88, 262, "C-402 LP column"], [738, 320, 88, 38, "E-404 main condenser"], [738, 358, 88, 208, "C-401 HP column"]],
-    navBtn: [744, 606, 96, "Column detail"],
     svg: `
       <!-- C-402 LP column, E-404 main condenser, C-401 HP column -->
       <rect class="vessel" x="420" y="40" width="120" height="250" rx="12"/>
@@ -617,19 +788,19 @@ const DETAILS = {
       <text class="lbl big" x="480" y="366" text-anchor="middle">C-401 HP column</text>
       <text class="lbl" x="480" y="570" text-anchor="middle">rich liquid</text>
       <!-- waste N2 from the LP top -->
-      <path class="pipe" d="M480 40V16H860"/>${vH("PV-402", 700, 16)}${opc(860, 16, "Waste N₂ → E-301")}
+      <path class="pipe" d="M480 40V16H860"/>${vH("PV-402", 700, 16)}${opc(860, 16, "Waste N₂ → E-301", "E-301")}
       <!-- LIN from E-404: reflux to the LP top, and product to storage -->
       <path class="pipe" d="M610 317V64H540"/>${vV("FV-405", 610, 150)}
       <text class="lbl" transform="translate(602,108) rotate(-90)" text-anchor="middle">LIN reflux</text>
-      <path class="pipe" d="M540 317H860"/><circle class="node" cx="610" cy="317" r="3.5"/>${vH("FV-409", 760, 317)}${opc(860, 317, "LIN → T-506 tank")}
+      <path class="pipe" d="M540 317H860"/><circle class="node" cx="610" cy="317" r="3.5"/>${vH("FV-409", 760, 317)}${opc(860, 317, "LIN → T-506 tank", "T-505")}
       <!-- GOX vapour above, LOX liquid from the bottom of the LP sump -->
-      <path class="pipe main" d="M540 226${hop(610)}H860"/>${opc(860, 226, "GOX → E-301")}
-      <path class="pipe" d="M540 276${hop(610)}H860"/>${vH("LV-404", 740, 276)}${opc(860, 276, "LOX → T-505 tank")}
+      <path class="pipe main" d="M540 226${hop(610)}H860"/>${opc(860, 226, "GOX → E-301", "E-301")}
+      <path class="pipe" d="M540 276${hop(610)}H860"/>${vH("LV-404", 740, 276)}${opc(860, 276, "LOX → T-505 tank", "T-505")}
       <!-- GAN from the HP top -->
-      <path class="pipe" d="M540 372H860"/>${opc(860, 372, "GAN → E-301")}
+      <path class="pipe" d="M540 372H860"/>${opc(860, 372, "GAN → E-301", "E-301")}
       <!-- feeds: expander air into the LP column, main air into the HP column -->
-      ${opc(40, 120, "Air from X-303")}<path class="pipe" d="M172 120H420"/>
-      ${opc(40, 520, "Air from E-301")}<path class="pipe main" d="M172 520${hop(330)}H420"/>
+      ${opc(40, 120, "Air from X-303", "E-301")}<path class="pipe" d="M172 120H420"/>
+      ${opc(40, 520, "Air from E-301", "E-301")}<path class="pipe main" d="M172 520${hop(330)}H420"/>
       <!-- rich liquid: HP sump → LP column -->
       <path class="pipe" d="M420 578H330V190H420"/>${vV("LV-403", 330, 440)}
       <text class="lbl" transform="translate(322,300) rotate(-90)" text-anchor="middle">rich liquid ≈ 35 % O₂</text>`,
@@ -655,6 +826,81 @@ const DETAILS = {
       { title: "Main condenser ΔT", pts: ["TDI-410.PV"] },
       { title: "Sump levels", pts: ["LIC-404.PV", "LIC-403.PV"], shared: true },
       { title: "LIN reflux", pts: ["FIC-405.PV", "FIC-405.SP"] },
+    ],
+  },
+  "products": {
+    title: "Product delivery · GOX & GAN headers", short: "Products",
+    block: "ProductDelivery", aliases: ["GOX", "GAN"],
+    hot: [[1416, 242, 102, 80, "GOX consumers"], [1416, 374, 102, 36, "Site N₂ grid"]],
+    svg: `
+      <text class="lbl big" x="40" y="44">GOX · gaseous oxygen header</text>
+      ${opc(40, 120, "GOX from E-301", "E-301")}
+      <path class="pipe main" d="M172 120H1200"/>${vH("FV-501", 300, 120)}
+      ${opc(40, 220, "GOX from E-507", "T-505")}
+      <path class="pipe" d="M172 220H800V120"/>${vH("FV-507", 300, 220)}<circle class="node" cx="800" cy="120" r="3.5"/>
+      <text class="lbl" x="810" y="214">backup vaporizer send-out</text>
+      <path class="pipe" d="M1200 120H1220V95H1240M1220 120V145H1240"/>
+      <rect class="vessel" x="1240" y="80" width="150" height="30"/><text class="lbl big" x="1250" y="100">EO / EG plant</text>
+      <rect class="vessel" x="1240" y="130" width="150" height="30"/><text class="lbl big" x="1250" y="150">Acetylene POX</text>
+      <text class="lbl big" x="40" y="364">GAN · gaseous nitrogen header</text>
+      ${opc(40, 440, "GAN from E-301", "E-301")}
+      <path class="pipe main" d="M172 440H1240"/>${vH("FV-503", 300, 440)}
+      <rect class="vessel" x="1240" y="425" width="150" height="30"/><text class="lbl big" x="1250" y="445">Site N₂ grid</text>
+      <!-- AIC-602 sets the reflux setpoint on the column display -->
+      <path class="pipe thin" d="M776 400H820"/>${opc(820, 400, "SP → FIC-405 reflux", "C-401", { w: 150 })}`,
+    build: () => splitHtml("PIC-502", 420, 280, 500),
+    placements: [
+      ["FIC-501", 250, 56], ["PIC-502", 560, 56], ["AI-601", 680, 60], ["FIC-507", 250, 236],
+      ["FIC-503", 250, 376], ["PIC-504", 560, 376], ["AIC-602", 680, 376],
+    ],
+    valves: { "FV-501": "FIC-501", "FV-507": "FIC-507", "FV-503": "FIC-503" },
+    levels: {},
+    status: { x: 40, y: 560, items: [["eq", "MAC"], ["ilk", "I-100"]] },
+    render: root => renderSplit(root, "PIC-502", 420, 280, 500),
+    minis: [
+      { title: "GOX header pressure", pts: ["PIC-502.PV", "PIC-502.SP"] },
+      { title: "GOX from cold box vs vaporizer", pts: ["FIC-501.PV", "FIC-507.PV"], shared: true },
+      { title: "GOX purity", pts: ["AI-601.PV"] },
+      { title: "GAN header pressure", pts: ["PIC-504.PV", "PIC-504.SP"] },
+      { title: "GAN product flow", pts: ["FIC-503.PV", "FIC-503.SP"] },
+      { title: "O₂ in GAN", pts: ["AIC-602.PV", "AIC-602.SP"] },
+    ],
+  },
+  "T-505": {
+    title: "T-505 / T-506 / E-507 · Liquid storage & backup vaporizer", short: "T-505 Storage",
+    block: "BackupStorage", aliases: ["T-506", "E-507"],
+    hot: [[1108, 466, 86, 140, "T-505 LOX tank"], [1232, 562, 64, 48, "E-507 vaporizer"], [1408, 466, 86, 140, "T-506 LIN tank"]],
+    svg: `
+      <!-- LOX: column sump → T-505 → E-507 vaporizer → GOX header -->
+      ${opc(40, 120, "LOX from C-402", "C-401")}
+      <path class="pipe" d="M172 120H370V150"/>${vH("LV-404", 260, 120)}
+      <rect class="vessel" x="300" y="150" width="140" height="360" rx="20"/>
+      <rect id="d-lvl-505" class="liquid" x="302" y="152" width="136" height="356"/>
+      <text class="lbl big" x="370" y="176" text-anchor="middle">T-505 LOX</text>
+      <path class="pipe" d="M370 510V560H600"/>
+      <rect id="dq-vap" class="equip" x="600" y="530" width="120" height="60" rx="3"/>
+      <path d="M612 536v48M626 536v48M640 536v48M654 536v48M668 536v48M682 536v48M696 536v48M710 536v48" stroke="#9aa0a5" stroke-width="1"/>
+      <text class="lbl" x="660" y="610" text-anchor="middle">E-507 vaporizer (ambient air)</text>
+      <path class="pipe" d="M720 560H800V120H860"/>${vV("FV-507", 800, 340)}${opc(860, 120, "GOX → GOX header", "products", { w: 150 })}
+      <!-- LIN: E-404 → T-506 -->
+      ${opc(1300, 120, "LIN from E-404", "C-401", { left: true, w: 140 })}
+      <path class="pipe" d="M1300 120H1070V150"/>${vH("FV-409", 1200, 120)}
+      <rect class="vessel" x="1000" y="150" width="140" height="360" rx="20"/>
+      <rect id="d-lvl-506" class="liquid" x="1002" y="152" width="136" height="356"/>
+      <text class="lbl big" x="1070" y="176" text-anchor="middle">T-506 LIN</text>`,
+    placements: [
+      ["FI-408", 180, 56], ["LI-505", 460, 300], ["FIC-507", 812, 316], ["FIC-409", 1160, 56], ["LI-506", 1160, 300],
+    ],
+    valves: { "LV-404": "LIC-404", "FV-507": "FIC-507", "FV-409": "FIC-409" },
+    levels: { "d-lvl-505": ["LI-505", 152, 356], "d-lvl-506": ["LI-506", 152, 356] },
+    render: root => $("#dq-vap", root).setAttribute("class", "equip" + (ST.tags["FIC-507"].op > 2 ? " run" : "")),
+    minis: [
+      { title: "Tank levels", pts: ["LI-505.PV", "LI-506.PV"], shared: true },
+      { title: "Backup vaporizer send-out", pts: ["FIC-507.PV", "FIC-507.SP"] },
+      { title: "GOX header pressure", pts: ["PIC-502.PV", "PIC-502.SP"] },
+      { title: "LOX draw to storage", pts: ["FI-408.PV"] },
+      { title: "LIN draw to storage", pts: ["FIC-409.PV", "FIC-409.SP"] },
+      { title: "Reboiler level", pts: ["LIC-404.PV", "LIC-404.SP"] },
     ],
   },
 };
@@ -736,10 +982,14 @@ function buildMimic() {
   layer.innerHTML = dataBlocksHtml(PLACEMENTS);
   $$(".db", layer).forEach(g => g.addEventListener("click", () => select(g.dataset.tag)));
   buildMinis($("#minis"), MINIS);
-  // L2 → L3: transparent hotspots over the equipment (under the data blocks) and a nav button
+  // L2 → L3: transparent hotspots over the equipment (under the data blocks), plus the display bar
   $("#hot-layer").innerHTML = Object.entries(DETAILS).map(([id, d]) =>
-    d.hot.map(([x, y, w, h, name]) => `<g class="hot" data-detail="${id}"><title>Open detail display: ${esc(name)}</title><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6"/></g>`).join("")
-    + (d.navBtn ? `<g class="navbtn" data-detail="${id}" transform="translate(${d.navBtn[0]},${d.navBtn[1]})"><title>Open detail display: ${esc(d.title)}</title><rect width="${d.navBtn[2]}" height="20" rx="2"/><text x="8" y="14">▸ ${esc(d.navBtn[3])}</text></g>` : "")).join("");
+    d.hot.map(([x, y, w, h, name]) => `<g class="hot" data-detail="${id}"><title>Open detail display: ${esc(name)}</title><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6"/></g>`).join("")).join("");
+  for (const box of [$("#dnav-ov"), $("#dnav-d")]) {
+    box.innerHTML = `<span>Detail displays</span>` + Object.entries(DETAILS).map(([id, d]) =>
+      `<button data-detail="${id}" title="${esc(d.title)}"><i data-f="alm"></i>${esc(d.short)}</button>`).join("");
+    $$("button", box).forEach(b => b.addEventListener("click", () => go("#detail/" + b.dataset.detail)));
+  }
   for (const g of $$("#hot-layer [data-detail]")) {
     const all = $$(`#hot-layer [data-detail="${g.dataset.detail}"]`);
     g.addEventListener("click", () => go("#detail/" + g.dataset.detail));
@@ -773,8 +1023,87 @@ function buildDetail() {
   $("#d-crumbs").innerHTML = `<a href="#overview" data-go="#overview">ASU1 overview</a><span>›</span><span>${esc(blk ? blk.label : d.block)}</span><span>›</span><b>${esc(d.title)}</b>`;
   $("#d-crumbs [data-go]").addEventListener("click", e => { e.preventDefault(); go("#overview"); });
   svg.setAttribute("aria-label", d.title);
-  svg.innerHTML = d.svg + (d.ladder ? ladderHtml(d.ladder) : "") + `<g>${dataBlocksHtml(d.placements)}</g>`;
+  svg.innerHTML = d.svg + (d.build ? d.build(d) : "") + (d.ladder ? ladderHtml(d.ladder) : "")
+    + (d.status ? statusHtml(d.status) : "") + `<g>${dataBlocksHtml(d.placements)}</g>`;
   buildMinis($("#dminis"), d.minis);
+}
+
+// Equipment / interlock status lines on a detail display; click → Interlocks tab (start, stop, reset live there)
+function statusHtml(s) {
+  return `<g class="dstat" transform="translate(${s.x},${s.y})">${s.items.map((_, i) => `<text class="lbl big" y="${i * 20}" data-go="#ilk" data-st="${i}"></text>`).join("")}</g>`;
+}
+function renderStatus(root, s) {
+  s.items.forEach(([kind, k], i) => {
+    const el = $(`.dstat [data-st="${i}"]`, root);
+    if (kind === "eq") {
+      const e = ST.equipment[k];
+      el.textContent = `${CFG.equipment[k].label}: ${e.state}`;
+      el.style.fill = e.state === "TRIPPED" ? "var(--p1)" : "";
+    } else {
+      const il = ST.interlocks[k];
+      el.textContent = `${k} ${CFG.interlocks[k].label}: ${il.latched ? "TRIPPED · first out " + il.first_out : "healthy"}`;
+      el.style.fill = il.latched ? "var(--p1)" : "";
+    }
+  });
+}
+
+// Display bar: the active display is lit; each button carries the highest active alarm on its display.
+function renderDnav() {
+  for (const b of $$(".dnav button")) {
+    const d = DETAILS[b.dataset.detail];
+    let best = null;
+    for (const [tag] of d.placements) { const a = tagAlarm(tag); if (a && (!best || a.priority < best.priority)) best = a; }
+    b.classList.toggle("on", TAB === "detail" && DETAIL === b.dataset.detail);
+    const i = $('[data-f="alm"]', b), html = best ? prioSvg(best.priority) : "";
+    if (i.innerHTML !== html) i.innerHTML = html;
+  }
+}
+
+// KS-201 on the PPU display: bed states, the valve line-up the sequence commands, and the step panel.
+function renderPPU(root) {
+  const q = ST.sequences["KS-201"], regen = ["HEAT", "COOL"].includes(q.step), vent = ["DEPRESS", "HEAT", "COOL"].includes(q.step);
+  for (const b of ["A", "B"]) {
+    const on = q.online === b;
+    $(`#d-bed-${b}`, root).setAttribute("class", "vessel" + (on ? " equip run" : ""));
+    $(`#d-bed-${b}-l`, root).style.fill = on ? "#fff" : "";
+    $(`#d-bed-${b}-s`, root).style.fill = on ? "#fff" : "";
+    $(`#d-bed-${b}-s`, root).textContent = on ? "ONLINE" : q.step;
+    const open = { in: on, out: on, rg: !on && regen, vt: !on && vent };
+    for (const [k, v] of Object.entries(open)) $(`#dv-${k}-${b} polygon`, root).classList.toggle("open", v);
+  }
+  const idx = q.steps.indexOf(q.step), frac = q.step_duration ? Math.min(1, q.step_time / q.step_duration) : 1;
+  $("#d-ks-online", root).textContent = `Online bed ${q.online} · offline bed ${q.offline}: ${q.step}`;
+  $("#d-ks-time", root).textContent = `Online time ${dur(q.online_time)} of ${dur(q.cycle)}`;
+  $("#d-ks-prog", root).setAttribute("width", 428 * Math.min(1, q.online_time / q.cycle));
+  q.steps.forEach((s, i) => {
+    const r = $(`#d-ks-s${i}`, root); if (!r) return;
+    r.setAttribute("class", "ks-s" + (i < idx ? " done" : i === idx ? " cur" : ""));
+    $(`#d-ks-t${i}`, root).textContent = s;
+  });
+  const sp = $("#d-ks-sp", root);
+  sp.setAttribute("x", 1056 + Math.max(0, idx) * 86); sp.setAttribute("width", idx < 0 ? 0 : 84 * frac);
+  $("#d-ks-step", root).textContent = `Step time ${dur(q.step_time)}${q.step_duration ? " of " + dur(q.step_duration) : ""} · ${q.switches} switch-overs since start`;
+  const pk = $("#d-ks-peak", root);
+  pk.textContent = `Last heat peak ${q.heat_peak} °C (min 160 °C)${q.regen_incomplete ? " · REGENERATION INCOMPLETE" : ""}`;
+  pk.style.fill = q.regen_incomplete ? "var(--p2)" : "";
+}
+
+// Split-range bar: the master's OP span, cut into its cascade slaves' OP ranges (from the DCS config).
+function splitHtml(tag, x, y, w) {
+  const segs = TAG[tag].cascade.map(c => {
+    const x1 = x + w * c.op[0] / 100, x2 = x + w * c.op[1] / 100;
+    return `<rect class="sr-seg" x="${x1}" y="${y}" width="${x2 - x1}" height="18"/>
+      <text class="lbl" x="${x1 + 4}" y="${y + 34}">${c.slave} · OP ${c.op[0]}–${c.op[1]} %</text>
+      <text class="lbl" x="${x1 + 4}" y="${y + 48}" style="font-weight:400">${esc(TAG[c.slave].desc)}</text>`;
+  }).join("");
+  return `<g class="split" data-tag="${tag}" style="cursor:pointer">
+    <text class="lbl big" x="${x}" y="${y - 10}">${tag} split range</text>${segs}
+    <path class="sr-mk" d=""/><text class="lad-dt sr-v" x="${x + w + 10}" y="${y + 14}"></text></g>`;
+}
+function renderSplit(root, tag, x, y, w) {
+  const op = ST.tags[tag].op, mx = x + w * Math.max(0, Math.min(100, op)) / 100;
+  $(".split .sr-mk", root).setAttribute("d", `M${mx - 6} ${y - 8}L${mx + 6} ${y - 8}L${mx} ${y}ZM${mx} ${y}V${y + 18}`);
+  $(".split .sr-v", root).textContent = `OP ${op.toFixed(1)} %`;
 }
 
 function buildTagTable() {
@@ -827,7 +1156,7 @@ function render() {
   $("#led-io").className = "led " + (s.io_ok ? "ok" : "bad");
   $("#io-txt").textContent = s.io_ok ? `Field I/O ${s.io.plant}` : "Field I/O LOST";
   $("#scan-txt").textContent = `scan ${s.scan.count} · ${s.scan.ms} ms`;
-  renderBanner(); renderKpis(); renderNavStat();
+  renderBanner(); renderKpis(); renderNavStat(); renderDnav();
   if (TAB === "overview") { renderMimic(); renderTraining(); }
   if (TAB === "detail") renderDetail();
   if (TAB === "tags") renderTagTable();
@@ -904,10 +1233,15 @@ function renderLevels(levels) {
   }
 }
 
+function eqCls(e) { return e.state === "RUNNING" ? "equip run" : e.state === "TRIPPED" ? "equip trip" : e.state === "STOPPED" ? "equip" : "equip trans"; }
+
 function renderDetail() {
   const d = DETAILS[DETAIL], root = $("#dmimic");
   renderDataBlocks(root); renderValves(d.valves, "dv-"); renderLevels(d.levels);
+  for (const [id, k] of Object.entries(d.equip || {})) $("#" + id, root).setAttribute("class", eqCls(ST.equipment[k]));
+  if (d.status) renderStatus(root, d.status);
   if (d.ladder) renderLadder(root, d.ladder);
+  if (d.render) d.render(root, d);
 }
 
 function renderLadder(root, L) {
@@ -944,7 +1278,6 @@ function renderLadder(root, L) {
 
 function renderMimic() {
   renderDataBlocks($("#db-layer")); renderValves(VALVES, "v-"); renderLevels(LEVELS);
-  const eqCls = e => e.state === "RUNNING" ? "equip run" : e.state === "TRIPPED" ? "equip trip" : e.state === "STOPPED" ? "equip" : "equip trans";
   $("#eq-MAC").setAttribute("class", eqCls(ST.equipment.MAC));
   $("#eq-MAC-motor").setAttribute("class", eqCls(ST.equipment.MAC));
   $("#eq-EXP").setAttribute("class", eqCls(ST.equipment.EXP));
@@ -1321,7 +1654,10 @@ window.addEventListener("hashchange", route);
 $$("nav button[data-tab]").forEach(b => b.addEventListener("click", () => go("#" + b.dataset.tab)));
 $("#d-back").addEventListener("click", () => history.state && history.state.app ? history.back() : go("#overview"));
 $("#d-close").addEventListener("click", () => go("#overview"));
-$("#dmimic").addEventListener("click", e => { const t = e.target.closest("[data-tag]"); if (t && TAG[t.dataset.tag]) select(t.dataset.tag); });
+$("#dmimic").addEventListener("click", e => {
+  const g = e.target.closest("[data-go]"); if (g) { go(g.dataset.go); return; }
+  const t = e.target.closest("[data-tag]"); if (t && TAG[t.dataset.tag]) select(t.dataset.tag);
+});
 document.addEventListener("keydown", e => {
   if (TAB === "detail" && e.key === "Escape" && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) go("#overview");
 });

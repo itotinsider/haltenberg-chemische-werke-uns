@@ -41,6 +41,7 @@ Then open the hub at **http://localhost:8110**.
 | Hub (all systems) | http://localhost:8110 |
 | DCS operator console | http://localhost:8110/operator |
 | Historian trends | http://localhost:8110/operator#trends |
+| Detail display (e.g. the columns) | http://localhost:8110/operator#detail/C-401 |
 | Instructor station (fault scenarios) | http://localhost:8111 |
 | OPC UA endpoint | `opc.tcp://localhost:4840/hcw/asu1/` (anonymous, no security) |
 | Modbus TCP field I/O (raw) | `localhost:5020`, unit 1 |
@@ -57,6 +58,18 @@ Then open the hub at **http://localhost:8110**.
 alarms. Click any value to open its faceplate.
 
 ![Operator console overview](docs/screenshots/operator-overview.png)
+
+**Detail displays (ISA-101 level 3)** — click equipment on the overview, or use the
+*Detail displays* bar, for one display per unit. Here the double column and main condenser, with a
+live boiling-point scale: measured column temperatures against the boiling points at column
+pressure.
+
+![Column detail display](docs/screenshots/operator-detail-column.png)
+
+The mole-sieve display shows both beds, the valve line-up commanded by the KS-201 sequence and the
+step progress.
+
+![Mole sieve detail display](docs/screenshots/operator-detail-ppu.png)
 
 **Tag list and controller faceplate** — every DCS tag with PV, SP, output and mode. The faceplate
 switches MAN/AUTO/CAS, changes setpoints and shows a 30-minute trend.
@@ -94,7 +107,7 @@ append them to a CSV.
 ![Node-RED flow](docs/screenshots/nodered.png)
 
 Screenshots are taken with headless Chrome. Deep links select each view without clicking:
-`/operator#overview|tags|ilk|alarms|trends`, `?tag=PIC-502` (faceplate),
+`/operator#overview|tags|ilk|alarms|trends`, `#detail/C-401` (a detail display), `?tag=PIC-502` (faceplate),
 `?training=1&step=1`, and `?trend=AI-202.PV,TIC-204.PV&range=15` (trend points and window in
 minutes).
 
@@ -177,6 +190,31 @@ How to use it:
 - Deep link: `/operator?training=1&step=2`.
 - Like the rest of the console, it is built only from DCS data. It never reveals the
   instructor's hidden scenarios.
+
+## Detail displays (operator console)
+
+The overview (ISA-101 level 2) shows the whole unit. Each unit also has a **detail display**
+(level 3) with every stream and instrument of that unit:
+
+| Display | Covers |
+|---|---|
+| `K-101` | Intake filter, main air compressor, antisurge recycle, C-102 aftercooler |
+| `R-201` | Mole-sieve beds A/B, E-204 regeneration heater, KS-201 sequence panel |
+| `E-301` | Main heat exchanger (all streams) and X-303 expander |
+| `C-401` | HP / LP columns, E-404 main condenser, boiling-point scale |
+| `products` | GOX and GAN headers, consumers, PIC-502 split range |
+| `T-505` | LOX / LIN tanks, E-507 backup vaporizer |
+
+How to use them:
+- Open one by clicking the equipment on the overview, from the *Detail displays* bar, or with a
+  direct link such as `/operator#detail/E-404` (any equipment tag of a display works).
+- The arrows at the edge of a display are links: follow a stream from display to display.
+- **◀ Back** returns to the previous display (the browser's Back button works too). **✕ Close** or
+  Esc returns to the overview.
+- Values, faceplates, alarms and trends behave exactly as on the overview.
+- New calculated tags on the column display: `TY-411` (N₂ condensing temperature at HP
+  pressure), `TY-412` (O₂ boiling temperature at LP pressure), `TY-413` (N₂ boiling temperature
+  at LP pressure). They are historized and published over OPC UA like every other tag.
 
 ## Time compression (instructor station)
 

@@ -176,7 +176,15 @@ Tuning facts that are easy to break:
 - **Maintenance:** when you move mimic elements, check the `regions`/`marker` coordinates.
 
 **Detail displays (ISA-101 L3, `operator.html`).**
-- **Registry:** `DETAILS` holds one entry per display: title, block, `aliases` (every equipment tag it covers), overview `hot` rects + `navBtn`, its own `svg` markup, `placements`, `valves` (ids `dv-<valve>`), `levels`, an optional boiling-point `ladder`, and `minis` (`shared: true` = one scale for all points). Data blocks, faceplate, banner and polling are shared with the overview.
+- **Displays:** K-101 (MAC + DCAC), R-201 (mole sieve + KS-201 panel), E-301 (MHE + X-303), C-401 (columns + E-404), `products` (GOX/GAN headers + PIC-502 split-range bar), T-505 (tanks + E-507). Graphics only: they use existing tags and DCS state (equipment, interlocks, KS-201), no new model data.
+- **Registry:** `DETAILS` holds one entry per display, in process order:
+  - **Identity:** `title`, `short` (display-bar label), `block`, `aliases` (every equipment tag it covers) and the overview `hot` rects.
+  - **Drawing:** its own `svg` markup, plus `placements`, `valves` (ids `dv-<valve>`) and `levels`.
+  - **Optional:** `equip` (element id → equipment key), `status` (equipment/interlock lines that link to `#ilk`), `ladder` (boiling points), `build(d)` / `render(root, d)` hooks for display-specific graphics (`renderPPU`, `splitHtml`/`renderSplit`).
+  - **Trends:** `minis` (`shared: true` = one scale for all points).
+  - Data blocks, faceplate, banner and polling are shared with the overview.
+- **Off-page connectors:** `opc(x, y, text, to, {w, left})` links to display `to`, so streams can be followed from display to display. `left` is an inbound arrow from the right.
+- **Display bar** (`.dnav`, on the overview and on every detail display): lateral navigation; each button shows the highest active alarm among that display's placements.
 - **Routing:** the hash is the display address (`#overview`, `#tags`, …, `#detail/<id or alias>`). In-app navigation goes through `go()`, which pushes history entries marked `{app: true}`; the first entry is marked `{root: true}`. The detail Back button uses `history.back()` only when the current entry is ours, otherwise it closes to the overview. Close and Esc always go to the overview.
 - **Gotcha:** never declare a global function named `history` (or another `window` property) in the page script: it replaces `window.history`. The historian fetch is `fetchHistory()`.
 - **C-401 column display:** calc tags `TY-411` (N₂ condensing at PI-401), `TY-412` (O₂ boiling at PIC-402) and `TY-413` (N₂ boiling at PIC-402) use the DCS's own Clausius-Clapeyron `t_sat()` in `control.py`, with the same constants as the plant model. So TI-407 ≈ TY-411 (pure N₂ at saturation), and TI-406 sits below TY-412 by the LOX impurity.
@@ -202,5 +210,28 @@ Tuning facts that are easy to break:
 
 ## Not built yet / open
 
-- **Not built:** OPC UA writes and an APC/MPC layer; OPC UA Alarms & Conditions (alarms are only exposed as `AlarmState` strings and `Diagnostics` counts); the argon column; LIN backup for the GAN header (it collapses on a MAC trip); tank truck loadouts (tank levels only drift); business systems (LIMS purity cross-checks, SAP-PM, ERP volumes — research §6).
+- **Not built:** OPC UA writes and an APC/MPC layer; OPC UA Alarms & Conditions (alarms are only exposed as `AlarmState` strings and `Diagnostics` counts); the argon column; LIN backup for the GAN header (it collapses on a MAC trip; planned in roadmap step 2); tank truck loadouts (deliberately not planned) (tank levels only drift); business systems (LIMS purity cross-checks, SAP-PM, ERP volumes — research §6).
 - **Only the PPU is compressible:** the instructor slider speeds up the mole-sieve cycle. Everything else runs in real time. A load change at the default ramp takes ~40 min, and purity recovery after a restart ~1 h. That's intentional (research §4.4) but slow for live demos.
+
+## Roadmap: physically complete displays (started Oct 2026)
+
+Working agreement: one branch and one PR per step. Verify each step with the offline sim, the API, an OPC UA client and a headless screenshot.
+
+- **Done, step 1:** L3 navigation framework, C-401 column display, `TY-411/412/413` calc tags.
+- **Done, step 1b:** graphics-only detail displays for every unit (no new tags or model data), display bar, linked off-page connectors.
+- **Step 2: physically correct products.** It changes `model.py`, `iomap.py`, `config.py`, the overview and the products/storage displays.
+  - **Open decision (ask Willem first):** product compressors or internal compression (LOX pump + vaporizing in E-301).
+  - **Why:** today GOX goes from the LP column (~1.3 bar(a)) through only FV-501 into a 30 bar(g) header, and GAN from the HP column (~5.3 bar(a)) into an 8 bar(g) header. A valve can't raise pressure; the model hides this because product flow = valve % × constant.
+  - **Also in step 2: LIN backup vaporizer.** Add E-508 / `FIC-508` from T-506 into the GAN header. PIC-504 becomes split range like PIC-502: FIC-503 at OP 0–80 %, FIC-508 at OP 80–100 %. The storage display then gets T-506's outlet (today the tank only fills, about +0.09 %/h), and the products display gets a second split-range bar. No truck loadouts.
+  - **Also in step 2: overview (L2) drawing fixes.** The L3 displays already draw these correctly:
+    - LOX is drawn leaving at the condenser's height instead of from the LP sump.
+    - LIN is not drawn as coming from E-404.
+    - GOX, GAN and waste N₂ bypass E-301 on the overview.
+- **Step 3: MHE + expander tags.**
+  - Every stream through E-301 gets in/out temperatures, so the E-301 display gets data blocks.
+  - X-303 gets inlet/outlet temperature and pressure tags (≈ −110 °C at 5.5 bar(a) in, ≈ −178 °C at 1.3 bar(a) out).
+- **Step 4: training.**
+  - Link the `TRAIN` steps to their detail displays.
+  - The column step gets a boiling-point table: N₂ −196 / O₂ −183 °C at 1 atm; HP-top N₂ ≈ −177 °C vs LP-sump O₂ ≈ −180 °C.
+  - It also gets the LP feed temperatures before/after their valves: rich liquid −174 → ≈ −189 °C, LIN −177 → ≈ −193 °C. The rich-liquid flash needs a composition estimate; TY-413 already gives the LIN value.
+- **Step 5:** README, CLAUDE.md, screenshots.
