@@ -12,8 +12,8 @@ Address space (namespace urn:haltenberg:hcw:asu1:dcs, string NodeIds "HCW.ASU1.<
                 SP, OP, Mode                 controllers only (SP/OP historized too)
                 AlarmState                   tags with alarm limits: NORMAL / H / HH / L / LL
               KS-201/                        PPU switching sequence (in FrontEndPurification)
-            Equipment/MAC, Equipment/EXP     State, Running
-            Interlocks/I-100, I-300          Tripped, FirstOut
+            Equipment/MAC, EXP, BAC, LOXP    State, Running
+            Interlocks/I-100, I-300, ...     Tripped, FirstOut (one object per configured interlock)
             Diagnostics/                     FieldIOConnected, ActiveAlarms, UnackedAlarms, ...
 
 Values carry the DCS scan time as SourceTimestamp and Bad_NoCommunication while the field I/O

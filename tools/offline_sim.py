@@ -7,7 +7,7 @@ For tuning controllers and checking scenarios before building the containers:
 
 `--scenario key@t[:t_stop]` starts a plant scenario at t seconds (and stops it at t_stop);
 `--cmd action@t` issues a DCS operator command (lineup, ack, reset:I-100, start:MAC,
-start:EXP, switch, sp:FIC-101=120).
+start:EXP, switch, sp:FIC-101=120, mode:FIC-111=MAN, op:FIC-111=40, ratio:FIC-111=1.6).
 """
 
 import argparse
@@ -22,10 +22,13 @@ from model import Plant  # noqa: E402
 from control import DCS  # noqa: E402
 
 COLUMNS = ["FIC-101", "JI-104", "UIC-103", "AI-202", "PIC-402", "LIC-403", "LIC-404", "FIC-405",
-           "AIC-602", "AI-601", "FIC-501", "PIC-502", "FIC-503", "PIC-504", "FIC-507", "KPI-701"]
+           "AIC-602", "AI-601", "FIC-501", "FIC-111", "TI-512", "PIC-502", "FIC-503", "PIC-504", "FIC-507",
+           "KPI-701"]
 
 
 def main():
+    if hasattr(sys.stdout, "reconfigure"):   # Windows consoles can't print "→" / "°C" in cp1252
+        sys.stdout.reconfigure(errors="replace")
     ap = argparse.ArgumentParser()
     ap.add_argument("--hours", type=float, default=2.0)
     ap.add_argument("--every", type=float, default=600.0, help="print interval, s")
@@ -108,6 +111,12 @@ def run_cmd(dcs, what):
     elif what.startswith("mode:"):
         tag, val = what[5:].split("=")
         print("     ", dcs.set_loop(tag, mode=val))
+    elif what.startswith("op:"):
+        tag, val = what[3:].split("=")
+        print("     ", dcs.set_loop(tag, op=float(val)))
+    elif what.startswith("ratio:"):
+        tag, val = what[6:].split("=")
+        print("     ", dcs.set_loop(tag, ratio=float(val)))
 
 
 if __name__ == "__main__":

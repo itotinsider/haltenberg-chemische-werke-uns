@@ -117,9 +117,9 @@ minutes).
 plant container                         dcs container
 ┌──────────────────────────┐  Modbus   ┌────────────────────────────────────┐   OPC UA
 │ ASU process model        │   TCP     │ 1 s scan                           │  :4840
-│ (6 blocks, 0.5 s step)   │◄─────────►│ 16 PI controllers (cascade,        ├──────────► agents,
+│ (6 blocks, 0.5 s step)   │◄─────────►│ 18 PI controllers (cascade, ratio, ├──────────► agents,
 │ instructor station :8111 │  :5020    │   split range, override)           │            UaExpert,
-│ fault scenarios (hidden) │           │ interlocks I-100 / I-300           │            IT systems
+│ fault scenarios (hidden) │           │ interlocks I-100/I-110/I-300/I-500 │            IT systems
 └──────────────────────────┘           │ PPU sequence KS-201                │
                                        │ alarms (state-based)               │
                                        │ historian (SQLite) ── data/        │
@@ -200,8 +200,9 @@ The overview (ISA-101 level 2) shows the whole unit. Each unit also has a **deta
 |---|---|
 | `K-101` | Intake filter, main air compressor, antisurge recycle, C-102 aftercooler |
 | `R-201` | Mole-sieve beds A/B, E-204 regeneration heater, KS-201 sequence panel |
+| `K-102` | Booster air compressor, its ratio to the pumped LOX (internal compression) |
 | `E-301` | Main heat exchanger (all streams) and X-303 expander |
-| `C-401` | HP / LP columns, E-404 main condenser, boiling-point scale |
+| `C-401` | HP / LP columns, E-404 main condenser, P-501 LOX pump, boiling-point scale |
 | `products` | GOX and GAN headers, consumers, PIC-502 split range |
 | `T-505` | LOX / LIN tanks, E-507 backup vaporizer |
 
@@ -246,25 +247,55 @@ The **PPU bed cycle** slider on the instructor station runs from *real time* (4 
 | EO plant demand step | GOX header drops, GOX send-out saturates, backup vaporizer cuts in, purity falls unless air load is raised |
 | Acetylene burner trip | Sharp O₂ demand drop for 15 min |
 | N₂ purge campaign | GAN demand +10 kNm³/h |
-| MAC motor trip | I-100 ASU shutdown, expander trips, vaporizer holds the GOX header |
+| MAC motor trip | I-100 ASU shutdown: expander, booster and LOX pump trip with it; the vaporizer holds the GOX header |
 | MAC bearing degradation | VI-105 / TI-106 creep up over ~40 min → H alarm → HH trip |
 | MAC impeller fouling | Same air, more MW: KPI-701 specific power drifts up |
 | DCAC water carry-over | CO₂ breakthrough at the PPU outlet ~35 min in → 10 ppm trip unless beds are switched |
 | Regeneration heater fault | KS-201 "regeneration incomplete", breakthrough one cycle later |
+| Booster motor trip | I-110 → I-500: without booster air the pumped LOX can't vaporize, so P-501 trips; vaporizer takes the header. Restart within ~10 min or the reboiler floods (LIC-404 HH → I-100) |
+| LOX pump cavitation | PI-511 unsteady and falling over ~5 min → LL → I-500. The suction re-cools in ~5 min, then P-501 can be restarted |
 | Expander loss of loading | Overspeed trip; reboiler level then drains over hours |
 | MHE fouling | Warm-end ΔT creeps up |
-| Hydrocarbon event | Total hydrocarbons in LOX climb towards the alarm/trip limits |
+| Hydrocarbon event | Hydrocarbons in the intake rise six-fold. The pumped LOX flushes them out with the product, so AI-603 only becomes a problem while P-501 is down |
 | Heatwave | Less MAC capacity, more power, more water load on the PPU |
+
+## Oxygen product: internal compression
+
+GOX leaves ASU1 at pipeline pressure without an oxygen compressor (research §3, block 5):
+
+- **P-501 LOX pump** draws liquid oxygen from the LP sump and pumps it to ~33 bar(g) (PI-511).
+- The pumped LOX **boils in E-301** against **booster air**: K-102 compresses ~30 % of the clean
+  air to ~60 bar(a) (FIC-111, PI-112, JI-113, VI-114); it condenses on the other side and goes
+  through the JT valve HV-116 into the HP column as liquid air.
+- **Cross-limiting ratio control**, as for burner air/fuel: FIC-111's setpoint is the ratio (1.52)
+  × the higher of LOX flow and LOX demand, so the booster leads on increase. FIC-501's setpoint is
+  capped at what the measured booster air can vaporize, so the LOX follows. FFI-111 shows the actual
+  ratio; the operator sets it on the FIC-111 faceplate (1.35–2.0).
+- **TI-512**, the GOX temperature leaving E-301, is the safety variable: too little booster air →
+  cold (eventually liquid) oxygen towards the carbon-steel header → LL −25 °C trips **I-500**.
+- **LIC-415**, a reboiler low-level override, limits FIC-501 below 45 %. The column can't be
+  pumped empty when the header asks for more than it makes (e.g. at low air after a restart); the
+  backup vaporizer covers the difference.
+- **Specific power** KPI-701 = (MAC + booster power) ÷ GOX, ≈ 0.51 kWh/Nm³ (H alarm 0.57).
 
 ## Restart after a trip
 
-1. Interlocks tab: **Reset I-100**, then **Reset I-300**.
+1. Interlocks tab: **Reset I-100**, then I-300, I-110 and I-500. A child interlock can only be
+   reset after its parent (I-100 → I-300 / I-110 → I-500).
 2. **Start** the main air compressor. It starts in MAN on minimum guide vanes.
 3. Once it is RUNNING, press **Normal line-up**, then raise the FIC-101 setpoint to 145.
    - It ramps at 1.45 kNm³/h per minute by default; the ramp rate is set on the faceplate.
 4. Start the expander. Once it is RUNNING, press **Normal line-up** again and set the FIC-303
    setpoint to 18.
-5. Purity takes ~1 h to recover.
+5. Start the **booster K-102** (needs the MAC running). Once it is RUNNING, press **Normal line-up**:
+   FIC-111 goes to CAS and follows the pumped LOX in ratio.
+6. Start the **LOX pump P-501** (needs the booster running and LIC-404 ≥ 40 %). It starts on part
+   flow in MAN. Once it is RUNNING, press **Normal line-up**: FIC-501 returns to CAS under the GOX
+   header pressure. Line-up skips loops whose equipment isn't running yet and says so.
+7. Purity takes ~1 h to recover.
+
+After a booster or LOX pump trip alone, only steps 5–6 are needed, but be quick: with the pump
+down the oxygen stays in the reboiler sump, which floods in ~10 min (LIC-404 HH trips the ASU).
 
 ## Configuration
 

@@ -56,11 +56,14 @@ class PID:
         self.sp_lo = cfg["sp_lo"]
         self.sp_hi = cfg["sp_hi"]
         self.sp_rate = cfg["sp_rate"]     # engineering units per minute, None = step
+        self.ratio = cfg.get("ratio")     # ratio station: CAS setpoint = ratio x PV(ratio_of)
         self.pv = None
         self.e_prev = None
         self.rsp = None                   # remote SP written by a cascade master
         self.op_hi_eff = cfg["op_hi"]     # after override limiting
         self.limited = False
+        self.sp_lim = None                # cross-limit: SP cap from the ratio partner (None = none)
+        self.xlimited = False
         self.forced = False               # held by an interlock
 
     def error(self):
@@ -86,6 +89,9 @@ class PID:
                 self.sp += clamp(self.target - self.sp, -step, step)
             else:
                 self.sp = self.target
+        self.xlimited = self.mode != "MAN" and self.sp_lim is not None and self.sp > self.sp_lim
+        if self.xlimited:
+            self.sp = self.sp_lim
         e = self.error()
         if self.mode == "MAN" or self.e_prev is None:
             self.e_prev = e
@@ -201,8 +207,7 @@ class DCS:
                 prio = C.PRIORITY_OVERRIDE.get((t["tag"], limit), C.ALARM_PRIORITY[limit])
                 self.alarms[key] = Alarm(key, t["tag"], limit, setpoint, prio, f"{t['desc']} {limit}")
         for key, msg, prio in [
-            ("I-100.TRIP", "ASU shutdown — MAC tripped", 1),
-            ("I-300.TRIP", "Expander tripped", 1),
+            *[(f"{k}.TRIP", cfg.get("trip_message", cfg["label"]), 1) for k, cfg in C.INTERLOCKS.items()],
             ("KS-201.SWITCH_DELAYED", "PPU switch-over delayed — offline bed not ready", 2),
             ("KS-201.REGEN_INCOMPLETE", "PPU regeneration incomplete — heat peak not reached", 2),
             ("IO.COMM", "Field I/O communication failure", 1),
@@ -222,9 +227,13 @@ class DCS:
     def running(self, eq):
         return self.equipment[eq].fb and self.equipment[eq].cmd
 
+    def armed(self, eq):
+        """True once `eq` has run longer than its start-up bypass (interlock causes armed on it)."""
+        e = self.equipment[eq]
+        return self.running(eq) and self.now - e.running_since > e.cfg.get("bypass_s", 0)
+
     def mac_armed(self):
-        mac = self.equipment["MAC"]
-        return self.running("MAC") and self.now - mac.running_since > C.STARTUP_BYPASS_S
+        return self.armed("MAC")
 
     def pv(self, tag):
         return self.values.get(tag)
@@ -247,8 +256,8 @@ class DCS:
                 self.event("equipment", eq.key, f"{eq.cfg['label']} running")
             elif eq.fb and not fb:
                 self.event("equipment", eq.key, f"{eq.cfg['label']} stopped", 2 if eq.cmd else 0)
-                if eq.cmd and eq.key == "MAC":
-                    self._trip("I-100", "YS-101 MAC motor stopped (motor protection)")
+                if eq.cmd:   # stopped by itself while commanded on: motor protection / trip
+                    self._trip(eq.cfg["trip"], f"{eq.cfg['fb']} {eq.cfg['label']} stopped (motor protection)")
             eq.fb = fb
 
         # 2. PVs (bad quality = None when the I/O link is down)
@@ -276,12 +285,23 @@ class DCS:
                     if p.mode != "MAN":
                         p.op = min(p.op, target.op + 5.0)
                     continue
+                if p.cfg.get("ratio_of"):
+                    # Lead on increase: follow the partner's demand (its SP) or its flow, whichever is higher.
+                    w, partner = self.pv(p.cfg["ratio_of"]), self.loops[p.cfg["ratio_of"]]
+                    demand = partner.rsp if partner.mode == "CAS" and partner.rsp is not None else partner.target
+                    p.rsp = None if w is None else p.ratio * max(w, demand if partner.mode != "MAN" else w)
+                if p.cfg.get("xlimit"):
+                    # Follow on increase: never ask for more than the measured ratio flow can handle.
+                    # 4 % margin: wider than the flow noise (no LIM flicker in steady state), narrow
+                    # enough that the real ratio stays above where E-301 starts to pinch (~95 %).
+                    b, partner = self.pv(p.cfg["xlimit"]), self.loops[p.cfg["xlimit"]]
+                    p.sp_lim = b / (partner.ratio * 0.96) if b is not None and partner.ratio else None
                 lim = self.limiters.get(p.tag)
                 p.op_hi_eff = min(p.cfg["op_hi"], lim.op) if lim and lim.mode != "MAN" else p.cfg["op_hi"]
                 # Loops flagged `ppu_time` (TIC-204) run on the PPU's compressed clock, matching
                 # the plant's regeneration circuit when the instructor speeds the cycle up.
                 p.update(dt * C.PPU_DESIGN_CYCLE / self.ppu.cycle if p.cfg.get("ppu_time") else dt)
-                p.limited = p.mode != "MAN" and p.op >= p.op_hi_eff - 0.05 and p.op_hi_eff < p.cfg["op_hi"]
+                p.limited = (p.mode != "MAN" and p.op >= p.op_hi_eff - 0.05 and p.op_hi_eff < p.cfg["op_hi"]) or p.xlimited
                 if p.cfg["cascade"]:
                     self._drive_slaves(p)
         for il in self.interlocks.values():
@@ -318,8 +338,11 @@ class DCS:
         v["TY-411"] = t_sat(p_hp, *T_SAT_N2)
         v["TY-412"] = t_sat(p_lp, *T_SAT_O2)
         v["TY-413"] = t_sat(p_lp, *T_SAT_N2)
-        p, f = v.get("JI-104"), v.get("FIC-501")
-        v["KPI-701"] = round(p / f, 5) if p is not None and f is not None and f > 3.0 else None
+        f111, f501 = v.get("FIC-111"), v.get("FIC-501")
+        v["FFI-111"] = round(f111 / f501, 4) if f111 is not None and f501 is not None and f501 > 3.0 else None
+        # Specific power: every machine that compresses for the oxygen product (MAC + booster).
+        p, pb, f = v.get("JI-104"), v.get("JI-113"), v.get("FIC-501")
+        v["KPI-701"] = round((p + pb) / f, 5) if None not in (p, pb, f) and f > 3.0 else None
 
     def _drive_slaves(self, master):
         links = master.cfg["cascade"]
@@ -426,14 +449,15 @@ class DCS:
         for key, il in self.interlocks.items():
             causes = []
             for tag, limit, armed in il.cfg["causes"]:
-                if armed == "mac" and not self.mac_armed():
+                if armed != "always" and not self.armed(armed):
                     continue
                 if self._limit_active(tag, limit):
                     causes.append(f"{tag} {limit} ({self.pv(tag):.{C.TAG_INDEX[tag]['dec']}f})")
             if key == "I-100" and self.co2_high_since and self.now - self.co2_high_since > C.CO2_BREAKTHROUGH_TRIP_S:
                 causes.append("AI-202 > 1 ppm for 30 min (beds not switched)")
-            if key == "I-300" and self.interlocks["I-100"].latched:
-                causes.append("I-100 ASU shutdown")
+            for parent in il.cfg.get("parents", []):
+                if self.interlocks[parent].latched:
+                    causes.append(self._parent_cause(parent))
             il.active_causes = causes
             if causes and not il.latched:
                 self._trip(key, causes[0])
@@ -451,21 +475,26 @@ class DCS:
         for tag, (mode, op) in il.cfg["forces"].items():
             loop = self.loops[tag]
             loop.mode, loop.op, loop.forced = mode, op, True
-        if key == "I-100":
-            self._trip("I-300", "I-100 ASU shutdown")
+        for child, cil in self.interlocks.items():   # I-100 -> I-300 / I-110 -> I-500, ...
+            if key in cil.cfg.get("parents", []):
+                self._trip(child, self._parent_cause(key))
+
+    def _parent_cause(self, key):
+        return f"{key} {self.interlocks[key].cfg['label']}"
 
     def reset_interlock(self, key):
         il = self.interlocks[key]
         if not il.latched:
             return False, "not tripped"
-        # Causes are refreshed every scan; drop a dependency on an interlock reset since then,
-        # so I-100 and I-300 can be reset back to back.
-        causes = [c for c in il.active_causes
-                  if not (c == "I-100 ASU shutdown" and not self.interlocks["I-100"].latched)]
+        parents = il.cfg.get("parents", [])
+        for parent in parents:
+            if self.interlocks[parent].latched:
+                return False, f"reset {parent} first"
+        # Causes are refreshed every scan; drop a dependency on a parent reset since then, so
+        # I-100 and its children can be reset back to back.
+        causes = [c for c in il.active_causes if c not in [self._parent_cause(p) for p in parents]]
         if causes:
             return False, "cause still active: " + causes[0]
-        if key == "I-300" and self.interlocks["I-100"].latched:
-            return False, "reset I-100 first"
         il.latched = False
         il.first_out = None
         for tag in il.cfg["forces"]:
@@ -495,8 +524,8 @@ class DCS:
             else:
                 on = v <= a.setpoint if not a.active else v < a.setpoint + db
             self._set_alarm(a, on, v)
-        self._set_alarm(self.alarms["I-100.TRIP"], self.interlocks["I-100"].latched, None)
-        self._set_alarm(self.alarms["I-300.TRIP"], self.interlocks["I-300"].latched, None)
+        for k, il in self.interlocks.items():
+            self._set_alarm(self.alarms[f"{k}.TRIP"], il.latched, None)
         q = self.ppu
         self._set_alarm(self.alarms["KS-201.SWITCH_DELAYED"],
                         self.running("MAC") and q.online_time >= q.cycle and q.step_name != "STANDBY", None)
@@ -555,6 +584,10 @@ class DCS:
             op = clamp(float(kw["op"]), p.cfg["op_lo"], p.cfg["op_hi"])
             msgs.append(f"OP {p.op:.1f} → {op:.1f} %")
             p.op = op
+        if "ratio" in kw and kw["ratio"] is not None and p.cfg.get("ratio_of"):
+            r = clamp(float(kw["ratio"]), p.cfg["ratio_lo"], p.cfg["ratio_hi"])
+            msgs.append(f"ratio {p.ratio:.3f} → {r:.3f}")
+            p.ratio = r
         for key in ("sp_hi", "sp_lo", "kc", "ti", "sp_rate"):
             if key in kw and kw[key] is not None:
                 old = getattr(p, key)
@@ -589,6 +622,19 @@ class DCS:
                 return False, "permissive: HP column pressure PI-401 < 4.0 bar(a)"
             fic = self.loops["FIC-303"]
             fic.mode, fic.op = "MAN", 30.0      # start on minimum nozzles
+        if key == "BAC":
+            if not self.running("MAC"):
+                return False, "permissive: MAC not running (no air for the booster)"
+            fic = self.loops["FIC-111"]
+            fic.mode, fic.op = "MAN", 30.0      # start above minimum flow (surge)
+        if key == "LOXP":
+            if not self.running("BAC"):
+                return False, "permissive: booster K-102 not running (pumped LOX could not vaporize)"
+            lvl = self.pv("LIC-404")
+            if lvl is None or lvl < 40.0:
+                return False, "permissive: reboiler level LIC-404 < 40 % (pump suction / NPSH)"
+            fic = self.loops["FIC-501"]
+            fic.mode, fic.op = "MAN", 20.0      # start on part flow; Normal line-up returns it to CAS
         eq.cmd = True
         eq.cmd_since = self.now
         self.event("operator", key, f"{eq.cfg['label']} start")
@@ -608,18 +654,24 @@ class DCS:
         return True, "ok"
 
     def lineup(self):
-        changed = []
+        changed, skipped = [], []
         for tag, mode in C.LINEUP.items():
             p = self.loops[tag]
             sup = p.cfg.get("suppress")
+            if p.forced or p.mode == mode:
+                continue
             # Loops on stopped equipment stay in MAN: in AUTO they would just wind up.
-            if p.forced or p.mode == mode or (sup and not self.running(sup)):
+            if sup and not self.running(sup):
+                skipped.append(f"{tag} ({sup} not running)")
                 continue
             p.mode = mode
             p.e_prev = None
             changed.append(f"{tag}→{mode}")
-        self.event("operator", "LINEUP", "Normal line-up: " + (", ".join(changed) or "no change"))
-        return True, ", ".join(changed) or "no change"
+        msg = ", ".join(changed) or "no change"
+        if skipped:
+            msg += "; skipped: " + ", ".join(skipped)
+        self.event("operator", "LINEUP", "Normal line-up: " + msg)
+        return True, msg
 
     # ---------------------------------------------------------------- snapshots / persistence
     def snapshot(self):
@@ -630,8 +682,10 @@ class DCS:
             if t["kind"] == "PID":
                 p = self.loops[t["tag"]]
                 row.update(sp=round(p.sp, 5), target=round(p.target, 5), op=round(p.op, 3),
-                           mode=p.mode, forced=p.forced, limited=p.limited, sp_hi=p.sp_hi,
+                           mode=p.mode, forced=p.forced, limited=p.limited, xlimited=p.xlimited, sp_hi=p.sp_hi,
                            sp_lo=p.sp_lo, kc=p.kc, ti=p.ti, sp_rate=p.sp_rate)
+                if p.cfg.get("ratio_of"):
+                    row["ratio"] = p.ratio
             tags[t["tag"]] = row
         q = self.ppu
         return dict(
@@ -642,7 +696,7 @@ class DCS:
                        for k, e in self.equipment.items()},
             interlocks={k: dict(label=il.cfg["label"], latched=il.latched, first_out=il.first_out,
                                 tripped_at=il.tripped_at, active_causes=il.active_causes,
-                                causes=[f"{t} {l}" + (" (after start-up bypass)" if a == "mac" else "")
+                                causes=[f"{t} {l}" + ("" if a == "always" else f" (after {a} start-up bypass)")
                                         for t, l, a in il.cfg["causes"]] + il.cfg.get("extra_causes", []))
                         for k, il in self.interlocks.items()},
             sequences={"KS-201": dict(display=q.display(), online=q.online, offline=q.offline,
@@ -658,7 +712,7 @@ class DCS:
         q = self.ppu
         return dict(
             loops={t: dict(mode=p.mode, sp=p.sp, target=p.target, op=p.op, sp_hi=p.sp_hi, sp_lo=p.sp_lo,
-                           kc=p.kc, ti=p.ti, sp_rate=p.sp_rate) for t, p in self.loops.items()},
+                           kc=p.kc, ti=p.ti, sp_rate=p.sp_rate, ratio=p.ratio) for t, p in self.loops.items()},
             equipment={k: e.cmd for k, e in self.equipment.items()},
             interlocks={k: dict(latched=il.latched, first_out=il.first_out, tripped_at=il.tripped_at)
                         for k, il in self.interlocks.items()},

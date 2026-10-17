@@ -28,6 +28,10 @@ ANALOG_INPUTS = [
     ("PT-107", "MAC lube-oil pressure, bar(g)"),
     ("TT-108", "Air temperature after DCAC, degC"),
     ("TT-109", "Ambient air temperature, degC"),
+    ("FT-111", "Booster air flow (K-102), kNm3/h"),
+    ("PT-112", "Booster discharge pressure, bar(a)"),
+    ("JT-113", "Booster motor power, MW"),
+    ("VT-114", "Booster bearing vibration, mm/s"),
     ("AT-202", "CO2 at PPU outlet, ppm"),
     ("PDT-203", "PPU bed differential pressure, mbar"),
     ("TT-204", "Regeneration gas temperature, degC"),
@@ -54,6 +58,8 @@ ANALOG_INPUTS = [
     ("LT-505", "LOX tank level, %"),
     ("LT-506", "LIN tank level, %"),
     ("FT-507", "Backup vaporizer send-out, kNm3/h"),
+    ("PT-511", "LOX pump P-501 discharge pressure, bar(g)"),
+    ("TT-512", "GOX temperature leaving E-301 (warm end), degC"),
     ("AT-601", "GOX purity, % O2"),
     ("AT-602", "O2 in GAN, ppm"),
     ("AT-603", "Total hydrocarbons in LOX, ppm CH4-eq"),
@@ -65,6 +71,7 @@ ANALOG_INPUTS = [
 ANALOG_OUTPUTS = [
     ("FV-101", "MAC inlet guide vanes"),
     ("UV-103", "MAC antisurge recycle valve"),
+    ("FV-111", "Booster inlet guide vanes"),
     ("TV-204", "Regeneration heater power"),
     ("FV-303", "Expander inlet nozzles"),
     ("PV-402", "LP column waste N2 vent valve"),
@@ -72,7 +79,7 @@ ANALOG_OUTPUTS = [
     ("LV-404", "LOX draw-to-storage valve"),
     ("FV-405", "LIN reflux valve"),
     ("FV-409", "LIN draw-to-storage valve"),
-    ("FV-501", "GOX product valve"),
+    ("FV-501", "LOX pump P-501 discharge flow valve"),
     ("FV-503", "GAN product valve"),
     ("FV-507", "Backup vaporizer valve"),
     ("WD-900", "DCS watchdog counter"),
@@ -82,6 +89,8 @@ ANALOG_OUTPUTS = [
 DISCRETE_INPUTS = [
     ("YS-101", "MAC motor running"),
     ("YS-301", "Expander running"),
+    ("YS-102", "Booster air compressor running"),
+    ("YS-501", "LOX pump P-501 running"),
     ("ZS-201A", "PPU bed A online"),
     ("ZS-201B", "PPU bed B online"),
 ]
@@ -91,6 +100,8 @@ COILS = [
     ("HS-101", "MAC run command"),
     ("HS-301", "Expander run command"),
     ("HS-201", "PPU bed B select (0 = bed A online, 1 = bed B online)"),
+    ("HS-102", "Booster air compressor run command"),
+    ("HS-501", "LOX pump P-501 run command"),
 ]
 
 

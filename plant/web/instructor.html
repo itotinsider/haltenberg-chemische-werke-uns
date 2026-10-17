@@ -150,9 +150,12 @@ function render() {
     bar("PPU bed A loading", h.ppu_loading.A, 1.1, h.ppu_loading.A > 0.85, (h.ppu_loading.A * 100).toFixed(0) + " %") +
     bar("PPU bed B loading", h.ppu_loading.B, 1.1, h.ppu_loading.B > 0.85, (h.ppu_loading.B * 100).toFixed(0) + " %") +
     bar("MHE fouling", h.mhe_fouling_K, 6, h.mhe_fouling_K > 1, "+" + h.mhe_fouling_K.toFixed(2) + " K") +
-    bar("Expander overspeed", h.expander_overspeed, 1.6, h.expander_overspeed > 0, h.expander_overspeed.toFixed(2));
+    bar("Expander overspeed", h.expander_overspeed, 1.6, h.expander_overspeed > 0, h.expander_overspeed.toFixed(2)) +
+    bar("LOX pump cavitation", h.lox_pump_cavitation, 1, h.lox_pump_cavitation > 0.2, (h.lox_pump_cavitation * 100).toFixed(0) + " %");
   $("#truthkv").innerHTML = [
     ["MAC trip latched (motor relay)", h.mac_trip_latched ? "YES" : "no"],
+    ["Booster trip latched (motor relay)", h.booster_trip_latched ? "YES" : "no"],
+    ["Booster air not condensing (excess)", h.booster_excess_air + " kNm³/h"],
     ["Surge margin (true)", h.surge_margin_pct + " %"],
     ["Cold-box temperature drift", (h.coldbox_dT_K >= 0 ? "+" : "") + h.coldbox_dT_K.toFixed(2) + " K"],
     ["Main condenser ΔT", h.condenser_dT_K + " K"],

@@ -254,7 +254,7 @@ def make_handler(rt):
                 return None
             p = parts[1:]
             if len(p) == 2 and p[0] == "loops" and p[1] in dcs.loops:
-                allowed = {k: body[k] for k in ("mode", "sp", "op", "sp_hi", "sp_lo", "kc", "ti", "sp_rate") if k in body}
+                allowed = {k: body[k] for k in ("mode", "sp", "op", "sp_hi", "sp_lo", "kc", "ti", "sp_rate", "ratio") if k in body}
                 return dcs.set_loop(p[1], **allowed)
             if len(p) == 3 and p[0] == "equipment" and p[1] in dcs.equipment and p[2] in ("start", "stop"):
                 return dcs.start_equipment(p[1]) if p[2] == "start" else dcs.stop_equipment(p[1])
