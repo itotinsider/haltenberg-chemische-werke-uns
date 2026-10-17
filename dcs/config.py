@@ -16,7 +16,7 @@ SHT applied with its "unit not running => don't evaluate limits".
 """
 
 BLOCKS = [
-    ("MainAirCompressor", "1 · Air intake & main air compressor"),
+    ("MainAirCompressor", "1 · Air intake, main air & booster compressors"),
     ("FrontEndPurification", "2 · Front-end purification (mole sieve)"),
     ("ColdBoxHeatExchange", "3 · Main heat exchanger & expander"),
     ("DoubleColumn", "4 · Linde double column"),
@@ -39,8 +39,14 @@ def ai(tag, desc, unit, lo, hi, io, block, dec=2, alarms=None, suppress=None):
 def pid(tag, desc, unit, lo, hi, block, io=None, pv=None, out=None, cascade=None, limits=None,
         action="reverse", kc=1.0, ti=60.0, sp=0.0, op=0.0, mode="AUTO", sp_lo=None, sp_hi=None,
         op_lo=0.0, op_hi=100.0, sp_rate=None, dec=2, alarms=None, suppress=None, modes=("MAN", "AUTO"),
-        ppu_time=False):
-    return dict(ppu_time=ppu_time, tag=tag, kind="PID", desc=desc, unit=unit, lo=lo, hi=hi, io=io, pv=pv, out=out,
+        ppu_time=False, ratio_of=None, ratio=None, ratio_lo=None, ratio_hi=None, xlimit=None):
+    # Cross-limiting ratio control (as in burner air/fuel control):
+    #   ratio_of: in CAS this loop's setpoint is ratio x max(PV, demand) of that tag -> it leads on
+    #             increase and follows on decrease. The operator sets the ratio (ratio_lo..ratio_hi).
+    #   xlimit:   this loop's setpoint is capped at PV(xlimit) / its ratio -> it can never ask for more
+    #             than the measured ratio flow can handle.
+    return dict(ppu_time=ppu_time, ratio_of=ratio_of, ratio=ratio, ratio_lo=ratio_lo, ratio_hi=ratio_hi,
+                xlimit=xlimit, tag=tag, kind="PID", desc=desc, unit=unit, lo=lo, hi=hi, io=io, pv=pv, out=out,
                 cascade=cascade or [], limits=limits, action=action, kc=kc, ti=ti, sp=sp, op=op,
                 mode=mode, sp_lo=lo if sp_lo is None else sp_lo, sp_hi=hi if sp_hi is None else sp_hi,
                 op_lo=op_lo, op_hi=op_hi, sp_rate=sp_rate, block=block, dec=dec,
@@ -73,6 +79,18 @@ TAGS = [
        alarms={"L": 1.5, "LL": 1.0}),
     ai("TI-108", "Air temperature after DCAC", "°C", 0, 40, "TT-108", "MainAirCompressor", dec=1, alarms={"H": 20}),
     ai("TI-109", "Ambient air temperature", "°C", -20, 45, "TT-109", "MainAirCompressor", dec=1, alarms={"H": 32}),
+    # Booster air compressor K-102 (internal compression): ~30 % of the clean air to ~60 bar(a). It
+    # condenses in E-301 against the pumped LOX, so its flow follows FIC-501 in ratio (CAS).
+    pid("FIC-111", "Booster air flow (ratio to pumped LOX)", "kNm³/h", 0, 60, "MainAirCompressor", io="FT-111",
+        out="FV-111", kc=0.4, ti=8, sp=44, op=73.3, mode="CAS", sp_lo=15, sp_hi=55, dec=1,
+        alarms={"L": 20}, suppress="BAC", modes=CAS, ratio_of="FIC-501", ratio=1.52, ratio_lo=1.35, ratio_hi=2.0),
+    calc("FFI-111", "Booster air / pumped LOX ratio (FIC-111 ÷ FIC-501)", "–", 0, 3, "MainAirCompressor",
+         dec=3, alarms={"L": 1.40}, suppress="LOXP"),
+    ai("PI-112", "Booster discharge pressure", "bar(a)", 0, 80, "PT-112", "MainAirCompressor", dec=1,
+       alarms={"H": 66, "HH": 70}, suppress="BAC"),
+    ai("JI-113", "Booster motor power", "MW", 0, 6, "JT-113", "MainAirCompressor", dec=2, alarms={"H": 5.0}),
+    ai("VI-114", "Booster bearing vibration", "mm/s", 0, 25, "VT-114", "MainAirCompressor", dec=2,
+       alarms={"H": 7.1, "HH": 11.0}, suppress="BAC"),
 
     # ---- 2 · PPU ----
     ai("AI-202", "CO2 at PPU outlet", "ppm", 0, 20, "AT-202", "FrontEndPurification", dec=3,
@@ -106,8 +124,11 @@ TAGS = [
         alarms={"L": 1.25, "H": 1.45}, suppress="MAC"),
     pid("LIC-403", "HP column sump level", "%", 0, 100, "DoubleColumn", io="LT-403", out="LV-403",
         action="direct", kc=2.0, ti=300, sp=50, op=53, dec=1, alarms={"L": 30, "H": 70, "HH": 85}, suppress="MAC"),
+    # Kc 12: the sump hold-up tripled with internal compression (model LP_SUMP_GAIN), so the gain
+    # tripled too, keeping the loop as fast as before without the integral overshooting.
     pid("LIC-404", "Reboiler / LP sump level", "%", 0, 100, "DoubleColumn", io="LT-404", out="LV-404",
-        action="direct", kc=4.0, ti=1200, sp=70, op=26.7, dec=1, alarms={"L": 55, "LL": 35, "H": 85}, suppress="MAC"),
+        action="direct", kc=12.0, ti=1200, sp=70, op=26.7, dec=1, alarms={"L": 55, "LL": 35, "H": 85, "HH": 95},
+        suppress="MAC"),
     pid("FIC-405", "LIN reflux to LP column", "kNm³/h", 0, 60, "DoubleColumn", io="FT-405", out="FV-405",
         kc=0.5, ti=8, sp=40, op=57.1, mode="CAS", sp_lo=20, sp_hi=55, dec=2, suppress="MAC", modes=CAS),
     ai("TI-406", "LP sump (LOX) temperature", "°C", -200, -150, "TT-406", "DoubleColumn", dec=2, suppress="MAC"),
@@ -130,8 +151,19 @@ TAGS = [
     ai("AI-604", "Acetylene in LOX", "ppm", 0, 2, "AT-604", "DoubleColumn", dec=3, alarms={"H": 0.3, "HH": 1.0}),
 
     # ---- 5 · products ----
-    pid("FIC-501", "GOX product flow", "kNm³/h", 0, 35, "ProductDelivery", io="FT-501", out="FV-501",
-        kc=0.5, ti=8, sp=29, op=72.5, mode="CAS", sp_lo=0, sp_hi=31.5, dec=2, suppress="MAC", modes=CAS),
+    pid("FIC-501", "GOX product flow (pumped LOX, P-501)", "kNm³/h", 0, 35, "ProductDelivery", io="FT-501",
+        out="FV-501", kc=0.5, ti=8, sp=29, op=72.5, mode="CAS", sp_lo=0, sp_hi=31.5, dec=2, suppress="LOXP",
+        modes=CAS, xlimit="FIC-111"),
+    # Override: with pumped LOX the product is drawn as liquid, so a header-pressure demand the column
+    # can't make (e.g. at low air after a restart) would empty the sump. Below its SP this controller
+    # takes over FIC-501's output (low select), and the backup vaporizer covers the header instead.
+    pid("LIC-415", "Reboiler low-level override (limits P-501)", "%", 0, 100, "ProductDelivery", io="LT-404",
+        limits="FIC-501", action="direct", kc=3.0, ti=120, sp=45, op=77.5, sp_lo=30, sp_hi=60, dec=1,
+        suppress="LOXP"),
+    ai("PI-511", "LOX pump P-501 discharge pressure", "bar(g)", 0, 50, "PT-511", "ProductDelivery", dec=1,
+       alarms={"L": 25, "LL": 20}, suppress="LOXP"),
+    ai("TI-512", "GOX temperature leaving E-301 (to carbon-steel header)", "°C", -200, 50, "TT-512",
+       "ProductDelivery", dec=1, alarms={"L": -5, "LL": -25}, suppress="LOXP"),
     pid("PIC-502", "GOX header pressure (split range GOX / vaporizer)", "bar(g)", 0, 40, "ProductDelivery",
         io="PT-502", cascade=[{"slave": "FIC-501", "op": [0, 80], "sp": [0, "sp_hi"]},
                               {"slave": "FIC-507", "op": [80, 100], "sp": [0, 30]}],
@@ -155,7 +187,8 @@ TAGS = [
         kc=0.3, ti=10, sp=0, op=0, mode="CAS", dec=2, alarms={"H": 0.5}, modes=CAS),
 
     # ---- 7 · energy ----
-    calc("KPI-701", "Specific power (JI-104 ÷ FIC-501)", "kWh/Nm³", 0, 1, "Energy", dec=4, alarms={"H": 0.40}, suppress="MAC"),
+    calc("KPI-701", "Specific power ((JI-104 + JI-113) ÷ FIC-501)", "kWh/Nm³", 0, 1, "Energy", dec=4,
+         alarms={"H": 0.57}, suppress="MAC"),
 ]
 
 TAG_INDEX = {t["tag"]: t for t in TAGS}
@@ -166,39 +199,64 @@ ALARM_PRIORITY = {"HH": 1, "LL": 1, "H": 2, "L": 2}
 PRIORITY_OVERRIDE = {("FIC-507", "H"): 3, ("KPI-701", "H"): 3, ("TI-109", "H"): 3, ("TI-108", "H"): 3}
 
 # ---- Equipment (start/stop from the console) ----
+# bypass_s: start-up bypass. Interlock causes armed with this equipment's key only count once it has
+# run that long (a stopped machine's low pressures / levels must not block the reset).
 EQUIPMENT = {
     "MAC": dict(label="Main air compressor", cmd="HS-101", fb="YS-101", block="MainAirCompressor",
-                trip="I-100"),
+                trip="I-100", bypass_s=600),
     "EXP": dict(label="Turbo-expander", cmd="HS-301", fb="YS-301", block="ColdBoxHeatExchange",
-                trip="I-300"),
+                trip="I-300", bypass_s=0),
+    "BAC": dict(label="Booster air compressor K-102", cmd="HS-102", fb="YS-102", block="MainAirCompressor",
+                trip="I-110", bypass_s=120),
+    "LOXP": dict(label="LOX pump P-501", cmd="HS-501", fb="YS-501", block="ProductDelivery",
+                 trip="I-500", bypass_s=60),
 }
 
 # ---- Interlocks ----
-# A cause is (tag, limit, armed): armed "always", or "mac" = only while the MAC has been running
-# for longer than the start-up bypass (otherwise a low level / no-oil-pressure that is perfectly
-# normal for a stopped machine would make the trip impossible to reset).
-STARTUP_BYPASS_S = 600
+# A cause is (tag, limit, armed): armed "always", or an equipment key (e.g. "MAC") = only while that
+# equipment has been running for longer than its start-up bypass (otherwise a low level / no oil
+# pressure that is perfectly normal for a stopped machine would make the trip impossible to reset).
+# parents: interlocks whose trip trips this one too (and that must be reset first).
+STARTUP_BYPASS_S = EQUIPMENT["MAC"]["bypass_s"]
 INTERLOCKS = {
     "I-100": dict(
         label="ASU shutdown (MAC trip)", block="MainAirCompressor",
         causes=[
-            ("VI-105", "HH", "mac"), ("TI-106", "HH", "always"), ("PI-107", "LL", "mac"),
-            ("AI-202", "HH", "mac"), ("AI-603", "HH", "always"), ("AI-604", "HH", "always"),
-            ("LIC-404", "LL", "mac"),
+            ("VI-105", "HH", "MAC"), ("TI-106", "HH", "always"), ("PI-107", "LL", "MAC"),
+            ("AI-202", "HH", "MAC"), ("AI-603", "HH", "always"), ("AI-604", "HH", "always"),
+            ("LIC-404", "LL", "MAC"), ("LIC-404", "HH", "MAC"),
         ],
         # Evaluated in control.py rather than as a tag limit:
         extra_causes=["YS-101 MAC stopped while commanded (motor protection)",
                       "AI-202 > 1 ppm for 30 min (beds not switched)", "Manual ESD / operator stop"],
-        forces={"FIC-101": ("MAN", 0.0), "FIC-501": ("MAN", 0.0), "FIC-503": ("MAN", 0.0),
+        forces={"FIC-101": ("MAN", 0.0), "FIC-503": ("MAN", 0.0),
                 "LIC-404": ("MAN", 0.0), "FIC-409": ("MAN", 0.0), "FIC-405": ("MAN", 0.0)},
-        stops=["MAC", "EXP"],
+        stops=["MAC"], trip_message="ASU shutdown — MAC tripped",
     ),
     "I-300": dict(
         label="Expander trip", block="ColdBoxHeatExchange",
         causes=[("SI-304", "HH", "always"), ("VI-305", "HH", "always"), ("TI-306", "HH", "always")],
         extra_causes=["I-100 ASU shutdown", "Operator stop"],
         forces={"FIC-303": ("MAN", 0.0)},
-        stops=["EXP"],
+        stops=["EXP"], parents=["I-100"], trip_message="Expander tripped",
+    ),
+    "I-110": dict(
+        label="Booster air compressor trip", block="MainAirCompressor",
+        causes=[("VI-114", "HH", "BAC"), ("PI-112", "HH", "always")],
+        extra_causes=["I-100 ASU shutdown", "YS-102 booster stopped while commanded (motor protection)",
+                      "Operator stop"],
+        forces={"FIC-111": ("MAN", 0.0)},
+        stops=["BAC"], parents=["I-100"], trip_message="Booster air compressor tripped",
+    ),
+    "I-500": dict(
+        # Without booster air the pumped LOX can't boil in E-301: liquid oxygen would reach the
+        # carbon-steel GOX header. So the pump trips with the booster, and on cold GOX itself.
+        label="LOX pump trip (internal compression)", block="ProductDelivery",
+        causes=[("TI-512", "LL", "LOXP"), ("PI-511", "LL", "LOXP")],
+        extra_causes=["I-100 ASU shutdown", "I-110 booster trip (no booster air to vaporize LOX)",
+                      "YS-501 pump stopped while commanded", "Operator stop"],
+        forces={"FIC-501": ("MAN", 0.0)},
+        stops=["LOXP"], parents=["I-100", "I-110"], trip_message="LOX pump P-501 tripped",
     ),
 }
 CO2_BREAKTHROUGH_TRIP_S = 1800
@@ -208,6 +266,7 @@ LINEUP = {
     "FIC-101": "AUTO", "PIC-102": "AUTO", "UIC-103": "AUTO", "FIC-303": "AUTO", "PIC-402": "AUTO",
     "LIC-403": "AUTO", "LIC-404": "AUTO", "AIC-602": "AUTO", "FIC-405": "CAS", "FIC-409": "AUTO",
     "PIC-502": "AUTO", "FIC-501": "CAS", "PIC-504": "AUTO", "FIC-503": "CAS", "FIC-507": "CAS",
+    "FIC-111": "CAS", "LIC-415": "AUTO",
 }
 
 # ---- PPU sequence KS-201: step durations as fractions of the bed cycle ----
