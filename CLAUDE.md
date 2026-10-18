@@ -13,6 +13,10 @@ It is the sibling of the Sweet Harmony Treats waffle-line simulator (`../sht-sca
 
 Keep this file current. It is the main knowledge carrier between sessions.
 
+**Other docs to keep current:**
+- **Research doc:** keeps the original research, plus §0 "ASU1 as built" and *As built* notes per section (loops §5.1, interlocks §5.2, tag table with normal values §5.4). Update them when equipment, loops, interlocks or tags change; the §5.4 table is a snapshot, `inventory/tags.csv` is authoritative.
+- **README "New here? Plant automation in brief":** a primer for readers who have never been on a production site (glossary, tag naming, a trip walkthrough, a first tour using the K-503 trip). Keep its examples working when names or procedures change.
+
 **Every component has a tested inventory of its interface, and every change is checked against it.** `inventory/` lists what each layer exposes to the others: Modbus map, DCS tags, OPC UA nodes, HTTP API, instructor scenarios. It can be trusted because the test suite proves it matches the code, and that the layers agree with each other. So:
 - look up names and addresses there instead of guessing;
 - before changing a name, check there who uses it;
@@ -320,7 +324,7 @@ Tuning facts that are easy to break:
   - cascade / limits / ratio / xlimit / sp_cap / handover / LINEUP / PRIORITY_OVERRIDE references;
   - every tag has a value after one scan, and the historian points;
   - OPC UA units and ranges, and that hidden faults stay hidden;
-  - every instrument tag named in operator.html, index.html, instructor.html, README and CLAUDE.md exists (`DRAWING_ONLY` lists HV-116);
+  - every instrument tag named in operator.html, index.html, instructor.html, README, CLAUDE.md and the research doc exists (`DRAWING_ONLY` lists HV-116);
   - every DCS tag has a data block (`["TAG", x, y` placement);
   - console equipment and valve ids;
   - instructor ground-truth keys and Node-RED NodeIds;
