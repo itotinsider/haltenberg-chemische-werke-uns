@@ -457,3 +457,8 @@ After pulling a change to `dcs/config.py` (controller tuning, SP limits), remove
 tuning and limits, so otherwise the DCS keeps the old values.
 
 After a change to the Modbus map (`common/iomap.py`), stop the stack first, with `docker compose down`, and only then `docker compose up -d --build`. Also move the checkpoint aside. Otherwise the old DCS runs against the new plant for a few seconds and reads the wrong registers. That's like a real I/O-map mismatch: run feedbacks look lost, the DCS trips the machines, and the checkpoint saves those trips.
+
+## Roadmap and contributing
+
+Plans, ideas and work in progress are tracked in [ROADMAP.md](ROADMAP.md). Propose an idea there,
+or claim an item before you start, so people and agents working in parallel don't collide.
