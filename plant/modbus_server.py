@@ -15,6 +15,8 @@ log = logging.getLogger("plant.modbus")
 
 ILLEGAL_FUNCTION = 1
 ILLEGAL_ADDRESS = 2
+# Quantity limits of the Modbus spec, enforced like a real device would (FC1/2 bits, FC3/4 registers).
+MAX_READ = {1: 2000, 2: 2000, 3: 125, 4: 125}
 ILLEGAL_VALUE = 3
 
 
@@ -51,6 +53,8 @@ def handle_pdu(bank, pdu):
     try:
         if fc in (1, 2, 3, 4):
             addr, count = struct.unpack(">HH", pdu[1:5])
+            if count > MAX_READ[fc]:
+                return error(ILLEGAL_VALUE)
             with bank.lock:
                 table = {1: bank.coils, 2: bank.discrete, 3: bank.holding, 4: bank.input}[fc]
                 if count < 1 or addr + count > len(table):
@@ -79,6 +83,8 @@ def handle_pdu(bank, pdu):
             return pdu[:5]
         if fc == 15:
             addr, count, nbytes = struct.unpack(">HHB", pdu[1:6])
+            if count > 1968:
+                return error(ILLEGAL_VALUE)
             with bank.lock:
                 if addr + count > len(bank.coils):
                     return error(ILLEGAL_ADDRESS)
@@ -86,6 +92,8 @@ def handle_pdu(bank, pdu):
             return pdu[:5]
         if fc == 16:
             addr, count, nbytes = struct.unpack(">HHB", pdu[1:6])
+            if count > 123:
+                return error(ILLEGAL_VALUE)
             values = struct.unpack(f">{count}H", pdu[6:6 + nbytes])
             with bank.lock:
                 if addr + count > len(bank.holding):

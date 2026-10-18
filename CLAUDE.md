@@ -13,6 +13,13 @@ It is the sibling of the Sweet Harmony Treats waffle-line simulator (`../sht-sca
 
 Keep this file current. It is the main knowledge carrier between sessions.
 
+**Every component has a tested inventory of its interface, and every change is checked against it.** `inventory/` lists what each layer exposes to the others: Modbus map, DCS tags, OPC UA nodes, HTTP API, instructor scenarios. It can be trusted because the test suite proves it matches the code, and that the layers agree with each other. So:
+- look up names and addresses there instead of guessing;
+- before changing a name, check there who uses it;
+- after a change, run the tests and regenerate it.
+
+See "Tests and the interface inventory" below.
+
 ## Layout
 
 ```
@@ -29,7 +36,10 @@ dcs/opcua_server.py      asyncua server, address space generated from config, Hi
 dcs/main.py              asyncio scan loop (pymodbus client), checkpointing, HTTP :8110
 dcs/web/index.html       hub (the only page that isn't a persona HMI)
 dcs/web/operator.html    operator console (overview mimic + L3 detail displays, tag list, interlocks, alarms/events, trends)
-tools/offline_sim.py     plant model + control layer coupled directly, faster than real time
+tools/offline_sim.py     plant model + control layer coupled directly, faster than real time (Sim class = test harness)
+tools/inventory.py       generates inventory/ from every layer's source of truth (needs asyncua: run in the tests image)
+inventory/               GENERATED interface inventory: field/dcs/opcua/api/plant .json + tags.csv (README.md is hand-written)
+tests/                   pytest: test_inventory, test_contracts, test_behaviour, test_e2e (+ Dockerfile for the runner)
 nodered/Dockerfile       official Node-RED image + node-red-contrib-opcua (baked in, /data is a bind mount)
 nodered_data/flows.json  the only tracked file in nodered_data/ (runtime state is git-ignored)
 data/                    bind mount: historian.db, dcs_state.json (git-ignored)
@@ -56,6 +66,12 @@ docker run --rm -v "$PWD":/w -w /w python:3.12-slim python tools/offline_sim.py 
 #   cycle:900 (PPU time compression, applied to plant and DCS together)
 curl -s -X POST -H 'Content-Type: application/json' -d '{"seconds":900}' localhost:8111/api/ppu_cycle
 TWA_WINDOW_MINUTES=1 docker compose up -d nodered   # Node-RED CSV rows every minute (test), then recreate without
+
+# Tests (compose profile "test": never started by `up`; mounts the working tree, no rebuild after code changes)
+docker compose run --rm tests                                   # all, ~1 min
+docker compose run --rm tests python -m pytest -m "not e2e"     # without the end-to-end processes
+docker compose run --rm tests python tools/inventory.py         # regenerate inventory/ after an intended interface change
+docker compose run --rm -e HCW_TEST_SEED=3 tests python -m pytest tests/test_behaviour.py   # another seed
 ```
 
 **OPC UA client checks:** the DCS image has asyncua installed, so a throwaway client container on the compose network works:
@@ -71,7 +87,7 @@ docker run --rm --network <repo-folder>_default -v /path/to/script:/s --entrypoi
   --window-size=1600,1000 --virtual-time-budget=6000 --screenshot=out.png "http://localhost:8110/operator?tag=PIC-502#tags"
 ```
 
-There is no test suite. Verification is the offline sim, the API, an OPC UA client and screenshots. **Shell gotcha:** in zsh, `echo =====` fails ("= not found"), and `"${2:-{}}"` mangles JSON bodies. Pass JSON literally.
+Verification is the test suite (below) plus, for new behaviour or graphics, the offline sim, the API, an OPC UA client and screenshots. **Shell gotcha:** in zsh, `echo =====` fails ("= not found"), and `"${2:-{}}"` mangles JSON bodies. Pass JSON literally.
 
 ## Architecture
 
@@ -86,6 +102,14 @@ There is no test suite. Verification is the offline sim, the API, an OPC UA clie
 - Instrument names (`FT-101`) and float32 register pairs: no units, no hierarchy, no quality.
 - The DCS maps them to controller tags (`FIC-101`) with units, ranges, modes and alarms.
 - Only that modelled view goes to OPC UA.
+- **Fixed addresses per process area** (first digit of the tag number), written explicitly in `common/iomap.py`:
+  - **Registers:** area *n* → *n*×100 … *n*×100+99 (FT-101 = IR 100, HB-900 = IR 900).
+  - **Bits:** area *n* → *n*×10 …
+  - **Adding a point:** it goes at the end of its area with the next free address. Never renumber; gaps are fine.
+  - **Why:** until 2.5 addresses came from list position, so inserting a point (step 2b) shifted every later address. The single 104-register read would also have broken the 125-register limit once step 3 added points.
+  - **Requests:** the DCS reads and writes one area per request (`iomap.AI_BLOCKS` / `AO_BLOCKS`), and the bits in one request.
+  - **Limits:** `plant/modbus_server.py` enforces the spec's quantity limits (125 / 123 registers, 2000 / 1968 bits; exception 3), like a real device. pymodbus won't even send a bigger request.
+  - **Enforced by** `test_modbus_layout`.
 
 `plant/modbus_server.py` is hand-written on purpose. pymodbus 3.16 deprecated its whole server datastore API ahead of v4. The DCS uses the real pymodbus client, so every scan is an interop check.
 
@@ -170,6 +194,8 @@ Tuning facts that are easy to break:
   - LOXP: BAC running and LIC-404 ≥ 40 %.
   - GANC: MAC running and PI-401 ≥ 4 bar(a) (suction).
   - LOXB / LINB: tank level above its LL (10 %).
+- **I/O map change gotcha:** after changing `common/iomap.py`, run `docker compose down` before `up -d --build`, and move the checkpoint aside.
+  - **What happened in step 2.5:** `up --build` recreated the plant first, so the old DCS read the new map for a few seconds. It saw the run feedbacks drop, tripped I-110 / I-500 / I-503 on motor protection, and checkpointed the trips and stopped commands.
 - **Checkpoint gotcha:** `data/dcs_state.json` restores each loop's mode, SP, OP, tuning and SP limits. After changing tuning or limits in `config.py`, move the checkpoint aside before testing, or the old values win.
 - **KS-201 PPU sequence:** steps are fractions of `PPU_CYCLE_SECONDS`. HEAT drives TIC-204 in AUTO at 180 °C; other steps hold it in MAN at 0. Switch-over is permissive on STANDBY; while the MAC is stopped the operator may switch at any time.
   - **Time compression (cycle is runtime-adjustable, 300–14400 s):** the DCS owns the value.
@@ -183,7 +209,9 @@ Tuning facts that are easy to break:
 **Historian (`dcs/historian.py`).**
 - **Points:** `<TAG>.PV`, plus `.SP` and `.OP` for controllers.
 - **Exception reporting:** deadband 0.25 % of span (0.1 % was ~29 samples/s, about 3 GB a month), heartbeat 60 s, retention 14 days.
-- **Bad quality** is written once as a NULL row, so trends show gaps.
+- **Quality:** `GOOD` 0, `BAD` 1 (no I/O), `NOT_APPLICABLE` 2.
+  - **Not applicable:** pass `historian.NA` as the value. `dcs/main.historian_values()` does that for a PV that is None while the I/O is fine, i.e. a calculation that doesn't apply right now.
+  - **Storage:** both non-GOOD qualities are written once as a NULL row, so trends show gaps.
 - **Events table:** the operator console's event journal.
 - **Concurrency:** WAL mode, one connection per thread; the scan loop is the only writer.
 - **Trend API:** `trend()` returns per-bucket min/max plus the last value before the window.
@@ -193,7 +221,10 @@ Tuning facts that are easy to break:
 - **NodeIds:** strings, `HCW.ASU1.<tag>.<attr>`, in namespace `urn:haltenberg:hcw:asu1:dcs`.
 - **AnalogItems:** PV/SP/OP are instantiated from `AnalogItemType`, with EURange and EngineeringUnits. AccessLevel = CurrentRead|HistoryRead, Historizing = true.
 - **HistoryRead** goes through `HistorianStorage`, a custom `HistoryStorageInterface` that reads the SQLite historian. There is no second copy of the history.
-- **Quality:** `BadNoCommunication` while the I/O link is down.
+- **Quality:**
+  - `BadNoCommunication` while the I/O link is down.
+  - `BadOutOfService` for a value that is None while the I/O is fine (a calculation that doesn't apply now). This holds live and in HistoryRead (historian quality 2).
+  - Before 2.5 every None showed as BadNoCommunication, which misleads data users.
 - **asyncua 2.x gotcha:** the `DataValue` field is `StatusCode=`, not the 1.x `StatusCode_=`.
 - **Read-only** in v1. Writable SPs, for an external APC agent (research §5.3 "APC ON/OFF"), are the obvious next step.
 
@@ -235,6 +266,103 @@ Tuning facts that are easy to break:
 
 **Hidden faults.** The SHT rule carries over: scenarios live only in the plant (`SCENARIOS`, instructor HTTP), never in Modbus, the historian or OPC UA. Don't add a status point for them.
 
+## Tests and the interface inventory
+
+**Goal (Willem, Oct 2026).** As the model grows, the system must keep behaving consistently, realistically enough, and with stable, testable interfaces between the systems: plant ↔ Modbus ↔ DCS ↔ historian / OPC UA / HTTP ↔ HMIs, Node-RED, external clients. No tag may go missing, and behaviour may not change silently in one system and not another. The goal is *not* a perfect training simulator.
+
+**Approach: one trusted inventory per component, checked by tests.**
+- **Each component owns its interface in one source file**, its source of truth, and only *reads* names from the layer below it:
+
+  | Component | Source of truth | Inventory file |
+  |---|---|---|
+  | Field I/O | `common/iomap.py` | `field.json` |
+  | DCS | `dcs/config.py` | `dcs.json` |
+  | OPC UA | generated from the config | `opcua.json` |
+  | HTTP API / historian | `dcs/main.py` | `api.json` |
+  | Plant / instructor | `plant/model.py` | `plant.json` |
+
+  `tags.csv` joins one tag across all of them.
+- **The inventory is generated, never edited.** It is trusted *because it is tested*:
+  - `test_inventory`: committed inventory == code;
+  - `test_contracts`: every component only uses names that exist in its source;
+  - `test_e2e`: the running programs expose exactly what the inventory says.
+- **Every change is checked against the inventory:**
+  1. Before renaming or removing something, look up who uses it (`inventory/`, `tags.csv`, then grep the consumers: displays, training, Node-RED, docs).
+  2. Make the change in the source of truth and in every consumer.
+  3. Run `docker compose run --rm tests`. If `test_inventory` fails, read the diff: is *only* the intended interface change in it?
+  4. Regenerate (`python tools/inventory.py` in the tests image) and commit the inventory with the change.
+  5. Mention every added, renamed or removed name in the PR. Renames and removals break external clients.
+
+**Method: four test layers, fastest first.**
+1. **Interface** (`test_inventory`, `test_contracts`, ~10 s): structure only, no physics beyond one scan.
+2. **Behaviour** (`test_behaviour`, ~30 s): plant model + DCS coupled in-process (`tools/offline_sim.Sim`), faster than real time, fixed seed.
+   - **Cause and effect:** steady state, one signature per instructor scenario, restart procedures, permissives, trips.
+   - **Bands, not traces:** limits are ranges, preferably the config's alarm limits, so retuning stays possible.
+   - **Robust across seeds:** the limits must hold for any seed, not just the default.
+3. **End to end** (`test_e2e`, ~20 s): the real `plant/main.py` and `dcs/main.py` as processes over real Modbus, checked from the outside (HTTP, raw Modbus, OPC UA browse / read / HistoryRead) against the committed inventory.
+4. **Mutation check (manual, when the tests change):** break the code on purpose and confirm a test catches it.
+   - **Done for nine typical breaks:** a tag removed, an OPC UA node renamed, a Modbus point inserted, an interlock cause with a missing limit, a data block missing, the handover removed, a ground-truth key renamed, a bad Node-RED NodeId, a scenario without a signature.
+   - **How:** a scratch copy of the repo and `docker run -v <copy>:/w hcw/asu1-tests`.
+
+**Inventory details:**
+- **Sources of truth:** each layer keeps its own: `common/iomap.py`, `dcs/config.py`, `plant/model.py`, `dcs/main.py` / `dcs/opcua_server.py`.
+- **Generator:** `tools/inventory.py` reads them all, and builds the OPC UA address space in-process exactly as the DCS does, without starting a server. It writes `inventory/*.json` with one record per line, so a changed tag is a one-line diff, plus `tags.csv` (one tag joined across layers).
+- **Never edit inventory/ by hand.** After an intended interface change, regenerate it and commit it with the change.
+- **Ownership table:** `inventory/README.md`.
+
+**Four test files:**
+- **`test_inventory`:** committed inventory == code. On a failure it prints the full diff (`pytest.fail(pytrace=False)`; a plain assert gets truncated).
+- **`test_contracts`:** cross-references. It uses the `code` fixture (inventory generated from the code *now*), not the committed `inv`, so it doesn't depend on someone regenerating first. It checks:
+  - the plant writes exactly the AI/DI and reads exactly the AO/coils;
+  - every `io`/`out`/`cmd`/`fb` exists, and every field point is used or listed in `UNMAPPED_FIELD_POINTS`;
+  - interlock causes name an existing **alarm limit** (`_limit_active()` silently returns False otherwise: the trip could never fire);
+  - cascade / limits / ratio / xlimit / sp_cap / handover / LINEUP / PRIORITY_OVERRIDE references;
+  - every tag has a value after one scan, and the historian points;
+  - OPC UA units and ranges, and that hidden faults stay hidden;
+  - every instrument tag named in operator.html, index.html, instructor.html, README and CLAUDE.md exists (`DRAWING_ONLY` lists HV-116);
+  - every DCS tag has a data block (`["TAG", x, y` placement);
+  - console equipment and valve ids;
+  - instructor ground-truth keys and Node-RED NodeIds;
+  - the hub/README counts ("19 controllers", "7 interlocks (I-100 … I-506)").
+- **`test_behaviour`:** `Sim(seed, t0)`; `Sim.run(seconds, until=, win=)` returns a `Window` (min/max per tag, alarms seen, events). It covers:
+  - steady state 2 h: no P1/P2 alarms (P3 FIC-507.H can occur: normal demand wander touches the FY-501 load limit), in spec, every tag live and in range;
+  - repeatability;
+  - `SIGNATURES`: one per instructor scenario (first-out regex, required alarms, an extra check). A new scenario fails `test_every_scenario_has_a_signature` until it has one;
+  - the README restart procedures;
+  - permissives, reset refused while a cause is active, ESD, I/O loss, checkpoint, PPU compression at 900 / 300 s;
+  - per-GOX figures not applicable without production.
+- **`test_e2e`:** runs `plant/main.py` and `dcs/main.py` as processes on free ports (`PYTHONPATH=common`, temp `DATA_DIR`). It checks against the committed inventory:
+  - the HTTP shapes;
+  - the raw Modbus registers vs the DCS PVs;
+  - an OPC UA browse (the same `walk()` as the generator), values Good and in range, HistoryRead;
+  - a mode change via the API showing up on OPC UA;
+  - after an ESD: KPI-701 `BadOutOfService` live and in history, while measured tags stay Good;
+  - a raw FC4 read of 126 registers refused with exception 3;
+  - last, killing the plant: Bad quality, `IO.COMM` (raised after 3 s), no new trips.
+
+  `asyncua` `read_data_value()` raises on Bad unless `raise_on_bad_status=False`.
+
+**Limits are bands, not traces, and robust across seeds.** The behaviour tests pass on seeds 1–22.
+- **Header limits come from config alarm limits.** On trips the backups keep both headers above **LL**, not L. When a site N₂ purge job coincides with a K-503 or MAC trip, the GAN header touches ~7.27 bar(g), below L (7.3), for under a minute. Without the handover it fell to 3–5.
+- **The GAN header in steady state** is only checked against its alarm limits, because purge jobs move it.
+- **Range tolerance:** 2 % of span for measured tags.
+
+**Every tag stays inside its range (= OPC UA EURange) in every scenario.** There is no exception list. When the tests (2.5) found four calculated tags outside their range on trips, each was handled by its cause:
+- **Artifacts of our calculation:**
+  - KPI-701 / FFI-111 divided by a GOX flow coasting down to 3 kNm³/h, giving 5 kWh/Nm³ and a ratio of 12. They are now computed only while P-501 runs and FIC-501 ≥ `PER_GOX_MIN_FLOW` (10); otherwise None → `BadOutOfService`.
+  - FY-501 had no limits (−0.03 with the MAC stopped, 39.8 with a flooded sump). It is now clamped to 0–35, with no control effect, because FIC-501's SP stops at 31.5.
+- **Real physics, range too narrow:** TDI-410. After a shutdown the HP column depressurises and its N₂ saturates at −196 °C under the −183 °C LOX, a real −13 K. Range now −15…10.
+- **Rule for the next one:** widen the range if it is a real measurement; make it "not applicable" if it is a calculation without meaning at that moment.
+
+**Accepted simplification:** ZS-201A/B (bed online feedback) are on Modbus, but KS-201 doesn't read them. The model's valves always follow HS-201, so feedback = command. Willem: leave as is.
+
+**Workflow per step:**
+1. Run `docker compose run --rm tests` before every commit.
+2. An interface change means a regenerated inventory in the same commit, and a sentence in the PR.
+3. New tags need a data block. New scenarios need a `SIGNATURES` entry.
+4. Adding to `UNMAPPED_FIELD_POINTS` / `DRAWING_ONLY` / `KNOWN_OUT_OF_RANGE` is a design decision: give the reason.
+5. After retuning, try another seed.
+
 ## Conventions carried over from SHT
 
 - **Packaging:** one `docker compose up -d --build`. Python 3.12-slim, `USER nobody`, pinned `requirements.txt` (`dcs/` only; `plant/` is stdlib-only).
@@ -263,7 +391,7 @@ Tuning facts that are easy to break:
 
 ## Roadmap: physically complete displays (started Oct 2026)
 
-Working agreement: one branch and one PR per step. Verify each step with the offline sim, the API, an OPC UA client and a headless screenshot.
+Working agreement: one branch and one PR per step. Verify each step with the test suite (`docker compose run --rm tests`, plus a regenerated inventory if an interface changed), and for new behaviour or graphics also the offline sim, the API, an OPC UA client and a headless screenshot.
 
 - **Done, step 1:** L3 navigation framework, C-401 column display, `TY-411/412/413` calc tags.
 - **Done, step 1b:** graphics-only detail displays for every unit (no new tags or model data), display bar, linked off-page connectors.
@@ -277,6 +405,14 @@ Working agreement: one branch and one PR per step. Verify each step with the off
   - **Done, step 2c (overview drawing fixes, "light" scope chosen by Willem):** LOX to storage leaves the LP sump (y 308), LIN reflux and LIN to storage start at E-404 (node at x 872, y 339), every pipe crossing on L2 has a line hop, and the backup send-outs join their headers with junction dots.
     - **Deliberately not done:** GAN and waste N₂ still go straight to their headers on the overview. Routing them through E-301's cold end would mean relocating ~8 data blocks in the cold-box area; the E-301 detail display shows them passing the exchanger. GOX already passes E-301 on L2 (since 2a).
     - **Overview hop convention:** the static SVG writes hops literally as `H{x-6}a6 6 0 0 1 12 0` (the same arc the detail displays' `hop(x)` makes). The horizontal line hops; a vertical line never does.
+- **Done, step 2.5 (tests baseline, in between):**
+  - **Tests:** the generated interface inventory (`inventory/`); a pytest suite in four parts (inventory, contracts, behaviour, end-to-end); the `tests` compose service. Willem chose local runs only (Docker one-liner), no CI.
+  - **Tooling:** `tools/offline_sim.py` got the reusable `Sim` class and `--seed`. `dcs/main.py` got `runtime_status()`, so the inventory sees the scan/io/historian fields of `/api/state`.
+  - **What the tests led to:**
+    - fixed Modbus addresses per process area, all addresses changed once;
+    - KPI-701 / FFI-111 not applicable without GOX production, shown as `BadOutOfService` live and in history;
+    - FY-501 clamped;
+    - TDI-410 range −15…10.
 - **Step 3: MHE + expander tags.**
   - Every stream through E-301 gets in/out temperatures, so the E-301 display gets data blocks.
   - X-303 gets inlet/outlet temperature and pressure tags (≈ −110 °C at 5.5 bar(a) in, ≈ −178 °C at 1.3 bar(a) out).

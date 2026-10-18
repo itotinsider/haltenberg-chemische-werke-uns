@@ -135,6 +135,12 @@ plant container                         dcs container
   Modbus registers and writes raw transmitter values back, exactly like a remote I/O rack.
 - The **DCS** turns those raw registers into tags with units, ranges, modes, alarms and history.
   That modelled view is the only one exposed over OPC UA.
+- **Fixed Modbus addresses per process area:** the area is the first digit of the tag number.
+  - **Registers:** area *n* uses *n*×100 … *n*×100+99, so FT-101 is at input register 100, FT-501 at 500 and the heartbeat HB-900 at 900.
+  - **Discrete inputs and coils:** area *n* uses *n*×10 …, so YS-101 is at 10.
+  - **Adding a point:** it goes at the end of its area. An address never changes, and gaps are normal.
+  - **Reading:** the DCS reads one area per request. The plant refuses a read of more than 125 registers, like a real device.
+  - **Where to look:** the instructor station and [inventory/field.json](inventory/field.json) list the full map.
 - **Fault scenarios** are started on the instructor station and never published. The DCS, the
   historian and any OPC UA client only see the process respond.
 
@@ -149,6 +155,7 @@ plant container                         dcs container
 - String NodeIds, e.g. `ns=2;s=HCW.ASU1.FIC-101.PV`.
 - Values carry the DCS scan time as `SourceTimestamp`. They turn `BadNoCommunication` when the
   field link is lost.
+- A calculated value that doesn't apply at the moment reads `BadOutOfService`, live and in history: the specific power KPI-701 and the booster ratio FFI-111 while P-501 delivers no real GOX, e.g. after a trip. Filter on the status code, not on the value.
 - `PV`/`SP`/`OP` are `Historizing`. **HistoryRead (raw)** is answered from the DCS historian.
 - Read-only: no OPC UA client can change the process (yet).
 
@@ -234,7 +241,7 @@ The **PPU bed cycle** slider on the instructor station runs from *real time* (4 
   - **Deadband:** store a value when it moves more than 0.25 % of span.
   - **Heartbeat:** store at least every 60 s.
   - **Retention:** 14 days.
-- Bad-quality periods are stored as gaps.
+- Bad-quality periods are stored as gaps, with their reason: no communication, or not applicable (see OPC UA).
 - The alarm and event journal (alarms, trips, sequence steps, operator actions) lives in the
   same database.
 - Controller modes, setpoints and sequence state are checkpointed to `data/dcs_state.json`, so a
@@ -358,6 +365,42 @@ docker run --rm -v "$PWD":/w -w /w python:3.12-slim python tools/offline_sim.py 
   --hours 1.5 --every 300 --scenario eo_demand_step@600 --cmd sp:FIC-101=160@1800
 ```
 
+`--seed 7` makes a run repeatable.
+
+## Tests
+
+The model will keep growing, and the systems around it must keep agreeing. The tests guard
+consistent behaviour and stable interfaces: no tag, register, OPC UA node or API field goes
+missing or changes without anyone noticing. They are not there to prove the physics is perfect.
+
+```bash
+docker compose run --rm tests                       # everything, ~1 min (builds the test image once)
+docker compose run --rm tests python -m pytest -m "not e2e"     # without the end-to-end part
+docker compose run --rm tests python tools/inventory.py         # after an intended interface change
+```
+
+The test container mounts the working tree, so there is nothing to rebuild after a code change.
+It does not touch the running stack. The tests come in four parts:
+
+| File | What it checks | Time |
+|---|---|---|
+| `tests/test_inventory.py` | The committed [interface inventory](inventory/README.md) still matches the code | 5 s |
+| `tests/test_contracts.py` | Every name a layer uses exists in the layer it comes from: Modbus map ↔ plant model ↔ DCS config ↔ OPC UA ↔ operator console, instructor station, Node-RED flow and docs. Hidden faults never reach the DCS side | 8 s |
+| `tests/test_behaviour.py` | Plant model + DCS, faster than real time: steady state in spec with no P1/P2 alarm; a signature for every instructor scenario; the restart procedures ([Restart after a trip](#restart-after-a-trip)); permissives, I/O loss, checkpoint, ESD, PPU time compression | 30 s |
+| `tests/test_e2e.py` | The real plant and DCS programs over real Modbus: HTTP API, OPC UA browse / values / HistoryRead and the raw registers against the inventory; Bad quality when the plant goes away | 20 s |
+
+**When a test fails:**
+
+- **The inventory test:** an interface changed. If you intended the change, regenerate the inventory and commit it with the change. The PR then shows exactly which tags, nodes or registers changed.
+- **A behaviour test:** cause and effect changed. Either fix the regression, or, if the new behaviour is right, update the test and say why in the PR.
+- **New instructor scenario:** add its expected effect to `SIGNATURES` in `tests/test_behaviour.py`. A test fails until you do.
+
+The behaviour tests use a fixed seed. Their limits are meant to hold for any seed, so check another one after retuning:
+
+```bash
+docker compose run --rm -e HCW_TEST_SEED=3 tests python -m pytest tests/test_behaviour.py
+```
+
 ## Stop / reset
 
 ```bash
@@ -369,3 +412,5 @@ rm exports/*.csv                            # wipe the Node-RED averages
 After pulling a change to `dcs/config.py` (controller tuning, SP limits), remove or rename
 `data/dcs_state.json` before `docker compose up -d --build`. The checkpoint restores each loop's
 tuning and limits, so otherwise the DCS keeps the old values.
+
+After a change to the Modbus map (`common/iomap.py`), stop the stack first, with `docker compose down`, and only then `docker compose up -d --build`. Also move the checkpoint aside. Otherwise the old DCS runs against the new plant for a few seconds and reads the wrong registers. That's like a real I/O-map mismatch: run feedbacks look lost, the DCS trips the machines, and the checkpoint saves those trips.

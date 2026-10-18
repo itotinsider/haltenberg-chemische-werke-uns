@@ -21,7 +21,10 @@ import time
 
 log = logging.getLogger("dcs.historian")
 
-GOOD, BAD = 0, 1
+# Sample quality: GOOD; BAD = no data (field I/O down); NOT_APPLICABLE = the I/O is fine but a
+# calculated value has no meaning right now (e.g. specific power while no GOX is produced).
+GOOD, BAD, NOT_APPLICABLE = 0, 1, 2
+NA = object()     # pass as a value to store() for NOT_APPLICABLE
 
 
 class Historian:
@@ -71,17 +74,19 @@ class Historian:
 
     # ---- writing (scan loop only) ----
     def store(self, ts, values, events):
-        """`values`: {point: float or None}; None means Bad quality."""
+        """`values`: {point: float, None (Bad quality) or NA (not applicable)}."""
         rows = []
         for name, v in values.items():
             pid = self.ids.get(name)
             if pid is None:
                 continue
-            q = GOOD if v is not None else BAD
+            q = GOOD if v is not None and v is not NA else NOT_APPLICABLE if v is NA else BAD
+            if v is NA:
+                v = None
             prev = self.last.get(name)
             if prev is not None:
                 pts, pv, pq = prev
-                if q == BAD and pq == BAD:
+                if q != GOOD and q == pq:
                     continue
                 if q == GOOD and pq == GOOD and ts - pts < self.max_interval:
                     span = self.points[name][2] or 1.0
