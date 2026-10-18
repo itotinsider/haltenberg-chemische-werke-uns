@@ -219,7 +219,7 @@ rules above:
     behaviour, end-to-end).
   - **What the tests led to:** Modbus addresses fixed per process area; KPI-701 and FFI-111 not
     applicable without GOX production; FY-501 clamped; TDI-410 range −15…10.
-- ✅ **Step 3: E-301 and expander tags** (`mhe-expander-tags`). PR #PR.
+- ✅ **Step 3: E-301 and expander tags** (`mhe-expander-tags`). [PR #7](https://github.com/itotinsider/haltenberg-chemische-werke-uns/pull/7).
   - **Tags:** TI-307 … TI-315, PI-316, TI-317, PI-318 (field TT/PT at IR 312–335), all on the E-301
     detail display. Alarms only (TI-315 H, TI-317 L/H), no trips (Willem).
   - **Model:** a simple enthalpy balance over E-301 (ideal gases, constant cp, no heat leak); TT-301
