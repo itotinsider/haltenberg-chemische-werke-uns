@@ -104,17 +104,28 @@ rules above:
 
 ## In progress
 
-## Planned
-
 ### `training-links` — Step 4: training
-- **Status:** 📋 Planned · **Owner:** — · **Branch:** — · **PR:** —
-- **Goal:** link the `TRAIN` steps to their detail displays. The column step gets a boiling-point
-  table: N₂ −196 / O₂ −183 °C at 1 atm; HP-top N₂ ≈ −177 °C against LP-sump O₂ ≈ −180 °C. It also
-  shows the LP feed temperatures before and after their valves: rich liquid −174 → ≈ −189 °C,
-  LIN −177 → ≈ −193 °C.
-- **Touches:** `dcs/web/operator.html` (`TRAIN`, detail displays); possibly a calculated tag.
-- **Depends on:** `mhe-expander-tags`, because the E-301 step needs its tags.
-- **Notes:** the rich-liquid flash needs a composition estimate; TY-413 already gives the LIN value.
+- **Status:** 🚧 In progress · **Owner:** Claude (session step4-training) for Willem · **Branch:** `step4-training` · **PR:** —
+- **Goal:** an educational trainer with depth on demand. The overview steps stay plain language;
+  users who want more open a guided detail display or a deep dive, and the IT/OT specialists (our
+  core audience) get a data view: how one tag travels from sensor over Modbus to the DCS, the
+  historian and OPC UA.
+- **First PR scope (Willem, 2026-10-18):** the "go deeper" framework and the data view; guided
+  detail displays for C-401 and E-301; deep dives on the column (incl. the boiling-point table and
+  the LP feed temperatures across their valves: rich liquid −174 → ≈ −189 °C, LIN −177 → ≈ −193 °C)
+  and on dead time / lags / historian quality.
+- **Later PRs:** deep dives on E-301 and internal compression, the mole sieve, compressor surge,
+  control strategies, interlocks. No energy deep dive; "try it" exercises another day.
+- **Touches:** `dcs/web/operator.html` (`TRAIN`, detail displays), a new trainer page in `dcs/web/`,
+  `dcs/main.py` (page route; possibly a read-only data-path API), hub card, wiki Operator console.
+- **Reserves:** no Modbus addresses. Calc tags TY-414 / TY-415 if the valve flash temperatures need them.
+- **Depends on:** `mhe-expander-tags` (done).
+- **Notes:**
+  - 2026-10-18 Willem: deep dives on a separate page, without losing immersion. The IT/OT layer
+    must be easy to find. Considering several trainers (process, engineering, OT) instead of sublinks.
+  - The rich-liquid flash needs a composition estimate; TY-413 already gives the LIN value.
+
+## Planned
 
 ### `docs-refresh` — Step 5: README, CLAUDE.md and screenshots
 - **Status:** 📋 Planned · **Owner:** — · **Branch:** — · **PR:** —
