@@ -61,6 +61,7 @@ exports/                 bind mount: CSVs Node-RED writes (git-ignored, .gitkeep
 
 ```bash
 docker compose up -d --build          # REQUIRED after any code/web change (files are copied into images)
+# A second stack (another worktree/agent): a git-ignored .env with HCW_STACK and HCW_*_PORT, see docker-compose.yml
 docker compose down
 docker logs -f hcw-asu1-dcs           # / hcw-asu1-plant
 curl -s localhost:8110/api/state | python3 -m json.tool | head -50

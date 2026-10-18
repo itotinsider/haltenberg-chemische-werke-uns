@@ -11,3 +11,6 @@ exports/*
 # Node-RED: only the hand-written flow is tracked
 nodered_data/*
 !nodered_data/flows.json
+
+# per-worktree stack settings (stack name, host ports)
+.env
