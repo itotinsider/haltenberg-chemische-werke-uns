@@ -39,13 +39,14 @@ def ai(tag, desc, unit, lo, hi, io, block, dec=2, alarms=None, suppress=None):
 def pid(tag, desc, unit, lo, hi, block, io=None, pv=None, out=None, cascade=None, limits=None,
         action="reverse", kc=1.0, ti=60.0, sp=0.0, op=0.0, mode="AUTO", sp_lo=None, sp_hi=None,
         op_lo=0.0, op_hi=100.0, sp_rate=None, dec=2, alarms=None, suppress=None, modes=("MAN", "AUTO"),
-        ppu_time=False, ratio_of=None, ratio=None, ratio_lo=None, ratio_hi=None, xlimit=None):
+        ppu_time=False, ratio_of=None, ratio=None, ratio_lo=None, ratio_hi=None, xlimit=None, sp_cap=None):
     # Cross-limiting ratio control (as in burner air/fuel control):
     #   ratio_of: in CAS this loop's setpoint is ratio x max(PV, demand) of that tag -> it leads on
     #             increase and follows on decrease. The operator sets the ratio (ratio_lo..ratio_hi).
     #   xlimit:   this loop's setpoint is capped at PV(xlimit) / its ratio -> it can never ask for more
     #             than the measured ratio flow can handle.
-    return dict(ppu_time=ppu_time, ratio_of=ratio_of, ratio=ratio, ratio_lo=ratio_lo, ratio_hi=ratio_hi,
+    # sp_cap: this loop's setpoint is capped at the PV of that (calculated) tag, e.g. a load limit.
+    return dict(sp_cap=sp_cap, ppu_time=ppu_time, ratio_of=ratio_of, ratio=ratio, ratio_lo=ratio_lo, ratio_hi=ratio_hi,
                 xlimit=xlimit, tag=tag, kind="PID", desc=desc, unit=unit, lo=lo, hi=hi, io=io, pv=pv, out=out,
                 cascade=cascade or [], limits=limits, action=action, kc=kc, ti=ti, sp=sp, op=op,
                 mode=mode, sp_lo=lo if sp_lo is None else sp_lo, sp_hi=hi if sp_hi is None else sp_hi,
@@ -153,7 +154,12 @@ TAGS = [
     # ---- 5 · products ----
     pid("FIC-501", "GOX product flow (pumped LOX, P-501)", "kNm³/h", 0, 35, "ProductDelivery", io="FT-501",
         out="FV-501", kc=0.5, ti=8, sp=29, op=72.5, mode="CAS", sp_lo=0, sp_hi=31.5, dec=2, suppress="LOXP",
-        modes=CAS, xlimit="FIC-111"),
+        modes=CAS, xlimit="FIC-111", sp_cap="FY-501"),
+    # Load limit: the pumped LOX can't be more than the oxygen the air brings in. Above it the pump
+    # would empty the sump and pull N2/Ar down the LP column (GOX purity). FIC-501's SP is capped here;
+    # the header demand above it goes to the backup vaporizer through PIC-502's split range.
+    calc("FY-501", "GOX load limit (0.208 × FIC-101 − FI-408 + sump surplus allowance)", "kNm³/h", 0, 35, "ProductDelivery",
+         dec=2, suppress="MAC"),
     # Override: with pumped LOX the product is drawn as liquid, so a header-pressure demand the column
     # can't make (e.g. at low air after a restart) would empty the sump. Below its SP this controller
     # takes over FIC-501's output (low select), and the backup vaporizer covers the header instead.
@@ -168,11 +174,23 @@ TAGS = [
         io="PT-502", cascade=[{"slave": "FIC-501", "op": [0, 80], "sp": [0, "sp_hi"]},
                               {"slave": "FIC-507", "op": [80, 100], "sp": [0, 30]}],
         kc=3.0, ti=240, sp=30, op=73.7, sp_lo=25, sp_hi=34, dec=2, alarms={"LL": 27, "L": 28.5, "H": 33}),
-    pid("FIC-503", "GAN product flow", "kNm³/h", 0, 60, "ProductDelivery", io="FT-503", out="FV-503",
-        kc=0.5, ti=8, sp=25, op=41.7, mode="CAS", sp_lo=0, sp_hi=45, dec=2, suppress="MAC", modes=CAS),
-    pid("PIC-504", "GAN header pressure", "bar(g)", 0, 12, "ProductDelivery", io="PT-504",
-        cascade=[{"slave": "FIC-503", "op": [0, 100], "sp": [0, "sp_hi"]}],
-        kc=4.0, ti=200, sp=8, op=55.6, sp_lo=6, sp_hi=10, dec=3, alarms={"LL": 6.5, "L": 7.3, "H": 9.0}),
+    # GAN from the HP column top (~5.3 bar(a)) is warmed in E-301 and compressed by K-503 to the
+    # 8 bar(g) site header. FIC-503 drives the compressor inlet guide vanes; SP low limit 10 = minimum
+    # flow (it surges below ~8 kNm³/h, VI-515).
+    pid("FIC-503", "GAN product flow (K-503 compressor)", "kNm³/h", 0, 60, "ProductDelivery", io="FT-503",
+        out="FV-503", kc=0.5, ti=8, sp=25, op=41.7, mode="CAS", sp_lo=10, sp_hi=45, dec=2, suppress="GANC",
+        modes=CAS),
+    # Split range like PIC-502: GAN compressor (OP 0-80 %), LIN backup vaporizer E-508 (OP 80-100 %).
+    pid("PIC-504", "GAN header pressure (split range GAN / LIN vaporizer)", "bar(g)", 0, 12, "ProductDelivery",
+        io="PT-504", cascade=[{"slave": "FIC-503", "op": [0, 80], "sp": [0, "sp_hi"]},
+                              {"slave": "FIC-508", "op": [80, 100], "sp": [0, 40]}],
+        kc=4.0, ti=200, sp=8, op=44.4, sp_lo=6, sp_hi=10, dec=3, alarms={"LL": 6.5, "L": 7.3, "H": 9.0}),
+    ai("PI-513", "GAN compressor K-503 discharge pressure", "bar(g)", 0, 15, "PT-513", "ProductDelivery", dec=2,
+       alarms={"H": 10.0, "HH": 11.0}, suppress="GANC"),
+    ai("JI-514", "GAN compressor K-503 motor power", "MW", 0, 2, "JT-514", "ProductDelivery", dec=3,
+       alarms={"H": 1.3}),
+    ai("VI-515", "GAN compressor K-503 vibration", "mm/s", 0, 25, "VT-515", "ProductDelivery", dec=2,
+       alarms={"H": 7.1, "HH": 11.0}, suppress="GANC"),
     ai("AI-601", "GOX purity", "% O2", 95, 100, "AT-601", "ProductDelivery", dec=3,
        alarms={"L": 99.5, "LL": 99.0}, suppress="MAC"),
     pid("AIC-602", "O2 in GAN (purity → reflux)", "ppm", 0, 100, "ProductDelivery", io="AT-602",
@@ -182,13 +200,22 @@ TAGS = [
 
     # ---- 6 · storage & backup ----
     ai("LI-505", "LOX tank level", "%", 0, 100, "LT-505", "BackupStorage", dec=2, alarms={"LL": 10, "L": 20, "H": 90}),
-    ai("LI-506", "LIN tank level", "%", 0, 100, "LT-506", "BackupStorage", dec=2, alarms={"L": 20, "H": 90}),
-    pid("FIC-507", "Backup vaporizer send-out", "kNm³/h", 0, 30, "BackupStorage", io="FT-507", out="FV-507",
-        kc=0.3, ti=10, sp=0, op=0, mode="CAS", dec=2, alarms={"H": 0.5}, modes=CAS),
+    ai("LI-506", "LIN tank level", "%", 0, 100, "LT-506", "BackupStorage", dec=2, alarms={"LL": 10, "L": 20, "H": 90}),
+    # Backup pumps P-505 / P-506 are kept cold: they run all the time on minimum-flow recirculation to
+    # their tank, so the vaporizers can take over at once through the split ranges. Flow loops Kc 1.2 /
+    # Ti 20 (vaporizer lag ~20 s): with the trip handover the headers stay above LL when their supply trips.
+    pid("FIC-507", "LOX backup vaporizer E-507 send-out (P-505)", "kNm³/h", 0, 30, "BackupStorage", io="FT-507",
+        out="FV-507", kc=1.2, ti=20, sp=0, op=0, mode="CAS", dec=2, alarms={"H": 0.5}, suppress="LOXB", modes=CAS),
+    ai("PI-516", "LOX backup pump P-505 discharge pressure", "bar(g)", 0, 50, "PT-516", "BackupStorage", dec=1,
+       alarms={"L": 25}, suppress="LOXB"),
+    pid("FIC-508", "LIN backup vaporizer E-508 send-out (P-506)", "kNm³/h", 0, 45, "BackupStorage", io="FT-508",
+        out="FV-508", kc=1.2, ti=20, sp=0, op=0, mode="CAS", dec=2, alarms={"H": 0.5}, suppress="LINB", modes=CAS),
+    ai("PI-517", "LIN backup pump P-506 discharge pressure", "bar(g)", 0, 20, "PT-517", "BackupStorage", dec=2,
+       alarms={"L": 7.0}, suppress="LINB"),
 
     # ---- 7 · energy ----
-    calc("KPI-701", "Specific power ((JI-104 + JI-113) ÷ FIC-501)", "kWh/Nm³", 0, 1, "Energy", dec=4,
-         alarms={"H": 0.57}, suppress="MAC"),
+    calc("KPI-701", "Specific power ((JI-104 + JI-113 + JI-514) ÷ FIC-501)", "kWh/Nm³", 0, 1, "Energy", dec=4,
+         alarms={"H": 0.60}, suppress="MAC"),
 ]
 
 TAG_INDEX = {t["tag"]: t for t in TAGS}
@@ -196,7 +223,7 @@ TAG_INDEX = {t["tag"]: t for t in TAGS}
 # Severity per limit type (ISA-18.2-ish: 1 = urgent ... 3 = low)
 ALARM_PRIORITY = {"HH": 1, "LL": 1, "H": 2, "L": 2}
 # A few alarms are informational rather than abnormal-condition alarms.
-PRIORITY_OVERRIDE = {("FIC-507", "H"): 3, ("KPI-701", "H"): 3, ("TI-109", "H"): 3, ("TI-108", "H"): 3}
+PRIORITY_OVERRIDE = {("FIC-507", "H"): 3, ("FIC-508", "H"): 3, ("KPI-701", "H"): 3, ("TI-109", "H"): 3, ("TI-108", "H"): 3}
 
 # ---- Equipment (start/stop from the console) ----
 # bypass_s: start-up bypass. Interlock causes armed with this equipment's key only count once it has
@@ -210,6 +237,12 @@ EQUIPMENT = {
                 trip="I-110", bypass_s=120),
     "LOXP": dict(label="LOX pump P-501", cmd="HS-501", fb="YS-501", block="ProductDelivery",
                  trip="I-500", bypass_s=60),
+    "GANC": dict(label="GAN compressor K-503", cmd="HS-503", fb="YS-503", block="ProductDelivery",
+                 trip="I-503", bypass_s=120),
+    "LOXB": dict(label="LOX backup pump P-505", cmd="HS-505", fb="YS-505", block="BackupStorage",
+                 trip="I-505", bypass_s=30),
+    "LINB": dict(label="LIN backup pump P-506", cmd="HS-506", fb="YS-506", block="BackupStorage",
+                 trip="I-506", bypass_s=30),
 }
 
 # ---- Interlocks ----
@@ -217,6 +250,8 @@ EQUIPMENT = {
 # equipment has been running for longer than its start-up bypass (otherwise a low level / no oil
 # pressure that is perfectly normal for a stopped machine would make the trip impossible to reset).
 # parents: interlocks whose trip trips this one too (and that must be reset first).
+# handover: {split-range master: tripped slave} — trip feed-forward: the master's OP jumps to where its
+#           backup slave (the vaporizer) takes over the lost flow at once.
 STARTUP_BYPASS_S = EQUIPMENT["MAC"]["bypass_s"]
 INTERLOCKS = {
     "I-100": dict(
@@ -229,7 +264,7 @@ INTERLOCKS = {
         # Evaluated in control.py rather than as a tag limit:
         extra_causes=["YS-101 MAC stopped while commanded (motor protection)",
                       "AI-202 > 1 ppm for 30 min (beds not switched)", "Manual ESD / operator stop"],
-        forces={"FIC-101": ("MAN", 0.0), "FIC-503": ("MAN", 0.0),
+        forces={"FIC-101": ("MAN", 0.0),
                 "LIC-404": ("MAN", 0.0), "FIC-409": ("MAN", 0.0), "FIC-405": ("MAN", 0.0)},
         stops=["MAC"], trip_message="ASU shutdown — MAC tripped",
     ),
@@ -255,18 +290,48 @@ INTERLOCKS = {
         causes=[("TI-512", "LL", "LOXP"), ("PI-511", "LL", "LOXP")],
         extra_causes=["I-100 ASU shutdown", "I-110 booster trip (no booster air to vaporize LOX)",
                       "YS-501 pump stopped while commanded", "Operator stop"],
-        forces={"FIC-501": ("MAN", 0.0)},
+        forces={"FIC-501": ("MAN", 0.0)}, handover={"PIC-502": "FIC-501"},
         stops=["LOXP"], parents=["I-100", "I-110"], trip_message="LOX pump P-501 tripped",
+    ),
+    "I-503": dict(
+        # No air, no HP-column GAN to compress: the compressor goes down with the ASU, and the LIN
+        # backup (P-506 / E-508) holds the GAN header through PIC-504's split range.
+        label="GAN compressor trip", block="ProductDelivery",
+        causes=[("VI-515", "HH", "GANC"), ("PI-513", "HH", "always")],
+        extra_causes=["I-100 ASU shutdown", "YS-503 compressor stopped while commanded (motor protection)",
+                      "Operator stop"],
+        forces={"FIC-503": ("MAN", 0.0)}, handover={"PIC-504": "FIC-503"},
+        stops=["GANC"], parents=["I-100"], trip_message="GAN compressor K-503 tripped",
+    ),
+    # The backup pumps deliberately have no parent: they must keep running when the ASU trips.
+    "I-505": dict(
+        label="LOX backup pump trip", block="BackupStorage",
+        causes=[("LI-505", "LL", "LOXB")],
+        extra_causes=["YS-505 pump stopped while commanded (motor protection)", "Operator stop"],
+        forces={"FIC-507": ("MAN", 0.0)},
+        stops=["LOXB"], trip_message="LOX backup pump P-505 tripped — no GOX backup",
+    ),
+    "I-506": dict(
+        label="LIN backup pump trip", block="BackupStorage",
+        causes=[("LI-506", "LL", "LINB")],
+        extra_causes=["YS-506 pump stopped while commanded (motor protection)", "Operator stop"],
+        forces={"FIC-508": ("MAN", 0.0)},
+        stops=["LINB"], trip_message="LIN backup pump P-506 tripped — no GAN backup",
     ),
 }
 CO2_BREAKTHROUGH_TRIP_S = 1800
+# FY-501 GOX load limit = GOX_AIR_LIMIT x air - LOX to storage. 0.208 kNm3 O2 per kNm3 air is just above the
+# normal GOX + LOX peaks at design (purity ~99.4 % if held there): a sustained over-demand shows as a
+# purity L alarm and backup-vaporizer send-out, not as a purity crash.
+GOX_AIR_LIMIT = 0.208
+GOX_SUMP_ALLOWANCE = 0.5    # kNm3/h per % that LIC-404 stands above its SP (surplus liquid, already separated)
 
 # Design line-up: the modes the "Normal line-up" button restores (after a restart).
 LINEUP = {
     "FIC-101": "AUTO", "PIC-102": "AUTO", "UIC-103": "AUTO", "FIC-303": "AUTO", "PIC-402": "AUTO",
     "LIC-403": "AUTO", "LIC-404": "AUTO", "AIC-602": "AUTO", "FIC-405": "CAS", "FIC-409": "AUTO",
     "PIC-502": "AUTO", "FIC-501": "CAS", "PIC-504": "AUTO", "FIC-503": "CAS", "FIC-507": "CAS",
-    "FIC-111": "CAS", "LIC-415": "AUTO",
+    "FIC-111": "CAS", "LIC-415": "AUTO", "FIC-508": "CAS",
 }
 
 # ---- PPU sequence KS-201: step durations as fractions of the bed cycle ----

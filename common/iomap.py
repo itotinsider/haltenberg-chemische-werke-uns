@@ -57,9 +57,15 @@ ANALOG_INPUTS = [
     ("PT-504", "GAN header pressure, bar(g)"),
     ("LT-505", "LOX tank level, %"),
     ("LT-506", "LIN tank level, %"),
-    ("FT-507", "Backup vaporizer send-out, kNm3/h"),
+    ("FT-507", "LOX backup vaporizer E-507 send-out, kNm3/h"),
+    ("FT-508", "LIN backup vaporizer E-508 send-out, kNm3/h"),
     ("PT-511", "LOX pump P-501 discharge pressure, bar(g)"),
     ("TT-512", "GOX temperature leaving E-301 (warm end), degC"),
+    ("PT-513", "GAN compressor K-503 discharge pressure, bar(g)"),
+    ("JT-514", "GAN compressor K-503 motor power, MW"),
+    ("VT-515", "GAN compressor K-503 vibration, mm/s"),
+    ("PT-516", "LOX backup pump P-505 discharge pressure, bar(g)"),
+    ("PT-517", "LIN backup pump P-506 discharge pressure, bar(g)"),
     ("AT-601", "GOX purity, % O2"),
     ("AT-602", "O2 in GAN, ppm"),
     ("AT-603", "Total hydrocarbons in LOX, ppm CH4-eq"),
@@ -80,8 +86,9 @@ ANALOG_OUTPUTS = [
     ("FV-405", "LIN reflux valve"),
     ("FV-409", "LIN draw-to-storage valve"),
     ("FV-501", "LOX pump P-501 discharge flow valve"),
-    ("FV-503", "GAN product valve"),
-    ("FV-507", "Backup vaporizer valve"),
+    ("FV-503", "GAN compressor K-503 inlet guide vanes"),
+    ("FV-507", "LOX backup vaporizer E-507 flow valve (P-505)"),
+    ("FV-508", "LIN backup vaporizer E-508 flow valve (P-506)"),
     ("WD-900", "DCS watchdog counter"),
 ]
 
@@ -91,6 +98,9 @@ DISCRETE_INPUTS = [
     ("YS-301", "Expander running"),
     ("YS-102", "Booster air compressor running"),
     ("YS-501", "LOX pump P-501 running"),
+    ("YS-503", "GAN compressor K-503 running"),
+    ("YS-505", "LOX backup pump P-505 running"),
+    ("YS-506", "LIN backup pump P-506 running"),
     ("ZS-201A", "PPU bed A online"),
     ("ZS-201B", "PPU bed B online"),
 ]
@@ -102,6 +112,9 @@ COILS = [
     ("HS-201", "PPU bed B select (0 = bed A online, 1 = bed B online)"),
     ("HS-102", "Booster air compressor run command"),
     ("HS-501", "LOX pump P-501 run command"),
+    ("HS-503", "GAN compressor K-503 run command"),
+    ("HS-505", "LOX backup pump P-505 run command"),
+    ("HS-506", "LIN backup pump P-506 run command"),
 ]
 
 

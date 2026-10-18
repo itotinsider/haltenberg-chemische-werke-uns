@@ -156,6 +156,8 @@ function render() {
     ["MAC trip latched (motor relay)", h.mac_trip_latched ? "YES" : "no"],
     ["Booster trip latched (motor relay)", h.booster_trip_latched ? "YES" : "no"],
     ["Booster air not condensing (excess)", h.booster_excess_air + " kNm³/h"],
+    ["GAN compressor trip latched (motor relay)", h.gan_compressor_trip_latched ? "YES" : "no"],
+    ["LOX backup pump P-505 trip latched", h.lox_backup_pump_trip_latched ? "YES" : "no"],
     ["Surge margin (true)", h.surge_margin_pct + " %"],
     ["Cold-box temperature drift", (h.coldbox_dT_K >= 0 ? "+" : "") + h.coldbox_dT_K.toFixed(2) + " K"],
     ["Main condenser ΔT", h.condenser_dT_K + " K"],
