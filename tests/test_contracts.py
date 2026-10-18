@@ -215,7 +215,7 @@ INSTRUMENT = re.compile(r"\b[A-Z]{2,4}-\d{3}[A-Z]?\b")
 
 
 @pytest.mark.parametrize("page", ["dcs/web/operator.html", "dcs/web/index.html", "plant/web/instructor.html",
-                                  "README.md", "CLAUDE.md"])
+                                  "README.md", "CLAUDE.md", "linde air seperation research.md"])
 def test_pages_only_name_existing_instruments(page):
     known = set(C.TAG_INDEX) | set(AI + AO + DI + DO) | {"KS-201", "ISA-101"} | set(DRAWING_ONLY)
     assert sorted(set(INSTRUMENT.findall(read(page))) - known) == []

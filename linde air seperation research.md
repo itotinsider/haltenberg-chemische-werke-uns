@@ -1,11 +1,44 @@
 # HCW Air Separation Unit (ASU): A Simplified Process, Dynamics and DCS Reference for a Demo Simulator
 
-**Bottom line:** For the demo, model HCW's Linde-type ASU as 6 process blocks (compression → front-end purification → main heat exchanger + expander → double column → product delivery/storage, plus utilities), about 12 PID loops and about 35 OPC UA tags, using first-order lags, integrators and a few lookup maps. You do not need rigorous thermodynamics. A nominal plant of about 1,000 t/d oxygen draws roughly 10–14 MW of electricity and feeds three plausible Verbund consumers: an ethylene oxide plant, an acetylene/syngas partial-oxidation plant, and the site-wide nitrogen network.
+> **Status (October 2026).** This document was the design basis for the HCW ASU1 simulator. ASU1 is now
+> built, and in a few places the build went further than or differs from the original proposal: oxygen by
+> internal compression instead of a GOX compressor, a nitrogen compressor, pumped backups, 19 controllers
+> instead of ~12, 61 tags instead of ~35. §0 summarises the as-built plant, and *As built* notes in the
+> sections below mark each difference. The research itself (values, literature, sources) is unchanged.
+> The authoritative tag list is the generated interface inventory, [inventory/tags.csv](inventory/tags.csv).
+
+**Bottom line:** For the demo, model HCW's Linde-type ASU as 6 process blocks (compression → front-end purification → main heat exchanger + expander → double column → product delivery/storage, plus utilities), about 12 PID loops and about 35 OPC UA tags as a starting point, using first-order lags, integrators and a few lookup maps. You do not need rigorous thermodynamics. A nominal plant of about 1,000 t/d oxygen draws roughly 10–14 MW of electricity and feeds three plausible Verbund consumers: an ethylene oxide plant, an acetylene/syngas partial-oxidation plant, and the site-wide nitrogen network.
 
 ## TL;DR
 - **Process in 6 blocks.** Air is filtered and compressed to about 5–6 bar, dried and decarbonated in switching molecular-sieve beds (2–12 h online), and cooled to about −175 °C in a brazed-aluminium heat exchanger. An expander supplies the refrigeration. The air is then separated in a Linde double column: the HP column runs at about 5–5.5 bar and the LP column at about 1.3 bar, linked by the condenser/reboiler. Outputs are GOX at 99.5%+, GAN with ppm-level O2, and LOX/LIN to tanks with vaporizer backup.
 - **Simulator approach.** Use fast first-order lags for compressor flow and pressure (seconds), integrators for liquid levels (minutes), slow lags for purity (tens of minutes; argon takes hours) and a very slow lag for cold-box temperature (hours to days). Superimpose a 4-hour sawtooth for mole-sieve switching. Conventional ASUs ramp only about 0.25 %/min; Linde and Air Liquide have shown 5–8 %/min with special control. That gap is the natural story for APC/MPC.
 - **Site context and KPI.** Linde Engineering data for conventional ASUs making >99.5% oxygen give a specific power of 0.33–0.35 kWh/Nm³ (222–245 kWh/t, depending on gas-company vs vendor convention). Typical installed plants run 0.4–0.6 kWh/Nm³. The main air compressor dominates both power use and the predictive-maintenance asset list. Consumers to model are an EO/EG plant (about 0.75–1.1 t O2 per t EO), a BASF-style acetylene partial-oxidation plant (about 3,400 Nm³ O2 per t acetylene) and the site N2 grid for inerting and the tank farm.
+
+---
+
+## 0. ASU1 as built (status October 2026)
+
+**System architecture.** Two containers, joined the way a real plant is:
+- **Plant:** the process model in real time (0.5 s step), acting as the remote I/O rack. It exposes raw instrument values (`FT-101`, float32 register pairs, no units) over **Modbus TCP**, with fixed register addresses per process area (area *n* → registers *n*×100…).
+- **DCS:** scans the plant every second, maps the raw points to controller tags with units, ranges, modes and alarms, runs the control layer, and stores everything in a built-in **SQLite historian** (exception reporting, 0.25 % deadband, 14 days). It publishes that modelled view over **OPC UA** (`Objects/HCW/Haltenberg/ASU1/<Block>/<Tag>`, HistoryRead from the historian), as §9 recommended.
+- **IT side:** Node-RED subscribes over OPC UA and writes 15-minute time-weighted averages to CSV.
+- **Instructor station:** fault scenarios live only in the plant, so the DCS and every data consumer see only the process response.
+
+**Process as built (6 blocks + energy):**
+
+| # | Block | Equipment in ASU1 |
+|---|---|---|
+| 1 | Air intake and compression | Filter, MAC with IGV (FIC-101), discharge-pressure override (PIC-102), antisurge (UIC-103), DCAC; **K-102 booster air compressor** (~44 kNm³/h to 60 bar(a)) for internal compression |
+| 2 | Front-end purification | Mole-sieve beds A/B, regeneration heater E-204 (TIC-204), sequence KS-201 (4 h per bed, compressible to 5 min for demos) |
+| 3 | MHE + expander | E-301 main heat exchanger, X-303 turbo-expander (FIC-303) |
+| 4 | Double column | HP and LP columns, E-404 main condenser/reboiler, LIN reflux cascaded from O2-in-GAN (AIC-602 → FIC-405) |
+| 5 | Products | **Internal compression:** P-501 LOX pump draws liquid oxygen from the LP sump and pumps it to ~33 bar(g); it boils in E-301 against the booster air and enters the 30 bar(g) GOX header. **K-503 GAN compressor** lifts HP-column nitrogen to the 8 bar(g) site grid |
+| 6 | Backup and storage | LOX and LIN tanks; backup pumps **P-505 / P-506**, kept cold on recirculation, feed vaporizers **E-507 / E-508**. Split range on both header-pressure controllers, with feed-forward handover on a trip |
+| 7 | Energy | KPI-701 specific power = (MAC + booster + GAN compressor power) ÷ GOX ≈ 0.53–0.55 kWh/Nm³ |
+
+**Size of the control layer:** 61 tags, 19 PI controllers (incl. cascade, split range, override, cross-limiting ratio), 7 interlocks with parent/child relations, the KS-201 sequence, state-based alarms with priorities 1–3. Lists: §5.1, §5.2, §5.4.
+
+**Not built:** the argon column, APC/MPC (§5.3) and OPC UA writes, OPC UA Alarms & Conditions, tank-truck loadouts, the business systems of §6 (LIMS, ERP, maintenance). Only the mole-sieve cycle can be time-compressed; everything else runs in real time, as §4.4 describes.
 
 ---
 
@@ -32,6 +65,8 @@
 | 6 | **Backup and storage** | Cryogenic tanks plus ambient-air or water-bath vaporizers keep site supply going during ASU trips.\[12\] This is the buffer that decouples the slow ASU from fast-moving consumers. | Flat-bottom tanks, vaporizers, pressure-control station |
 
 **Optional block:** argon column (crude + pure). For the demo, treat it as a single side-draw flow with a purity value that settles slowly over hours.
+
+**As built.** Block 5 uses the internal-compression variant: LOX pump P-501 plus a motor-driven booster air compressor K-102 (not expander-driven), a single pump with no standby. GAN goes to the site through compressor K-503. Block 6 has pumped backups: P-505 / P-506 lift tank liquid to header pressure for the vaporizers E-507 / E-508, so they survive an ASU trip. The argon column is not built.
 
 ---
 
@@ -63,6 +98,21 @@
 | Total electrical load | ~10–14 MW | MAC ≈ 80–90% of it\[19\] |
 
 **Interpretation for the demo:** only about six numbers drive everything else. These are air flow, MAC pressure, HP and LP pressures, the LIN reflux split, and the expander flow. Make these the "handles", and make purities, levels and power the visible consequences.
+
+**As built: product-side values added by internal compression and the GAN compressor** (steady state in the simulator):
+
+| Variable | ASU1 value | Tag |
+|---|---|---|
+| LOX pump discharge | ~33 bar(g) | PI-511 |
+| GOX header pressure | 30 bar(g) (LL 27) | PIC-502 |
+| Booster air flow / pressure / power | ~44 kNm³/h, 60 bar(a), 4.2 MW | FIC-111, PI-112, JI-113 |
+| Booster air ÷ pumped LOX ratio | 1.52 (pinch below ~0.95) | FFI-111 |
+| GOX temperature leaving the MHE | ~10 °C (trip at −25 °C, carbon-steel header) | TI-512 |
+| GAN compressor flow / discharge / power | 25 kNm³/h, 8.4 bar(g), 0.64 MW | FIC-503, PI-513, JI-514 |
+| GAN header pressure | 8 bar(g) | PIC-504 |
+| Main condenser ΔT | ~2.6 K | TDI-410 |
+| Total hydrocarbons in LOX | ~7–8 ppm (the pumped LOX flushes the sump continuously) | AI-603 |
+| Specific power incl. booster and GAN compressor | 0.53–0.55 kWh/Nm³ | KPI-701 |
 
 ---
 
@@ -97,6 +147,8 @@
 6. **Expander trip.** Refrigeration is lost, and over hours the levels fall and liquid production must be cut.
 7. **Hydrocarbon event** (nearby flare, haze). Total hydrocarbons in LOX rise. The response is to maximise the LOX purge and, if the limit is exceeded, shut down.\[5\]
 
+**As built.** All seven are instructor scenarios, plus nine more: acetylene burner trip, N2 purge campaign, MAC bearing degradation, regeneration heater fault, booster motor trip, LOX pump cavitation, GAN compressor trip, LOX backup pump trip, and MAC impeller fouling (the efficiency drift of §9). Each has a tested signature (first-out, alarms, effect) in `tests/test_behaviour.py`.
+
 ### 4.4 Start-up, shutdown and load change
 - **Cold start** (after a trip of hours to a few days): the cold box is still cold, and full purity returns in roughly 6–24 h.\[21\]
 - **Warm start** (after derime or maintenance): the whole cold box must be cooled down, which takes typically 1–3 days. The literature puts start-up times "on the order of 20 hours or more".\[22\]
@@ -112,25 +164,47 @@
 - **Tanks:** integrator: level += (liquid make − vaporizer send-out). Vaporizers start automatically when GOX header pressure is low.
 - **Noise:** add small Gaussian noise plus slow random walks on ambient temperature and demand. These make the historian trends look real.
 
+**As built** (`plant/model.py`), following this recipe with these choices:
+- **Purities:** a static map of O2 draw ratio, reflux ratio, GAN ratio, reboiler level and condenser ΔT, then dead time and a slow lag: GOX purity 240 s dead time and τ 600 s, O2 in GAN 120 s and τ 300 s.
+- **PPU:** bed loading grows with load and inlet water (TI-108) and is removed only while the regeneration gas is above 120 °C. CO2 breakthrough is `0.03 + 10·exp((x−1)/0.06)` ppm in the bed loading *x*, about 0.15 ppm at the end of a normal cycle: the sawtooth.
+- **Reboiler level couples two balances:** oxygen (available O2 − GOX − LOX) and refrigeration (liquid made − LOX − LIN draws). That is why an expander trip slowly drains the sump, and a stopped LOX pump floods it in ~10 min.
+- **Internal compression:** LOX flow = pump run × valve × capacity, reduced by cavitation (low sump or a scenario). The LOX boils in E-301 only with enough booster air; below a ratio of 0.95 the GOX leaves the MHE cold.
+- **Headers:** integrators against consumer-demand random walks, with a site-grid hold-up (the GAN grid is ~70 m³), fed by the product flow plus the backup vaporizers (20 s lag).
+- **Only the PPU time-compresses**, for demos; everything else runs in real time.
+
 ---
 
 ## 5. Control strategy for a simple DCS
 
-### 5.1 Basic PID loops (~12)
-1. **MAC air flow (FIC-101)** → IGV position. Master load setpoint.
-2. **MAC discharge pressure (PIC-102)** → overrides/limits flow.
-3. **MAC antisurge (UIC-103)** → recycle/blow-off valve. Mandatory on all axial/centrifugal machines.\[5\]
-4. **PPU sequence (KS-201)** → timer-based switching valves, with interlocks on bed pressure equalisation.
-5. **Regeneration temperature (TIC-202)** → heater.
-6. **Expander flow/speed (FIC-301 / SIC-302)** → inlet nozzles (IGV). Sets refrigeration.
-7. **HP column pressure (PIC-401)** → mostly a result of air flow; often only indicated.
-8. **LP column pressure (PIC-402)** → waste N2 vent valve.
-9. **HP sump level (LIC-403)** → rich-liquid valve to LP column.
-10. **Reboiler/LP sump level (LIC-404)** → GOX draw or LOX draw (critical).
-11. **LIN reflux to LP (FIC-405)** → reflux valve, cascaded from N2 purity (AIC-602).
-12. **GOX/GAN delivery pressure (PIC-501/502)** → product valve or compressor, with backup vaporizer split-range.
+### 5.1 Basic PID loops
 
-Purity cascades: GOX purity (AIC-601) trims the O2 draw-to-air ratio, and N2 purity (AIC-602) trims LIN reflux. Both are slow loops, typically tuned with minutes of integral time.
+The research proposed about 12 basic loops: MAC air flow as the master load setpoint, a discharge-pressure override, antisurge (mandatory on all axial/centrifugal machines\[5\]), the PPU sequence with its regeneration temperature, expander flow, LP pressure on the waste-N2 vent, HP sump and reboiler levels, LIN reflux cascaded from N2 purity, and GOX/GAN header pressure with backup-vaporizer split range. Purity loops are slow, typically tuned with minutes of integral time. HP column pressure is mostly a result of air flow and often only indicated.
+
+**As built: 19 PI controllers** (velocity-form PI, modes MAN / AUTO / CAS). Internal compression and the GAN compressor added the booster ratio, the load limit and override on the LOX pump, and a second split range. The KS-201 PPU sequence is a separate step program.
+
+| Controller | Manipulates | Role |
+|---|---|---|
+| FIC-101 MAC air flow | FV-101 (IGV) | Master load setpoint, ramped (1.45 kNm³/h per min ≈ 1 %/min) |
+| PIC-102 MAC discharge pressure | — | Override: its output limits FIC-101 (low select) |
+| UIC-103 MAC antisurge | UV-103 (recycle) | Keeps surge margin |
+| FIC-111 booster air flow | FV-111 | Ratio to the pumped LOX, cross-limited (leads on increase) |
+| TIC-204 regeneration gas temperature | TV-204 (heater) | AUTO at 180 °C in the HEAT step of KS-201, otherwise MAN 0 |
+| FIC-303 expander flow | FV-303 (nozzles) | Sets refrigeration |
+| PIC-402 LP column pressure | PV-402 (waste N2 vent) | HP pressure (PI-401) is indicated only |
+| LIC-403 HP sump level | LV-403 (rich liquid to LP) | |
+| LIC-404 reboiler level | LV-404 | Critical level |
+| FIC-405 LIN reflux | FV-405 | Slave of AIC-602 |
+| FIC-409 LIN to storage | FV-409 | |
+| FIC-501 GOX (pumped LOX) | FV-501 (P-501) | Slave of PIC-502; capped by the booster air (cross-limit) and by the load limit FY-501 (0.208 × air) |
+| LIC-415 reboiler low-level override | — | Limits FIC-501 below 45 % level |
+| PIC-502 GOX header pressure | — | Split range: FIC-501 (OP 0–80 %), backup FIC-507 (80–100 %) |
+| FIC-503 GAN compressor flow | FV-503 (K-503 IGV) | Slave of PIC-504 |
+| PIC-504 GAN header pressure | — | Split range: FIC-503 (0–80 %), backup FIC-508 (80–100 %) |
+| AIC-602 O2 in GAN | — | Master of FIC-405 (reflux) |
+| FIC-507 LOX backup vaporizer | FV-507 (P-505 / E-507) | GOX header backup |
+| FIC-508 LIN backup vaporizer | FV-508 (P-506 / E-508) | GAN header backup |
+
+There is no GOX purity *controller*: GOX purity (AI-601) is held by the load limit FY-501, which keeps the oxygen draw within what the air brings in. On a product trip (I-500, I-503) the header master moves straight to where the backup vaporizer replaces the lost flow (feed-forward handover), and hands back smoothly after the restart.
 
 ### 5.2 Interlocks and trips (demo set)
 - MAC: antisurge, high-high vibration, low lube-oil pressure, high bearing temperature, motor overload.\[5\]
@@ -140,56 +214,95 @@ Purity cascades: GOX purity (AIC-601) trims the O2 draw-to-air ratio, and N2 pur
 - Products: high O2 in GAN → divert to vent; low suction pressure on product compressors (protects LP column from vacuum).\[5\]
 - Acetylene: a PPU removes all of it, but if it enters the cold box it "precipitates out as a solid at concentrations as low as 4 ppm to 6 ppm". Operators therefore alarm well below this, at about 0.3–0.5 ppm in the reboiler sump.\[5\]\[24\]\[25\]
 
+**As built: 7 interlocks.** Each latches, records a first-out, and can only be reset when no cause is active. A cause marked with equipment is armed only after that machine has run for its start-up bypass time, so a stopped plant can always be reset. Any machine whose run feedback drops while commanded also trips its own interlock (motor protection).
+
+| Interlock | Stops | Causes | Parent |
+|---|---|---|---|
+| I-100 ASU shutdown | MAC (and through its children, everything except the backups) | VI-105 HH, TI-106 HH, PI-107 LL, AI-202 HH (CO2 10 ppm), AI-603 HH, AI-604 HH, LIC-404 LL or HH | — |
+| I-300 expander trip | X-303 | SI-304 HH (overspeed), VI-305 HH, TI-306 HH | I-100 |
+| I-110 booster trip | K-102 | VI-114 HH, PI-112 HH | I-100 |
+| I-500 LOX pump trip | P-501 | TI-512 LL (cold GOX into the carbon-steel header), PI-511 LL (cavitation) | I-100, I-110 |
+| I-503 GAN compressor trip | K-503 | VI-515 HH, PI-513 HH | I-100 |
+| I-505 LOX backup pump trip | P-505 | LI-505 LL | none: the backup must survive an ASU trip |
+| I-506 LIN backup pump trip | P-506 | LI-506 LL | none |
+
+Start permissives: the expander and booster need the MAC running; P-501 needs the booster running and LIC-404 ≥ 40 %; K-503 needs the MAC running and HP pressure ≥ 4 bar(a); the backup pumps need tank level above LL. "Low LOX purge flow" and "high O2 in GAN → vent" were not implemented: with pumped LOX the sump is flushed continuously.
+
 ### 5.3 Role of APC/MPC
 - **Why:** ASUs are strongly coupled, nonlinear, slow and power-hungry. MPC handles multivariable load changes (air, expander split, reflux, drain) within purity constraints and minimises kWh/Nm³.\[26\]\[27\]
 - **Evidence:** Linde-linked academic work with RWTH Aachen (Mitsos group) and TUM includes economic NMPC under fluctuating electricity prices, Koopman/ML reduced models that enable real-time NMPC "at an average CPU time decrease by 98%", and a pressure-driven digital twin. Its manipulated variables are exactly the demo handles: air feed, turbine split, reflux fraction and reboiler drain.\[6\]\[27\]\[28\]\[29\]\[30\] Industrial two-layer MPC for automatic load change has been deployed on Chinese ASUs.\[26\]
 - **Industry operating model:** Air Liquide opened its Saint-Priest remote operation centre in January 2017 under the €20 million Connect project. It remotely manages production for 22 units in France and is "capable of stopping or restarting a site remotely". It adapts production to customer demand and uses big data for predictive maintenance by "identifying the weak signals that precede a malfunction". Air Liquide uses AVEVA PRiSM for its SIO.Predict analytics.\[31\]
 - **Demo suggestion:** expose an "APC ON/OFF" switch. With it OFF, the operator ramps load at 0.25 %/min by hand. With it ON, the MPC ramps at 3–5 %/min with less purity overshoot and lower kWh/Nm³.
+- **As built:** not yet. OPC UA is read-only; writable setpoints for an external APC agent are the obvious next step. The air-flow ramp defaults to about 1 %/min.
 
-### 5.4 Suggested tag list (OPC UA namespace e.g. `HCW.ASU1.<Tag>`)
+### 5.4 Tag list (as built)
 
-| Tag | Description | Unit | Range | Normal |
-|---|---|---|---|---|
-| FIC-101 | MAC air flow | kNm³/h | 0–180 | 145 |
-| PIC-102 | MAC discharge pressure | bar(a) | 0–8 | 5.8 |
-| UIC-103 | MAC antisurge controller output | % | 0–100 | 0–5 |
-| JI-104 | MAC motor power | MW | 0–15 | 10.5 |
-| VI-105 | MAC bearing vibration (DE) | mm/s | 0–25 | 2.5 |
-| TI-106 | MAC bearing temperature | °C | 0–120 | 75 |
-| PI-107 | MAC lube-oil pressure | bar(g) | 0–4 | 2.0 |
-| TI-108 | Air temperature after DCAC | °C | 0–40 | 12 |
-| TI-109 | Ambient air temperature | °C | −20–45 | 15 |
-| KS-201 | PPU active bed (A/B) + step | enum | — | A-ONLINE |
-| AI-202 | CO2 at PPU outlet | ppm | 0–20 | 0.05 |
-| PDI-203 | PPU bed differential pressure | mbar | 0–200 | 60 |
-| TIC-204 | Regeneration gas temperature | °C | 0–250 | 180 (heat step) |
-| ZI-205 | Switching valve stroke time (last) | s | 0–60 | 12 |
-| TI-301 | MHE cold-end air temperature | °C | −200–40 | −174 |
-| TDI-302 | MHE warm-end ΔT | K | 0–15 | 3 |
-| FIC-303 | Expander flow | kNm³/h | 0–30 | 18 |
-| SI-304 | Expander speed | rpm | 0–40,000 | 25,000 |
-| VI-305 | Expander vibration | µm | 0–100 | 15 |
-| TI-306 | Expander bearing temperature | °C | 0–120 | 60 |
-| PIC-401 | HP column top pressure | bar(a) | 0–8 | 5.3 |
-| PIC-402 | LP column top pressure | bar(a) | 0–3 | 1.35 |
-| LIC-403 | HP column sump level | % | 0–100 | 50 |
-| LIC-404 | Reboiler / LP sump level | % | 0–100 | 70 |
-| FIC-405 | LIN reflux to LP column | kNm³/h | 0–60 | 40 |
-| TI-406 | LP sump (LOX) temperature | °C | −200–−150 | −180 |
-| FIC-501 | GOX product flow | kNm³/h | 0–35 | 29 |
-| PIC-502 | GOX header pressure | bar(g) | 0–40 | 30 |
-| FIC-503 | GAN product flow | kNm³/h | 0–60 | 25 |
-| PIC-504 | GAN header pressure | bar(g) | 0–12 | 8 |
-| LI-505 | LOX tank level | % | 0–100 | 65 |
-| LI-506 | LIN tank level | % | 0–100 | 60 |
-| FIC-507 | Backup vaporizer send-out | kNm³/h | 0–30 | 0 |
-| AIC-601 | GOX purity | % O2 | 95–100 | 99.6 |
-| AIC-602 | O2 in GAN | ppm | 0–100 | 3 |
-| AI-603 | Total hydrocarbons in LOX | ppm CH4-eq | 0–600 | 40 |
-| AI-604 | Acetylene in LOX | ppm | 0–2 | <0.05 |
-| KPI-701 | Specific power | kWh/Nm³ O2 | 0–1 | 0.36 |
+The research suggested ~35 tags. ASU1 has 61, listed here with their steady-state value in the simulator. NodeIds are `ns=2;s=HCW.ASU1.<Tag>.PV` (and `.SP`, `.OP` for controllers) in namespace `urn:haltenberg:hcw:asu1:dcs`. This table is a snapshot: the authoritative list, with Modbus addresses and OPC UA nodes per tag, is the generated [inventory/tags.csv](inventory/tags.csv).
 
-Note: SI-304 is set for a large-plant expander (~25,000 rpm). Change it if you prefer a small high-speed unit.
+| Tag | Description | Unit | Range | Normal | Alarms (limit, priority) |
+|---|---|---|---|---|---|
+| FIC-101 | MAC air flow (load) | kNm³/h | 0 … 180 | 145 | L 120 P2, H 165 P2 |
+| PIC-102 | MAC discharge pressure (override) | bar(a) | 0 … 8 | 5.75 | H 6.4 P2, HH 6.8 P1 |
+| FI-103 | MAC compressor (suction) flow | kNm³/h | 0 … 200 | 145 |  |
+| UIC-103 | MAC antisurge (surge margin) | % | −20 … 80 | 37.9 | L 5 P2 |
+| JI-104 | MAC motor power | MW | 0 … 15 | 10.6 | H 12.5 P2 |
+| VI-105 | MAC bearing vibration (DE) | mm/s | 0 … 25 | 2.53 | H 7.1 P2, HH 11.0 P1 |
+| TI-106 | MAC bearing temperature | °C | 0 … 120 | 74.9 | H 95 P2, HH 105 P1 |
+| PI-107 | MAC lube-oil pressure | bar(g) | 0 … 4 | 2.01 | L 1.5 P2, LL 1.0 P1 |
+| TI-108 | Air temperature after DCAC | °C | 0 … 40 | 12.0 | H 20 P3 |
+| TI-109 | Ambient air temperature | °C | −20 … 45 | 18.8 | H 32 P3 |
+| FIC-111 | Booster air flow (ratio to pumped LOX) | kNm³/h | 0 … 60 | 44.0 | L 20 P2 |
+| FFI-111 | Booster air / pumped LOX ratio (FIC-111 ÷ FIC-501) | – | 0 … 3 | 1.52 | L 1.4 P2 |
+| PI-112 | Booster discharge pressure | bar(a) | 0 … 80 | 60.2 | H 66 P2, HH 70 P1 |
+| JI-113 | Booster motor power | MW | 0 … 6 | 4.22 | H 5.0 P2 |
+| VI-114 | Booster bearing vibration | mm/s | 0 … 25 | 2.09 | H 7.1 P2, HH 11.0 P1 |
+| AI-202 | CO2 at PPU outlet | ppm | 0 … 20 | 0.04 | H 1.0 P2, HH 10.0 P1 |
+| PDI-203 | PPU bed differential pressure | mbar | 0 … 200 | 60.4 | H 100 P2 |
+| TIC-204 | Regeneration gas temperature | °C | 0 … 250 | 15 (180 in HEAT) |  |
+| ZI-205 | Switching valve stroke time (last) | s | 0 … 60 | 12.0 | H 20 P2 |
+| TI-301 | MHE cold-end air temperature | °C | −200 … 40 | −174 | H −170 P2 |
+| TDI-302 | MHE warm-end ΔT | K | 0 … 15 | 2.99 | H 5.0 P2, HH 7.0 P1 |
+| FIC-303 | Expander flow (refrigeration) | kNm³/h | 0 … 30 | 18.0 | L 12 P2 |
+| SI-304 | Expander speed | rpm | 0 … 40000 | 24,974 | H 28000 P2, HH 30000 P1 |
+| VI-305 | Expander vibration | µm | 0 … 100 | 14.9 | H 40 P2, HH 60 P1 |
+| TI-306 | Expander bearing temperature | °C | 0 … 120 | 60.0 | H 85 P2, HH 95 P1 |
+| PI-401 | HP column top pressure | bar(a) | 0 … 8 | 5.30 | L 4.8 P2, H 5.8 P2 |
+| PIC-402 | LP column top pressure | bar(a) | 0 … 3 | 1.35 | L 1.25 P2, H 1.45 P2 |
+| LIC-403 | HP column sump level | % | 0 … 100 | 49.6 | L 30 P2, H 70 P2, HH 85 P1 |
+| LIC-404 | Reboiler / LP sump level | % | 0 … 100 | 70.0 | L 55 P2, LL 35 P1, H 85 P2, HH 95 P1 |
+| FIC-405 | LIN reflux to LP column | kNm³/h | 0 … 60 | 39.8 |  |
+| TI-406 | LP sump (LOX) temperature | °C | −200 … −150 | −180 |  |
+| TI-407 | HP column top (N2) temperature | °C | −200 … −150 | −178 |  |
+| TDI-410 | Main condenser ΔT (TI-407 − TI-406) | K | −15 … 10 | 2.61 | L 1.0 P2 |
+| TY-411 | N2 condensing temperature at HP pressure (PI-401) | °C | −200 … −150 | −178 |  |
+| TY-412 | O2 boiling temperature at LP pressure (PIC-402) | °C | −200 … −150 | −180 |  |
+| TY-413 | N2 boiling temperature at LP pressure (LIN after FV-405) | °C | −200 … −150 | −193 |  |
+| FI-408 | LOX draw to storage | kNm³/h | 0 … 3 | 0.81 |  |
+| FIC-409 | LIN draw to storage | kNm³/h | 0 … 2 | 0.58 |  |
+| AI-603 | Total hydrocarbons in LOX | ppm CH4 | 0 … 600 | 6.86 | H 250 P2, HH 450 P1 |
+| AI-604 | Acetylene in LOX | ppm | 0 … 2 | 0.02 | H 0.3 P2, HH 1.0 P1 |
+| FIC-501 | GOX product flow (pumped LOX, P-501) | kNm³/h | 0 … 35 | 28.9 |  |
+| FY-501 | GOX load limit (0.208 × FIC-101 − FI-408 + sump surplus allowance) | kNm³/h | 0 … 35 | 29.4 |  |
+| LIC-415 | Reboiler low-level override (limits P-501) | % | 0 … 100 | 70.0 |  |
+| PI-511 | LOX pump P-501 discharge pressure | bar(g) | 0 … 50 | 33.3 | L 25 P2, LL 20 P1 |
+| TI-512 | GOX temperature leaving E-301 (to carbon-steel header) | °C | −200 … 50 | 9.50 | L −5 P2, LL −25 P1 |
+| PIC-502 | GOX header pressure (split range GOX / vaporizer) | bar(g) | 0 … 40 | 30.0 | LL 27 P1, L 28.5 P2, H 33 P2 |
+| FIC-503 | GAN product flow (K-503 compressor) | kNm³/h | 0 … 60 | 25.0 |  |
+| PIC-504 | GAN header pressure (split range GAN / LIN vaporizer) | bar(g) | 0 … 12 | 7.99 | LL 6.5 P1, L 7.3 P2, H 9.0 P2 |
+| PI-513 | GAN compressor K-503 discharge pressure | bar(g) | 0 … 15 | 8.39 | H 10.0 P2, HH 11.0 P1 |
+| JI-514 | GAN compressor K-503 motor power | MW | 0 … 2 | 0.64 | H 1.3 P2 |
+| VI-515 | GAN compressor K-503 vibration | mm/s | 0 … 25 | 1.75 | H 7.1 P2, HH 11.0 P1 |
+| AI-601 | GOX purity | % O2 | 95 … 100 | 99.6 | L 99.5 P2, LL 99.0 P1 |
+| AIC-602 | O2 in GAN (purity → reflux) | ppm | 0 … 100 | 2.93 | H 10 P2, HH 50 P1 |
+| LI-505 | LOX tank level | % | 0 … 100 | 65.0 | LL 10 P1, L 20 P2, H 90 P2 |
+| LI-506 | LIN tank level | % | 0 … 100 | 60.0 | LL 10 P1, L 20 P2, H 90 P2 |
+| FIC-507 | LOX backup vaporizer E-507 send-out (P-505) | kNm³/h | 0 … 30 | 0.00 | H 0.5 P3 |
+| PI-516 | LOX backup pump P-505 discharge pressure | bar(g) | 0 … 50 | 35.6 | L 25 P2 |
+| FIC-508 | LIN backup vaporizer E-508 send-out (P-506) | kNm³/h | 0 … 45 | 0.00 | H 0.5 P3 |
+| PI-517 | LIN backup pump P-506 discharge pressure | bar(g) | 0 … 20 | 12.0 | L 7.0 P2 |
+| KPI-701 | Specific power ((JI-104 + JI-113 + JI-514) ÷ FIC-501) | kWh/Nm³ | 0 … 1 | 0.53 | H 0.6 P3 |
+
+SI-304 is set for a large-plant expander (~25,000 rpm). Calculated tags (FFI, TDI-410, TY, FY, KPI) are computed by the DCS, not measured; KPI-701 and FFI-111 are *not applicable* (OPC UA `BadOutOfService`) while no GOX is produced.
 
 ---
 
@@ -208,6 +321,8 @@ Note: SI-304 is set for a large-plant expander (~25,000 rpm). Change it if you p
 
 **Data-placement note (brief):** process and machine tags live in the DCS and the OT historians (high-frequency vibration sometimes sits in a separate machine-protection system such as a Bently-type rack, which is a classic IIoT-landing debate). Lab cross-checks of O2/N2 purity and periodic GC hydrocarbon analyses of LOX sit in LIMS. Delivered product volumes per consumer, electricity (MWh) and maintenance orders sit in ERP. The PdM initiative needs all three systems joined on a common asset model (e.g., tag → equipment → functional location). That join is where the IT/OT data-model ownership question becomes concrete.
 
+**As built.** Condition signals exist in the DCS for the MAC (VI-105, TI-106, PI-107, JI-104), the booster (VI-114, JI-113), the expander (SI-304, VI-305, TI-306), the GAN compressor (VI-515, JI-514), the mole sieve (PDI-203, ZI-205, TIC-204), the MHE (TDI-302) and the LOX pump (PI-511, whose unsteady pressure shows cavitation). Instructor scenarios produce the matching failure patterns (bearing wear, impeller fouling, cavitation, MHE fouling, heater fault). LIMS, ERP and maintenance systems are not built.
+
 ---
 
 ## 7. Energy KPI
@@ -216,6 +331,7 @@ Note: SI-304 is set for a large-plant expander (~25,000 rpm). Change it if you p
 - **Where the power goes:** the MAC plus booster account for about 86% of energy in one case study,\[35\] and MAC power makes up about 70–90% of ASU operating cost.\[36\]
 - **Trend:** Linde reports a 15% drop in average ASU power consumption over the last 10 years.\[1\]
 - **Demo KPI:** KPI-701 = JI-104 (+ booster + product compression) ÷ FIC-501. Show it worsening with MAC efficiency drift, PPU over-regeneration, high liquid make and part load. This is the bridge between operations, energy and PdM.
+- **As built:** KPI-701 = (JI-104 + JI-113 + JI-514) ÷ FIC-501, i.e. MAC + booster + GAN compressor. Normal ≈ 0.53–0.55 kWh/Nm³, inside the typical installed range, with a P3 alarm at 0.60. It is computed only while P-501 delivers at least 10 kNm³/h; otherwise it is *not applicable* rather than a meaningless large number.
 
 ---
 
@@ -230,6 +346,8 @@ Note: SI-304 is set for a large-plant expander (~25,000 rpm). Change it if you p
 
 **Plausibility check:** EO (about 500 t/d) plus acetylene POX (about 400 t/d) is about 900 t/d O2, which matches a 1,000 t/d ASU with about 10% margin. The ASU's GAN covers the site N2 grid. This gives a self-consistent mass balance for the demo.
 
+**As built.** The consumers are not modelled as plants: each is a demand random walk on the GOX or GAN header, plus instructor scenarios (EO demand step +20 %, acetylene burner trip, N2 purge campaign). The ammonia/argon option is not built.
+
 ---
 
 ## 9. Recommendations for the build
@@ -239,12 +357,15 @@ Note: SI-304 is set for a large-plant expander (~25,000 rpm). Change it if you p
 3. **Script four scenarios:** EO demand step, MAC trip with vaporizer backup, mole-sieve breakthrough, and slow MAC efficiency drift for PdM. These map one-to-one onto operations, safety, data and AI storylines.
 4. **Publish via OPC UA with an ISA-style hierarchy** (Site/Area/Unit/Equipment/Tag) and engineering units in metadata. Then demonstrate that "an OPC UA connector" alone does not answer who owns the asset model, the LIMS join, or the ERP volume reconciliation.
 
+**Status:** 1 grew beyond 35 tags once internal compression and the backups were added (§0), still without argon. 2 and 3 are done, with 16 scenarios instead of four. 4 is done for the OPC UA side (`HCW/Haltenberg/ASU1/<Block>/<Tag>`, AnalogItems with EURange and units, HistoryRead); the LIMS/ERP join is still open.
+
 ## 10. Caveats
 
 - All numbers are **representative**, not design data. Real values depend on cycle (GOX vs pumped-LOX), vendor and product slate. Time constants in §4 are demo assumptions informed by the literature, not measured plant data.
 - Hydrocarbon and acetylene limits vary by vendor and reboiler type (EIGA Doc 65 / AIGA 035).\[24\]\[50\] Treat the demo thresholds as illustrative.
 - Consumer demand figures are scaled for a fictional site. The BASF figures (acetylene 90 kt/yr, EO 845 kt/yr combined with Antwerp, ammonia 880 kt/yr in 2022) come from BASF releases and bank/press reports and may have changed since.\[40\]\[48\]\[51\]\[52\]
 - Expander speeds vary widely with machine size. The 52,000–60,000 rpm figures come from small-unit studies.\[8\]
+- **Simplifications in the built simulator:** no argon column; tanks only fill from the column and drain through the backups (no truck loadouts); vaporizers are assumed big enough (no outlet temperature); the mole-sieve bed feedbacks always follow their command. ASU1 is built for realistic-looking data and plausible cause and effect, not as a full-fidelity operator training simulator.
 
 ## Sources
 
