@@ -15,7 +15,10 @@ Keep this file current. It is the main knowledge carrier between sessions.
 
 **Other docs to keep current:**
 - **Research doc:** keeps the original research, plus §0 "ASU1 as built" and *As built* notes per section (loops §5.1, interlocks §5.2, tag table with normal values §5.4). Update them when equipment, loops, interlocks or tags change; the §5.4 table is a snapshot, `inventory/tags.csv` is authoritative.
-- **README "New here? Plant automation in brief":** a primer for readers who have never been on a production site (glossary, tag naming, a trip walkthrough, a first tour using the K-503 trip). Keep its examples working when names or procedures change.
+- **The wiki (`wiki/*.md`):** the user documentation, for humans: getting started, the primer "Plant automation in brief" (glossary, tag naming, a trip walkthrough), the first tour (K-503 trip), process, architecture, displays, scenarios, data access, configuration, development. Update the page whose topic you change (new tag on a display, new scenario, new env var, changed restart procedure), and keep its examples working.
+  - **Source in the repo, published by script:** `python tools/publish_wiki.py [--dry-run]` copies `wiki/*.md` and `docs/screenshots/*.png` (as `images/`) to `<repo>.wiki.git`, removes pages that no longer exist, commits and pushes. Edits made on GitHub are overwritten. Publish only after Willem's OK, after the PR is merged.
+  - **Links:** between pages by page name (`[Architecture](Architecture)`, `Process-behaviour#restart-after-a-trip`), to repo files by full GitHub URL, images as `images/<file>.png`. `test_wiki_links_resolve` checks pages and images.
+  - **README** is kept short: pitch, quick start, architecture sketch, links. Detail goes to the wiki.
 
 **Every component has a tested inventory of its interface, and every change is checked against it.** `inventory/` lists what each layer exposes to the others: Modbus map, DCS tags, OPC UA nodes, HTTP API, instructor scenarios. It can be trusted because the test suite proves it matches the code, and that the layers agree with each other. So:
 - look up names and addresses there instead of guessing;
@@ -42,8 +45,11 @@ dcs/main.py              asyncio scan loop (pymodbus client), checkpointing, HTT
 dcs/web/index.html       hub (the only page that isn't a persona HMI)
 dcs/web/operator.html    operator console (overview mimic + L3 detail displays, tag list, interlocks, alarms/events, trends)
 tools/offline_sim.py     plant model + control layer coupled directly, faster than real time (Sim class = test harness)
+tools/publish_wiki.py    copies wiki/ + docs/screenshots/ to the GitHub wiki repo and pushes (by hand, after an OK)
 tools/inventory.py       generates inventory/ from every layer's source of truth (needs asyncua: run in the tests image)
 inventory/               GENERATED interface inventory: field/dcs/opcua/api/plant .json + tags.csv (README.md is hand-written)
+wiki/                    the GitHub wiki's source: user documentation (Home.md, _Sidebar.md, one file per page)
+docs/screenshots/        screenshots, shown in the wiki (as images/) and the README
 tests/                   pytest: test_inventory, test_contracts, test_behaviour, test_e2e (+ Dockerfile for the runner)
 nodered/Dockerfile       official Node-RED image + node-red-contrib-opcua (baked in, /data is a bind mount)
 nodered_data/flows.json  the only tracked file in nodered_data/ (runtime state is git-ignored)
@@ -86,7 +92,7 @@ docker run --rm --network <repo-folder>_default -v /path/to/script:/s --entrypoi
 # connect to opc.tcp://dcs:4840/hcw/asu1/, namespace "urn:haltenberg:hcw:asu1:dcs"
 ```
 
-**Screenshots** (headless Chrome; Playwright is not installed). `?tag=<TAG>` opens a faceplate, `?trend=A.PV,B.PV&range=<min>` preselects trend points and window (a RANGES value), `#overview|tags|ilk|alarms|trends` selects a tab and `#detail/<id>` (e.g. `#detail/C-401`) a detail display, so every view can be captured without clicking. README screenshots live in `docs/screenshots/`; for a lively trend, compress the PPU cycle to 300 s for ~15 min first, then restore 14400:
+**Screenshots** (headless Chrome; Playwright is not installed). `?tag=<TAG>` opens a faceplate, `?trend=A.PV,B.PV&range=<min>` preselects trend points and window (a RANGES value), `#overview|tags|ilk|alarms|trends` selects a tab and `#detail/<id>` (e.g. `#detail/C-401`) a detail display, so every view can be captured without clicking. Screenshots live in `docs/screenshots/` (the wiki shows them as `images/`); for a lively trend, compress the PPU cycle to 300 s for ~15 min first, then restore 14400:
 ```bash
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --disable-gpu --hide-scrollbars \
   --window-size=1600,1000 --virtual-time-budget=6000 --screenshot=out.png "http://localhost:8110/operator?tag=PIC-502#tags"
@@ -334,16 +340,17 @@ Tuning facts that are easy to break:
   - cascade / limits / ratio / xlimit / sp_cap / handover / LINEUP / PRIORITY_OVERRIDE references;
   - every tag has a value after one scan, and the historian points;
   - OPC UA units and ranges, and that hidden faults stay hidden;
-  - every instrument tag named in operator.html, index.html, instructor.html, README, CLAUDE.md and the research doc exists (`DRAWING_ONLY` lists HV-116);
+  - every instrument tag named in operator.html, index.html, instructor.html, README, CLAUDE.md, the research doc and every wiki page exists (`DRAWING_ONLY` lists HV-116);
   - every DCS tag has a data block (`["TAG", x, y` placement);
   - console equipment and valve ids;
   - instructor ground-truth keys and Node-RED NodeIds;
-  - the hub/README counts ("19 controllers", "7 interlocks (I-100 … I-506)").
+  - the hub/README/wiki Architecture counts ("19 controllers", "7 interlocks (I-100 … I-506)");
+  - wiki links between pages and to images resolve.
 - **`test_behaviour`:** `Sim(seed, t0)`; `Sim.run(seconds, until=, win=)` returns a `Window` (min/max per tag, alarms seen, events). It covers:
   - steady state 2 h: no P1/P2 alarms (P3 FIC-507.H can occur: normal demand wander touches the FY-501 load limit), in spec, every tag live and in range;
   - repeatability;
   - `SIGNATURES`: one per instructor scenario (first-out regex, required alarms, an extra check). A new scenario fails `test_every_scenario_has_a_signature` until it has one;
-  - the README restart procedures;
+  - the restart procedures (wiki: Process behaviour);
   - permissives, reset refused while a cause is active, ESD, I/O loss, checkpoint, PPU compression at 900 / 300 s;
   - per-GOX figures not applicable without production;
   - E-301: the balance recomputed from DCS tags closes within 2 % (steady and with the expander stopped), TDI-302 = TI-307 − TI-310, the expander cools 60–75 K; expander stop warms the cold end; at reduced air the booster follows the load limit.
@@ -388,7 +395,7 @@ Tuning facts that are easy to break:
 
 - **Packaging:** one `docker compose up -d --build`. Python 3.12-slim, `USER nobody`, pinned `requirements.txt` (`dcs/` only; `plant/` is stdlib-only).
 - **Compose:** the build context is the repo root, so both images can copy `common/`.
-- **Settings:** env vars with code defaults, documented in the README table.
+- **Settings:** env vars with code defaults, documented in the wiki's Configuration page.
 - **Networking:** services reach each other by compose service name (`plant`), never localhost.
 - **Web:** self-contained `web/*.html`, vanilla JS, no build, no CDN.
   - **Hub:** `/` is navigation; persona pages link back with `⌂ All systems`. External tools (Node-RED) get a card with `target=_blank`, and their URL comes from `/api/config` links (`PUBLIC_NODERED_URL`).

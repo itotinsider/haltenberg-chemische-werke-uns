@@ -102,18 +102,36 @@ rules above:
 
 ## In progress
 
-### `docs-primer` — README and documentation for new users
-- **Status:** 🚧 In progress · **Owner:** Claude agent for Willem · **Branch:** `docs-primer` (uncommitted; the branch name is not in git right now) · **PR:** —
-- **Goal:** the README and the docs work for people who have never been on a production site: a
-  "New here? Plant automation in brief" section (what a DCS, Modbus, an interlock and a trip are)
-  and a 15-minute first tour.
-- **Touches:** `README.md` (new section near the top), probably `linde air seperation research.md`
-  and `CLAUDE.md`.
-- **Depends on:** nothing, but it overlaps with `docs-refresh` (step 5) and with every item that
-  edits README/CLAUDE.md, so expect small merge conflicts there.
-- **Notes:** 2026-10-18: its uncommitted files share the main checkout with
-  `mhe-expander-tags`. Separate them before either commits. The agent started before this
-  file existed and doesn't know these rules yet.
+### `docs-primer` — User documentation in the GitHub wiki, a short README
+- **Status:** 🚧 In progress · **Owner:** Claude (session docs-wiki) for Willem · **Branch:** `docs-wiki` · **PR:** [#8](https://github.com/itotinsider/haltenberg-chemische-werke-uns/pull/8)
+- **Goal:** everything a human needs to understand HCW (goal, getting started, plant automation
+  in brief, the process, architecture, displays, data access, development) lives in the GitHub
+  wiki, with the screenshots. The README shrinks to a pitch, a quick start and links (~80 lines).
+- **Phase 1 (done, PR #6):** "New here? Plant automation in brief" and a 15-minute first tour in
+  the README; research doc updated to the as-built ASU1; `test_contracts` checks the research doc.
+- **Phase 2 (this branch):**
+  - Wiki source lives in the repo, in `wiki/*.md`, so it is reviewed in PRs and tested.
+    `tools/publish_wiki.py` copies `wiki/` and `docs/screenshots/` to the wiki repo
+    (`<repo>.wiki.git`) and pushes. It is run by hand, after Willem's OK.
+  - Pages: Home, Getting started, Plant automation in brief, The process (air separation),
+    Architecture, Operator console, Instructor station, Process behaviour, Data access,
+    Interface reference, Configuration, Development, `_Sidebar`.
+  - README content moves to those pages; the primer and first tour from phase 1 move too.
+  - `test_contracts`: wiki pages may only name existing instruments, like README.
+  - English only. CLAUDE.md and ROADMAP.md stay in the repo; the wiki links to them.
+- **Touches:** `README.md`, new `wiki/`, new `tools/publish_wiki.py`, `tests/test_contracts.py`,
+  `CLAUDE.md` (layout, keep the wiki current). No interface change.
+- **Depends on:** nothing. Overlaps with `docs-refresh` (step 5): after this, step 5 updates the
+  wiki pages instead of the README.
+- **Done when:** every README section has a home in the wiki; README ≤ ~100 lines with working
+  links; tests green; wiki published after an OK.
+- **Notes:**
+  - 2026-10-18 Willem: wiki as the source of user documentation and screenshots; source in the
+    repo with a publish script; fold `docs-primer` into it; English only.
+  - 2026-10-18: the wiki has no pages yet. Its git repo only exists after Willem creates the
+    first page in the browser.
+  - 2026-10-18: PR #8 open, all tests green. Left to do after merge: run
+    `python tools/publish_wiki.py` (Willem's OK), check the wiki renders, move this item to Done.
 
 ## Planned
 

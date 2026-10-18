@@ -5,7 +5,7 @@ possible but a change in cause and effect fails a test:
 
 - steady state stays in spec without a single P1/P2 alarm,
 - every instructor scenario produces its signature (first-out trip, alarm or trend),
-- the documented restart procedures (README "Restart after a trip") bring the plant back,
+- the documented restart procedures (wiki "Process behaviour", Restart after a trip) bring the plant back,
 - permissives, interlock resets, I/O loss, checkpoint, ESD and PPU time compression.
 
 A fixed seed makes every run repeatable (~1 plant-hour per 2 s). The bands are meant to hold for
