@@ -8,6 +8,7 @@ Fast (no physics beyond one scan). Layers and owners: see inventory/README.md.
 """
 
 import collections
+import pathlib
 import re
 
 import pytest
@@ -214,8 +215,12 @@ def test_ppu_cycle_limits_agree():
 INSTRUMENT = re.compile(r"\b[A-Z]{2,4}-\d{3}[A-Z]?\b")
 
 
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+WIKI_PAGES = sorted(p.relative_to(ROOT).as_posix() for p in (ROOT / "wiki").glob("*.md"))
+
+
 @pytest.mark.parametrize("page", ["dcs/web/operator.html", "dcs/web/index.html", "plant/web/instructor.html",
-                                  "README.md", "CLAUDE.md", "linde air seperation research.md"])
+                                  "README.md", "CLAUDE.md", "linde air seperation research.md"] + WIKI_PAGES)
 def test_pages_only_name_existing_instruments(page):
     known = set(C.TAG_INDEX) | set(AI + AO + DI + DO) | {"KS-201", "ISA-101"} | set(DRAWING_ONLY)
     assert sorted(set(INSTRUMENT.findall(read(page))) - known) == []
@@ -250,9 +255,28 @@ def test_nodered_subscribes_to_existing_nodes(code):
     assert subscribed and sorted(set(subscribed) - ids) == []
 
 
-@pytest.mark.parametrize("page", ["dcs/web/index.html", "README.md"])
+@pytest.mark.parametrize("page", ["dcs/web/index.html", "README.md", "wiki/Architecture.md"])
 def test_documented_counts(page):
     text = read(page)
     assert re.search(rf"\b{len(LOOPS)} (PI )?controllers", text), "controller count"
     assert re.search(rf"\b{len(C.INTERLOCKS)} interlocks \({min(C.INTERLOCKS)} … {max(C.INTERLOCKS)}\)", text), \
         "interlock count / range"
+
+
+def test_wiki_links_resolve():
+    """Wiki pages link to each other by page name and to images/ (published from docs/screenshots/)."""
+    assert "wiki/Home.md" in WIKI_PAGES and "wiki/_Sidebar.md" in WIKI_PAGES
+    pages = {pathlib.Path(p).stem for p in WIKI_PAGES}
+    shots = {p.name for p in (ROOT / "docs" / "screenshots").glob("*.png")}
+    broken = []
+    for page in WIKI_PAGES:
+        for target in re.findall(r"\]\(([^)\s]+)\)", read(page)):
+            if target.startswith(("http://", "https://", "#")):
+                continue
+            if target.startswith("images/"):
+                ok = target.removeprefix("images/") in shots
+            else:
+                ok = target.split("#")[0] in pages
+            if not ok:
+                broken.append(f"{page}: {target}")
+    assert broken == []
