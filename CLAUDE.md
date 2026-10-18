@@ -23,6 +23,7 @@ See "Tests and the interface inventory" below.
 ## Layout
 
 ```
+ROADMAP.md               plans, ideas, claims and progress (read before starting work)
 common/iomap.py          Modbus register map — single source of truth, copied into BOTH images
 plant/model.py           process model (6 blocks) + instructor SCENARIOS — no I/O, no clock
 plant/modbus_server.py   hand-written Modbus TCP server (FC1-6, 15, 16)
@@ -379,6 +380,7 @@ Tuning facts that are easy to break:
   - **Analog bars** in every data block (except KPI-701): the tag's full range as a 4 px grey track. Zones beyond L/H are medium grey, beyond LL/HH dark grey (from `alarms` in `config.py`). There is a PV pointer and, for controllers, a hollow SP triangle. Built by `barHtml()`, positioned each poll by `barX()`. Data blocks keep their 96 × 34 / 48 size; the alarm badge sits top-right.
   - **Flow arrows** are generated, not drawn: `addFlowArrows()` puts one small arrowhead per `path.pipe`, half-way along its longest straight run and moved off valves, in the media colour. So **draw every pipe in flow direction**. Shafts get `.noarrow`; `.thin` signal lines and runs < 50 units get none. `pathSegments()` understands M/H/V/L and the `hop()` arc only.
   - **Liquids** are clipped to their vessel's inner shape (`clipPath`; `clip()` helper on detail displays). Level spans (`LEVELS`, `levels`) are the *inner* height, so 0 % is the inside bottom.
+  - **Overview line hops:** the static SVG writes hops literally as `H{x-6}a6 6 0 0 1 12 0` (the same arc the detail displays' `hop(x)` makes). The horizontal line hops; a vertical line never does.
   - **Instructor station:** deliberately dark and violet ("simulator side of the glass"), so nobody mistakes it for the DCS.
 - **Never rebuild an open form from under the user on a poll.**
   - **Faceplate:** built once per selected tag; polls only patch text, and tuning inputs are skipped while focused or dirty.
@@ -386,38 +388,17 @@ Tuning facts that are easy to break:
 
 ## Not built yet / open
 
+Ideas for these are tracked in `ROADMAP.md`.
+
 - **Not built:** OPC UA writes and an APC/MPC layer; OPC UA Alarms & Conditions (alarms are only exposed as `AlarmState` strings and `Diagnostics` counts); the argon column; tank truck loadouts (deliberately not planned; the tanks only fill from the column and drain through the backups); vaporizer outlet temperatures (E-507/E-508 are assumed big enough); business systems (LIMS purity cross-checks, SAP-PM, ERP volumes — research §6).
 - **Only the PPU is compressible:** the instructor slider speeds up the mole-sieve cycle. Everything else runs in real time. A load change at the default ramp takes ~40 min, and purity recovery after a restart ~1 h. That's intentional (research §4.4) but slow for live demos.
 
-## Roadmap: physically complete displays (started Oct 2026)
+## Roadmap and parallel work
 
-Working agreement: one branch and one PR per step. Verify each step with the test suite (`docker compose run --rm tests`, plus a regenerated inventory if an interface changed), and for new behaviour or graphics also the offline sim, the API, an OPC UA client and a headless screenshot.
+Plans, ideas and progress live in **`ROADMAP.md`**: what is in progress (owner, branch, reserved tag names and Modbus addresses), what is planned, ideas under discussion, what was parked or dropped and why, and what is done. Several people and agents work in parallel, so before starting anything:
+- work in **your own git worktree** on your own branch, never in a checkout another agent is using: no `git checkout`/`switch`, `stash`, `reset` or `add -A` there (details in `ROADMAP.md`, "Several agents on one machine");
+- check `ROADMAP.md` on `main` and on the other branches (the command is in its rules) so you don't take claimed work or reserved addresses;
+- claim the item in your branch's first commit;
+- never move an idea to Planned, or take someone else's item, without Willem or David.
 
-- **Done, step 1:** L3 navigation framework, C-401 column display, `TY-411/412/413` calc tags.
-- **Done, step 1b:** graphics-only detail displays for every unit (no new tags or model data), display bar, linked off-page connectors.
-- **Step 2: physically correct products.** Willem chose **internal compression** for oxygen, a **K-503 GAN compressor** for nitrogen, a **single** LOX pump (no standby), a separate motor-driven booster, and backup pumps at both tanks.
-  - **Done, step 2a (oxygen internal compression):** K-102 booster, P-501 LOX pump, cross-limited ratio FIC-111/FIC-501, FFI-111, TI-512, PI-511, LIC-415 override, I-110/I-500 with generic interlock parents and per-equipment bypass, booster/cavitation scenarios, KPI-701 incl. booster.
-    - **Displays done here:** a new K-102 display; E-301, C-401 and products updated; booster and pump symbols on the overview. The rest of the L2 redraw is still open.
-  - **Done, step 2b (nitrogen + backups):** K-503 GAN compressor (FIC-503 on its IGV, PI-513, JI-514, VI-515, I-503 child of I-100); P-505 / P-506 backup pumps kept cold on recirculation (PI-516, PI-517, I-505 / I-506 on tank LL, no parents); E-508 + FIC-508 with PIC-504 split range; trip handover / handback; GAN header hold-up ×5; KPI-701 incl. JI-514 (H 0.60); scenarios `gan_compressor_trip`, `lox_backup_pump_trip`.
-    - **Also fixed here (2a gap):** the GOX load limit FY-501 (`sp_cap`), see the DCS section.
-    - **Displays done here:** products (K-503, second split bar) and T-505 (pumps, E-508); on the overview K-503, P-505 and the P-506 / E-508 riser. The rest of the L2 redraw is 2c.
-    - **Known, not fixed:** after a restart at low air (FIC-101 not yet raised) the site still takes full GAN, AIC-602 raises the reflux and GOX purity sits at ~99.2 % (L alarm) until the air is raised — the documented procedure raises it.
-  - **Done, step 2c (overview drawing fixes, "light" scope chosen by Willem):** LOX to storage leaves the LP sump (y 308), LIN reflux and LIN to storage start at E-404 (node at x 872, y 339), every pipe crossing on L2 has a line hop, and the backup send-outs join their headers with junction dots.
-    - **Deliberately not done:** GAN and waste N₂ still go straight to their headers on the overview. Routing them through E-301's cold end would mean relocating ~8 data blocks in the cold-box area; the E-301 detail display shows them passing the exchanger. GOX already passes E-301 on L2 (since 2a).
-    - **Overview hop convention:** the static SVG writes hops literally as `H{x-6}a6 6 0 0 1 12 0` (the same arc the detail displays' `hop(x)` makes). The horizontal line hops; a vertical line never does.
-- **Done, step 2.5 (tests baseline, in between):**
-  - **Tests:** the generated interface inventory (`inventory/`); a pytest suite in four parts (inventory, contracts, behaviour, end-to-end); the `tests` compose service. Willem chose local runs only (Docker one-liner), no CI.
-  - **Tooling:** `tools/offline_sim.py` got the reusable `Sim` class and `--seed`. `dcs/main.py` got `runtime_status()`, so the inventory sees the scan/io/historian fields of `/api/state`.
-  - **What the tests led to:**
-    - fixed Modbus addresses per process area, all addresses changed once;
-    - KPI-701 / FFI-111 not applicable without GOX production, shown as `BadOutOfService` live and in history;
-    - FY-501 clamped;
-    - TDI-410 range −15…10.
-- **Step 3: MHE + expander tags.**
-  - Every stream through E-301 gets in/out temperatures, so the E-301 display gets data blocks.
-  - X-303 gets inlet/outlet temperature and pressure tags (≈ −110 °C at 5.5 bar(a) in, ≈ −178 °C at 1.3 bar(a) out).
-- **Step 4: training.**
-  - Link the `TRAIN` steps to their detail displays.
-  - The column step gets a boiling-point table: N₂ −196 / O₂ −183 °C at 1 atm; HP-top N₂ ≈ −177 °C vs LP-sump O₂ ≈ −180 °C.
-  - It also gets the LP feed temperatures before/after their valves: rich liquid −174 → ≈ −189 °C, LIN −177 → ≈ −193 °C. The rich-liquid flash needs a composition estimate; TY-413 already gives the LIN value.
-- **Step 5:** README, CLAUDE.md, screenshots.
+Lasting knowledge from a finished item (how it works, why, gotchas) belongs in this file; `ROADMAP.md` keeps only a summary.
