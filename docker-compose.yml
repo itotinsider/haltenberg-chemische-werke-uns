@@ -8,6 +8,14 @@
 #
 # The DCS is the only system with a modelled data interface (OPC UA). The plant's Modbus
 # registers are the raw field level underneath it.
+#
+# Several stacks on one machine (one per git worktree / agent): put a .env file (git-ignored) in
+# the worktree that sets HCW_STACK and the five HCW_*_PORT host ports, e.g.
+#   HCW_STACK=hcw2  HCW_DCS_PORT=8210  HCW_INSTRUCTOR_PORT=8211  HCW_OPCUA_PORT=4940
+#   HCW_MODBUS_PORT=5120  HCW_NODERED_PORT=1980
+# Compose reads it automatically. Container names and image tags then carry the stack name, and
+# each worktree already has its own data/, exports/ and compose network. Inside the network the
+# services keep their standard ports. Without a .env everything is as before (hcw, 8110, …).
 
 x-asu-env: &asu-env
   # Initial bed online time of the PPU (mole sieve). The plant's adsorption/regeneration rates and
@@ -22,12 +30,12 @@ services:
     build:
       context: .
       dockerfile: plant/Dockerfile
-    image: hcw/asu1-plant:latest
-    container_name: hcw-asu1-plant
+    image: ${HCW_STACK:-hcw}/asu1-plant:latest
+    container_name: ${HCW_STACK:-hcw}-asu1-plant
     restart: unless-stopped
     ports:
-      - "8111:8111"   # Instructor station: http://localhost:8111
-      - "5020:5020"   # Modbus TCP field I/O (raw registers), for teaching / inspection
+      - "${HCW_INSTRUCTOR_PORT:-8111}:8111"   # Instructor station: http://localhost:8111
+      - "${HCW_MODBUS_PORT:-5020}:5020"       # Modbus TCP field I/O (raw registers), for teaching / inspection
     environment:
       <<: *asu-env
       MODBUS_PORT: "5020"
@@ -39,12 +47,12 @@ services:
     build:
       context: .
       dockerfile: dcs/Dockerfile
-    image: hcw/asu1-dcs:latest
-    container_name: hcw-asu1-dcs
+    image: ${HCW_STACK:-hcw}/asu1-dcs:latest
+    container_name: ${HCW_STACK:-hcw}-asu1-dcs
     restart: unless-stopped
     ports:
-      - "8110:8110"   # Hub + operator console: http://localhost:8110
-      - "4840:4840"   # OPC UA: opc.tcp://localhost:4840/hcw/asu1/
+      - "${HCW_DCS_PORT:-8110}:8110"     # Hub + operator console: http://localhost:8110
+      - "${HCW_OPCUA_PORT:-4840}:4840"   # OPC UA: opc.tcp://localhost:4840/hcw/asu1/
     environment:
       <<: *asu-env
       # The plant's compose service name — "localhost" inside a container is the container.
@@ -57,6 +65,11 @@ services:
       HISTORIAN_DEADBAND_PCT: "0.25"
       HISTORIAN_MAX_INTERVAL_SECONDS: "60"
       HISTORIAN_RETENTION_DAYS: "14"
+      # Links on the hub page: how a browser on the host reaches the other endpoints.
+      PUBLIC_INSTRUCTOR_URL: http://localhost:${HCW_INSTRUCTOR_PORT:-8111}
+      PUBLIC_OPCUA_ENDPOINT: opc.tcp://localhost:${HCW_OPCUA_PORT:-4840}/hcw/asu1/
+      PUBLIC_MODBUS_ENDPOINT: localhost:${HCW_MODBUS_PORT:-5020}
+      PUBLIC_NODERED_URL: http://localhost:${HCW_NODERED_PORT:-1880}
     volumes:
       # Historian database + controller/sequence checkpoint: survive rebuilds, visible on host.
       - ./data:/app/data
@@ -67,11 +80,11 @@ services:
     build:
       context: .
       dockerfile: nodered/Dockerfile   # official image + node-red-contrib-opcua
-    image: hcw/nodered:latest
-    container_name: hcw-nodered
+    image: ${HCW_STACK:-hcw}/nodered:latest
+    container_name: ${HCW_STACK:-hcw}-nodered
     restart: unless-stopped
     ports:
-      - "1880:1880"   # Flow editor: http://localhost:1880
+      - "${HCW_NODERED_PORT:-1880}:1880"   # Flow editor: http://localhost:1880
     environment:
       # Pins the flow filename; the official image otherwise names it after the container's
       # hostname, which is different every time the container is recreated.
@@ -92,7 +105,7 @@ services:
     build:
       context: .
       dockerfile: tests/Dockerfile
-    image: hcw/asu1-tests:latest
+    image: ${HCW_STACK:-hcw}/asu1-tests:latest
     profiles: ["test"]
     volumes:
       - .:/w

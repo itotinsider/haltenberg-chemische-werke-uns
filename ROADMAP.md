@@ -83,15 +83,17 @@ rules above:
 2. **Name the agent in Owner,** e.g. `Claude (session haltenberg-…-31) for Willem`, so the
    others and the person know whom to ask. If an agent stops halfway, its Notes say where it
    stopped and what comes next, so another agent can continue.
-3. **There is only one live stack per machine.** The compose services have fixed container names
-   (`hcw-asu1-plant`, `hcw-asu1-dcs`, `hcw-nodered`), fixed ports (8110, 8111, 4840, 1880) and a
-   `data/` folder with the historian and the checkpoint. If you run `docker compose up` from your
-   worktree, it replaces the other agent's containers and runs your code on your `data/`.
-   - **Use the isolated checks first.** `docker compose run --rm tests` mounts your own worktree.
-     The end-to-end tests use free ports and a temporary data folder. The offline sim needs no
-     containers. All of these can run in parallel.
-   - **Ask before using the live stack** (screenshots, OPC UA client checks), and note in your item
-     while you have it.
+3. **Each agent runs its own live stack.** Container names, image tags and host ports come from a
+   git-ignored `.env` in the worktree (see the top of `docker-compose.yml`). Without one you get the
+   default stack (`hcw-…`, ports 8110, 8111, 4840, 5020, 1880), which belongs to the person.
+   - **Before `docker compose up` in your worktree,** create a `.env` with your own stack name and
+     ports, e.g. `HCW_STACK=hcw2`, `HCW_DCS_PORT=8210`, `HCW_INSTRUCTOR_PORT=8211`,
+     `HCW_OPCUA_PORT=4940`, `HCW_MODBUS_PORT=5120`, `HCW_NODERED_PORT=1980`. Check `docker ps` for
+     ports already taken. Your stack uses your worktree's own `data/` and `exports/`.
+   - **When you're done,** `docker compose down` and remove your `hcw2/*` images.
+   - **The isolated checks still come first.** `docker compose run --rm tests` mounts your own
+     worktree, the end-to-end tests use free ports and a temporary data folder, and the offline sim
+     needs no containers.
 4. **Never merge `inventory/` by hand.** It is generated. After merging `main` into your branch,
    regenerate it (`python tools/inventory.py` in the tests image) and run the tests again.
 5. **Merge `main` before the PR.** Rerun the tests, and check that your reservations still don't
@@ -168,6 +170,22 @@ rules above:
 ### `argon-column` — Argon column
 - **Status:** 💡 Idea · **Owner:** — · **Branch:** — · **PR:** —
 
+
+### `parallel-agents` — Better guard rails for several agents at once
+- **Status:** 💡 Idea · **Owner:** — · **Branch:** — · **PR:** —
+- **Goal:** fewer collisions when several agents work in parallel. Not urgent: it doesn't happen
+  often, and the rules above plus separate stacks (PR "parallel-stacks") are good enough for now.
+- **Ideas:**
+  - **Stale-claim check:** a script (or PR-template step) that lists "In progress" items whose
+    branch is merged or gone. `docs-primer` stayed "In progress" after its merge.
+  - **Guard on the main checkout:** a git hook that refuses commits there on any branch but `main`.
+    The first `docs-primer` agent shared the main checkout with step 3.
+  - **Built-in worktrees:** start agents with Claude Code's own worktree isolation instead of
+    relying on each agent to read the rules.
+  - **Earlier visibility:** claims only show once committed, and to remote collaborators once
+    pushed. Commit the claim first, push it early.
+  - **Cleanup:** a script that removes worktrees and local branches already merged into `main`.
+- **Notes:** 2026-10-18 Willem: implement only separate stacks now; keep the rest as ideas.
 ## Parked and dropped
 
 - ⏸ **Route GAN and waste N₂ through E-301 on the overview.** Deliberately not done in step 2c: it
