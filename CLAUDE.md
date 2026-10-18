@@ -396,6 +396,7 @@ Ideas for these are tracked in `ROADMAP.md`.
 ## Roadmap and parallel work
 
 Plans, ideas and progress live in **`ROADMAP.md`**: what is in progress (owner, branch, reserved tag names and Modbus addresses), what is planned, ideas under discussion, what was parked or dropped and why, and what is done. Several people and agents work in parallel, so before starting anything:
+- work in **your own git worktree** on your own branch, never in a checkout another agent is using: no `git checkout`/`switch`, `stash`, `reset` or `add -A` there (details in `ROADMAP.md`, "Several agents on one machine");
 - check `ROADMAP.md` on `main` and on the other branches (the command is in its rules) so you don't take claimed work or reserved addresses;
 - claim the item in your branch's first commit;
 - never move an idea to Planned, or take someone else's item, without Willem or David.

@@ -37,6 +37,9 @@ adding items at the same time don't collide.
 - **Notes:** discussion and decisions, each dated and named: `2026-10-18 Willem: …`.
 ```
 
+Tag names in Ideas and Planned may not exist yet. That is why this file is not part of the
+"docs only name existing instruments" test, unlike README and CLAUDE.md.
+
 ### Rules for parallel work
 
 1. **Check before you start.** Look at this file on `main` *and* on every other branch, because a
@@ -63,13 +66,44 @@ adding items at the same time don't collide.
    `inventory/` if an interface changed. For new behaviour or graphics, also check the offline
    sim, the API, an OPC UA client and a headless screenshot. One branch and one PR per item.
 
-Tag names in Ideas and Planned may not exist yet. That is why this file is not part of the
-"docs only name existing instruments" test, unlike README and CLAUDE.md.
+### Several agents on one machine
+
+Several AI agents often work on this codebase at the same time, each for a person. Besides the
+rules above:
+
+1. **One agent, one worktree, one branch.** Never let two agents work in the same checkout. If one
+   agent switches branches, the other's uncommitted files go with it. If one commits with
+   `git add -A`, it takes the other's work. Start every item in a fresh worktree next to the repo:
+   ```bash
+   git fetch && git worktree add ../hcw-<slug> -b <branch> origin/main
+   # when merged:  git worktree remove ../hcw-<slug>
+   ```
+   In a checkout you didn't create, never run `checkout`/`switch`, `stash`, `reset`, `clean` or
+   `checkout -- .`. Stage files by name, never `git add -A` or `git add .`.
+2. **Name the agent in Owner,** e.g. `Claude (session haltenberg-…-31) for Willem`, so the
+   others and the person know whom to ask. If an agent stops halfway, its Notes say where it
+   stopped and what comes next, so another agent can continue.
+3. **There is only one live stack per machine.** The compose services have fixed container names
+   (`hcw-asu1-plant`, `hcw-asu1-dcs`, `hcw-nodered`), fixed ports (8110, 8111, 4840, 1880) and a
+   `data/` folder with the historian and the checkpoint. If you run `docker compose up` from your
+   worktree, it replaces the other agent's containers and runs your code on your `data/`.
+   - **Use the isolated checks first.** `docker compose run --rm tests` mounts your own worktree.
+     The end-to-end tests use free ports and a temporary data folder. The offline sim needs no
+     containers. All of these can run in parallel.
+   - **Ask before using the live stack** (screenshots, OPC UA client checks), and note in your item
+     while you have it.
+4. **Never merge `inventory/` by hand.** It is generated. After merging `main` into your branch,
+   regenerate it (`python tools/inventory.py` in the tests image) and run the tests again.
+5. **Merge `main` before the PR.** Rerun the tests, and check that your reservations still don't
+   clash with anything merged in the meantime.
+6. **Agents read the rules at session start.** A session that started before this file reached
+   `main`, or that works on a branch made before it, doesn't know these rules. The person who
+   runs it should point it here.
 
 ## In progress
 
 ### `mhe-expander-tags` — Step 3: E-301 and expander tags
-- **Status:** 🚧 In progress · **Owner:** Willem (with Claude) · **Branch:** not committed yet (uncommitted work in the main checkout) · **PR:** —
+- **Status:** 🚧 In progress · **Owner:** Claude agent for Willem · **Branch:** `step3-mhe-expander` (uncommitted, in the main checkout) · **PR:** —
 - **Goal:** every stream through E-301 gets in/out temperatures, so the E-301 detail display gets
   data blocks. X-303 gets inlet/outlet temperature and pressure (≈ −110 °C at 5.5 bar(a) in,
   ≈ −178 °C at 1.3 bar(a) out). The plant closes an enthalpy balance over the exchanger.
@@ -79,6 +113,21 @@ Tag names in Ideas and Planned may not exist yet. That is why this file is not p
   TI-307 … TI-315, PI-316, TI-317, PI-318.
 - **Done when:** the E-301 display shows every stream at both ends; the values agree with the flows
   (balance) and stay in range in every scenario; tests green, inventory regenerated.
+- **Notes:** 2026-10-18: its uncommitted files share the main checkout with `docs-primer`'s.
+  Separate them before either commits (see "Several agents on one machine", rule 1).
+
+### `docs-primer` — README and documentation for new users
+- **Status:** 🚧 In progress · **Owner:** Claude agent for Willem · **Branch:** `docs-primer` (uncommitted; the branch name is not in git right now) · **PR:** —
+- **Goal:** the README and the docs work for people who have never been on a production site: a
+  "New here? Plant automation in brief" section (what a DCS, Modbus, an interlock and a trip are)
+  and a 15-minute first tour.
+- **Touches:** `README.md` (new section near the top), probably `linde air seperation research.md`
+  and `CLAUDE.md`.
+- **Depends on:** nothing, but it overlaps with `docs-refresh` (step 5) and with every item that
+  edits README/CLAUDE.md, so expect small merge conflicts there.
+- **Notes:** 2026-10-18: its uncommitted files share the main checkout with
+  `mhe-expander-tags`. Separate them before either commits. The agent started before this
+  file existed and doesn't know these rules yet.
 
 ## Planned
 
