@@ -1,0 +1,30 @@
+# Publishes wiki/ and docs/screenshots/ to the GitHub wiki whenever they change on main.
+name: Publish wiki
+
+on:
+  push:
+    branches: [main]
+    paths: ["wiki/**", "docs/screenshots/**", "tools/publish_wiki.py"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wiki
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Git identity and token for the wiki repo
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --global url."https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
+      - run: python tools/publish_wiki.py

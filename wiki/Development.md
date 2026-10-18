@@ -79,6 +79,10 @@ The wiki's source is the [`wiki/`](https://github.com/itotinsider/haltenberg-che
 folder in the repository, reviewed in pull requests like code. Don't edit pages on GitHub: the next
 publish overwrites them. Screenshots live in `docs/screenshots/` and are published as `images/`.
 
+Publishing is automatic: when a change to `wiki/` or `docs/screenshots/` is merged into `main`, a
+GitHub Action (`.github/workflows/wiki.yml`) runs `tools/publish_wiki.py`. By hand, from an
+up-to-date `main`:
+
 ```bash
 python tools/publish_wiki.py --dry-run    # show what would change
 python tools/publish_wiki.py              # copy wiki/ and the screenshots to the wiki repo, commit, push
