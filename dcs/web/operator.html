@@ -372,6 +372,7 @@
   .tf-main { flex: 1; display: flex; min-height: 0; }
   .tf-body { flex: 1; min-width: 0; overflow: auto; padding: 14px 18px 24px; }
   .tf-side { width: 400px; flex: none; overflow: auto; background: #fff; border-left: 2px solid var(--train); }
+  #train-card.wide { width: 620px; }
   #train-card.infig { position: static; width: auto; max-width: none; border: none; box-shadow: none; }
   .tf-body svg { width: 100%; height: auto; display: block; background: #f2f3f3; border: 1px solid #b4b8bc; }
   .tf-body h3 { margin: 18px 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
@@ -411,12 +412,12 @@
   /* IT/OT data path: the same value at every layer, the field at the bottom, IT on top */
   .tagpick { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
   .tagpick select { font: 11.5px var(--mono); padding: 2px 4px; flex: 1; min-width: 0; max-width: 100%; }
-  .dp { display: flex; flex-direction: column-reverse; margin: 8px 0; }
+  .dp { display: flex; flex-direction: column; margin: 8px 0; }
   .dpl { border: 1px solid #c3c8cc; background: #f7f8f8; padding: 6px 9px; position: relative; opacity: .6; cursor: pointer; }
   .dpl.on { opacity: 1; border: 2px solid var(--train); background: #fff; }
   .dp.all .dpl { opacity: 1; }
-  .dpl + .dpl { margin-bottom: 13px; }
-  .dpl + .dpl::after { content: "▲"; position: absolute; bottom: -14px; left: 20px; color: var(--muted); font-size: 10px; }
+  .dpl + .dpl { margin-top: 13px; }
+  .dpl + .dpl::before { content: "▼"; position: absolute; top: -14px; left: 20px; color: var(--muted); font-size: 10px; }
   .dpl h5 { margin: 0 0 2px; display: flex; gap: 8px; align-items: baseline; font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
   .dpl h5 .lv { font: 700 9.5px var(--mono); padding: 0 4px; border: 1px solid #b4b8bc; }
   .dpl .big { font: 700 14px var(--mono); color: var(--value); }
@@ -2525,7 +2526,7 @@ const TRAINERS = {
             <b>liquid nitrogen</b> from the condenser (through FV-405). Each drops from ≈ 5.6 to ≈ 1.3 bar in its valve, part of
             it flashes, and it arrives much colder. The table and the drawing in the deep dive show by how much.</p>`,
           think: "The cold LIN arriving at the top of the LP column is exactly what a column top needs: cold reflux." },
-        { title: "Reflux: washing oxygen out of the nitrogen", go: C401, hl: [[596, 56, 140, 274], [992, 402, 112, 56]], sel: "FIC-405", watch: ["FIC-405", "AIC-602", "TY-413"],
+        { title: "Reflux: washing oxygen out of the nitrogen", go: C401, hl: [[596, 56, 140, 274], [992, 402, 112, 56]], sel: "FIC-405", card: "right", watch: ["FIC-405", "AIC-602", "TY-413"],
           text: `<p>The liquid nitrogen sprayed onto the top of the LP column runs down and washes oxygen out of the rising
             vapour. More reflux: purer nitrogen, but less of it, and more nitrogen pushed down towards the oxygen. Less
             reflux: oxygen slips into the nitrogen.</p>
@@ -2539,10 +2540,23 @@ const TRAINERS = {
           text: `<p>Liquid oxygen collects in the LP sump. Its level (LIC-404) matters twice. The condenser must stay covered
             with liquid to work. And a pump, P-501, takes the product from here: if the column can't make what the customers
             ask, the low-level override <b>LIC-415</b> holds the pump back instead of emptying the sump.</p>
-            <p>The hazard: air contains traces of hydrocarbons (methane, acetylene). They boil at higher temperatures than
-            oxygen, so they stay in the boiling liquid and concentrate there, in pure oxygen. The analysers <b>AI-603</b>
-            (total hydrocarbons) and <b>AI-604</b> (acetylene) watch them, and the liquid drawn from the sump flushes them out.
-            That's why a stopped LOX pump is a problem beyond lost product.</p>`,
+            <p><b>Why hydrocarbons end up here.</b> The air a chemical site breathes carries traces of hydrocarbons: methane,
+            ethane, ethylene, propane, acetylene, from traffic, flares, leaks and fires. The mole sieve removes most of the
+            heavier ones and much of the acetylene, but methane and ethane slip through. All of them boil at higher
+            temperatures than oxygen, so in the column they behave like oxygen's heavy neighbours: they run down with the
+            liquid and end up in the one place where everything is boiled off, the LP sump. Oxygen leaves as product, the
+            hydrocarbons stay, and their concentration keeps rising unless liquid is drawn off.</p>
+            <p><b>Why that is a hazard.</b> Hydrocarbons in pure liquid oxygen are a fuel sitting in its oxidiser. As long as
+            they stay dissolved and dilute, nothing happens. Two things change that. <i>Acetylene</i> dissolves poorly in
+            liquid oxygen: above a few ppm it comes out as solid crystals, which can detonate from a small shock or spark.
+            And where the condenser's passages run <i>dry</i> (a low level, a blocked channel), the liquid boils away
+            completely and leaves its hydrocarbons behind as a deposit. A deposit that ignites can set fire to the aluminium
+            of the condenser itself, which burns in oxygen. Reboiler explosions have destroyed air separation plants, for
+            example in Bintulu (Malaysia, 1997), after smoke from forest fires was drawn into the air intake.</p>
+            <p><b>The defences on ASU1:</b> the mole sieve in front; the analysers <b>AI-603</b> (total hydrocarbons,
+            normally ≈ 8 ppm) and <b>AI-604</b> (acetylene), whose HH limits trip the whole plant through I-100; a steady
+            liquid draw that flushes the sump (the pumped oxygen and the LOX to storage); and the level control that keeps
+            the condenser covered. That's why a stopped LOX pump is a problem beyond lost product: the flushing stops too.</p>`,
           think: "The E-301 topic follows the pumped oxygen from here into the heat exchanger.",
           live: () => [`LP sump level <b>${u("LIC-404", -1)}</b>; P-501 is <b>${ST.equipment.LOXP.state.toLowerCase()}</b>, pumping ${u("FIC-501", -1)}.`,
                        `Hydrocarbons in the LOX ${u("AI-603", -1)}, acetylene ${u("AI-604")}${pv("AI-604") > TAG["AI-604"].alarms.H ? " — <b>high</b>" : " (safe)"}.`] },
@@ -2595,10 +2609,10 @@ const TRAINERS = {
       data.</p>`,
     later: "Planned: alarms and events as data, interlocks and the separation of safety from control.",
     topics: [
-      { id: "datapath", title: "From sensor to OPC UA", sub: "One value, five layers: Modbus registers, DCS tag, historian, OPC UA node.", process: 1, dp: true, steps: [
+      { id: "datapath", title: "From sensor to OPC UA", sub: "One value, five layers: Modbus registers, DCS tag, historian, OPC UA node.", process: 1, dp: true, wide: true, steps: [
         { title: "Every number has a journey", go: "#overview", layer: "all",
-          text: `<p>The diagram above shows one tag at every layer of the stack, at the same moment, read from the running
-            system. The field is at the bottom, IT at the top: the same order as the Purdue model. Click a layer to open
+          text: `<p>The diagram below shows one tag at every layer of the stack, at the same moment, read from the running
+            system, from the field (level 0) down to IT (level 4): the levels of the Purdue model. Click a layer to open
             it; the next steps go through them one by one.</p>
             <p><b>Click any value on the console</b> to follow that one instead, or pick a tag here.</p>`,
           think: "Same value, five representations. Which one would you want in your data lake?" },
@@ -2621,7 +2635,7 @@ const TRAINERS = {
           think: "The tag name is a contract: it outlives the instrument, the I/O rack and the register address." },
         { title: "The historian: not every scan is stored", go: "#overview", layer: "historian",
           text: `<p>The DCS's historian stores a new value only when it moved more than its <b>deadband</b> since the last stored
-            value, or when the <b>heartbeat</b> has passed. The dots in the historian layer above are the samples it really stored for this tag in the
+            value, or when the <b>heartbeat</b> has passed. The dots in the historian layer below are the samples it really stored for this tag in the
             last 15 minutes: irregular, dense when the value moves, sparse when it doesn't.</p>
             <p>The time-and-quality topic explains what that means for analysis.</p>`,
           think: "How many of the last hour's 3,600 scans were stored for this tag?" },
@@ -2634,7 +2648,7 @@ const TRAINERS = {
             OPC UA client: it subscribes to six tags and writes 15-minute averages to a CSV file.</p>`,
           think: "Try it: the Python snippet below reads exactly this node.", snippet: true },
       ] },
-      { id: "time", title: "Time and quality in plant data", sub: "Dead time, exception reporting and Bad quality: what they do to an analysis.", process: 5, steps: [
+      { id: "time", title: "Time and quality in plant data", sub: "Dead time, exception reporting and Bad quality: what they do to an analysis.", process: 5, wide: true, steps: [
         { title: "Cause and effect are minutes apart", fig: "deadtime", watch: ["FIC-501", "AI-601"],
           text: `<p>Process data is full of delays. The figure shows the shape every process engineer knows: dead time, then a
             lag. Move the sliders and see how long an effect can trail its cause.</p>`,
@@ -2856,8 +2870,9 @@ function trCardHtml() {
       <button data-tr="-1" ${i === 0 ? "disabled" : ""} aria-label="Previous step">◀</button>
       <button data-tr="1" ${i === n - 1 ? "disabled" : ""} aria-label="Next step">▶</button>${close}</div>
     <div class="tc-b">
-      ${tp && tp.dp ? dpPickerHtml() + `<div class="dp ${st.layer === "all" ? "all" : ""}" id="dp"></div>` : ""}
+      ${tp && tp.dp ? dpPickerHtml() : ""}
       ${st.text}
+      ${tp && tp.dp ? `<div class="dp ${st.layer === "all" ? "all" : ""}" id="dp"></div>` : ""}
       ${st.snippet ? `<h4>Read this node from Python</h4><pre class="snip" id="snippet"></pre>` : ""}
       <div class="tacts">
         ${st.deep ? `<button class="tact" data-fig="${st.deep}">🔎 Deep dive: ${esc(FIG[st.deep].title.split(" · ")[0])}</button>` : ""}
@@ -2877,6 +2892,7 @@ function buildTrainCard(key) {
   const card = $("#train-card");
   card.innerHTML = trCardHtml();
   card.classList.toggle("infig", figOpen);
+  card.classList.toggle("wide", !!(trTopic() && trTopic().wide));
   trBuilt = key;
   if (trTopic() && trTopic().dp) { renderDatapath(); refreshDatapath(); }
 }
@@ -2911,7 +2927,7 @@ function placeTrainCard(host) {
   const cw = card.offsetWidth, ch = card.offsetHeight;
   const regions = !st ? [] : TR.trainer === "process" ? st.regions : (st.go === location.hash && st.hl) || [];
   let x, y;
-  if (!regions.length) { x = W - cw - 10; y = 10; }
+  if (!regions.length || (st && st.card === "right")) { x = W - cw - 10; y = 10; }
   else {
     const xs = regions.flatMap(r => [r[0], r[0] + r[2]]), ys = regions.map(r => r[1]);
     const x1 = Math.min(...xs) * k, x2 = Math.max(...xs) * k;

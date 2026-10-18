@@ -46,7 +46,8 @@ plain console. The 🎓 button remembers where you were.
    flash across their valves into the LP column: LIN from TY-411 to TY-413, and the rich liquid (an
    ideal-mixture estimate at 35 % O₂).
 5. Reflux: the AIC-602 → FIC-405 cascade.
-6. The sump: level, the LOX pump, the LIC-415 override and hydrocarbons in the boiling oxygen.
+6. The sump: level, the LOX pump, the LIC-415 override, and why hydrocarbons collect in the boiling
+   oxygen and how they become a hazard (solid acetylene, dry boiling), with ASU1's defences.
 
 **Main heat exchanger & expander** (4 steps, on the E-301 display):
 1. Counter-current flow, the warm end and the cold end, the warm-end ΔT TDI-302.
@@ -60,8 +61,8 @@ plain console. The 🎓 button remembers where you were.
 ## 🔌 IT/OT trainer
 
 **From sensor to OPC UA** (5 steps). The card shows one tag at every layer of the stack, at the same
-moment, with the field at the bottom and IT at the top. Each layer has a one-line summary; the
-step's layer is open, and a click opens any other:
+moment, from the field (level 0) down to IT (level 4), in a wider card. Each layer has a one-line
+summary; the step's layer is open, and a click opens any other:
 
 | Layer | What you see, live |
 |---|---|
