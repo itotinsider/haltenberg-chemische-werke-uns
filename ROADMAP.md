@@ -103,7 +103,7 @@ rules above:
 ## In progress
 
 ### `docs-primer` — User documentation in the GitHub wiki, a short README
-- **Status:** 🚧 In progress · **Owner:** Claude (session docs-wiki) for Willem · **Branch:** `docs-wiki` · **PR:** —
+- **Status:** 🚧 In progress · **Owner:** Claude (session docs-wiki) for Willem · **Branch:** `docs-wiki` · **PR:** [#8](https://github.com/itotinsider/haltenberg-chemische-werke-uns/pull/8)
 - **Goal:** everything a human needs to understand HCW (goal, getting started, plant automation
   in brief, the process, architecture, displays, data access, development) lives in the GitHub
   wiki, with the screenshots. The README shrinks to a pitch, a quick start and links (~80 lines).
@@ -130,6 +130,8 @@ rules above:
     repo with a publish script; fold `docs-primer` into it; English only.
   - 2026-10-18: the wiki has no pages yet. Its git repo only exists after Willem creates the
     first page in the browser.
+  - 2026-10-18: PR #8 open, all tests green. Left to do after merge: run
+    `python tools/publish_wiki.py` (Willem's OK), check the wiki renders, move this item to Done.
 
 ## Planned
 
