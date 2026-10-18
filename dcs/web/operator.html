@@ -2728,6 +2728,7 @@ function renderDatapath() {
       <span>Endpoint</span><span>${esc(d.opcua.endpoint)}</span></div>`;
   const it = `<div>Node-RED, UaExpert, a Python script, a data platform: they all see the top box, never the bottom one.</div>`;
   const v = val(d.dcs.pv), hl = hp.last;
+  const tcb = el.closest(".tc-b"), keep = tcb ? tcb.scrollTop : 0;   // the rebuild must not move the card's scroll
   el.innerHTML = [
     box("field", "L0", "Instrument", fi ? `${esc(fi.point)} · ${esc(fi.desc.split(",")[0])}` : `none: calculated from ${(d.calc_from || []).join(", ")}`, sensor),
     box("field", "L1", "Field I/O · Modbus TCP", fi ? `IR ${fi.address}–${fi.address + 1} = ${fi.words ? fi.words.map(hex).join(" ") : "####"} → ${fi.value == null ? "####" : fi.value.toFixed(4)}` : "nothing on the wire", field),
@@ -2741,6 +2742,7 @@ function renderDatapath() {
     const k = b.dataset.dpl; DP_OPEN.has(k) ? DP_OPEN.delete(k) : DP_OPEN.add(k); renderDatapath();
   }));
   if (layer === "historian") drawDots();
+  if (tcb) tcb.scrollTop = keep;
   const sn = $("#snippet");
   if (sn) sn.textContent = `import asyncio
 from asyncua import Client
@@ -2902,9 +2904,10 @@ function placeTrainCard(host) {
   if (figOpen) { card.style.left = card.style.top = ""; tcb.style.maxHeight = ""; return; }
   const W = host.clientWidth, H = host.clientHeight, k = W / 1520;
   card.classList.toggle("stacked", W < 900);
-  tcb.style.maxHeight = "";
-  if (W < 900) { card.style.left = card.style.top = ""; return; }
-  tcb.style.maxHeight = Math.max(200, H - (card.offsetHeight - tcb.offsetHeight) - 16) + "px";
+  if (W < 900) { tcb.style.maxHeight = ""; card.style.left = card.style.top = ""; return; }
+  // Measured without clearing the old max-height first: clearing it every poll reset the scroll position.
+  const mh = Math.max(200, H - (card.offsetHeight - tcb.offsetHeight) - 16) + "px";
+  if (tcb.style.maxHeight !== mh) tcb.style.maxHeight = mh;
   const cw = card.offsetWidth, ch = card.offsetHeight;
   const regions = !st ? [] : TR.trainer === "process" ? st.regions : (st.go === location.hash && st.hl) || [];
   let x, y;
@@ -2960,7 +2963,9 @@ function renderTraining() {
   if (figOpen) {
     const id = FIG_OPEN;
     if (figBuilt !== id) { $("#tf-title").textContent = FIG[id].title; FIG[id].build($("#tf-body")); figBuilt = id; }
-    FIG[id].update($("#tf-body"));
+    const fb = $("#tf-body"), fkeep = fb.scrollTop;
+    FIG[id].update(fb);
+    fb.scrollTop = fkeep;
   }
   const host = cardHost(), card = $("#train-card");
   card.style.display = host ? "" : "none";
@@ -2970,9 +2975,11 @@ function renderTraining() {
   if (trBuilt !== key) { buildTrainCard(key); drawHighlights(); }
   else if (!$(".hl-layer") && TR.trainer !== "process") drawHighlights();   // buildDetail() replaced the SVG
   // polls only patch the live parts; the card itself (buttons, scroll position) stays put
+  const tcb = $("#train-card .tc-b"), keep = tcb ? tcb.scrollTop : 0;
   const ul = $("#train-card [data-live]");
   if (ul && st) { try { ul.innerHTML = (TR.trainer === "process" ? trainLive(TR.step) : st.live()).map(l => `<li>${l}</li>`).join(""); } catch { ul.innerHTML = ""; } }
   placeTrainCard(host);
+  if (tcb && tcb.scrollTop !== keep) tcb.scrollTop = keep;
 }
 
 $("#btn-train").addEventListener("click", () => setTraining(!TR.on));
