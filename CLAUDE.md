@@ -111,6 +111,11 @@ There is no test suite. Verification is the offline sim, the API, an OPC UA clie
   - The K-102 booster takes clean air after the PPU, needs the MAC running, and surges below ~14 kNm³/h (VT-114). Its power uses the MAC's specific work: 4.2 MW at 44 kNm³/h, 60 bar(a).
   - Booster air with no LOX to condense against (`bst_excess`) costs 0.04 refrigeration per kNm³/h and raises the warm-end ΔT.
   - Hydrocarbons: every liquid leaving the sump flushes it (`flush = LOX + GOX`), so THC is ~8 ppm normally and only climbs while P-501 is down. Initial `thc` = 7.6.
+- **Nitrogen product and backups (step 2b):**
+  - K-503 GAN compressor: GAN flow = run × FV-503 (its IGV) × 60, capped at 0.30 × air; it can't run without HP-column pressure (`p_hp > 2.5`). Power from the MAC's specific work: 0.64 MW at 25 kNm³/h, 5.05 → 9.41 bar(a). Surge vibration below ~8 kNm³/h (VT-515). Latched motor trip like the MAC/booster. A stopped K-503 simply stops the draw; the column then vents that N₂ with the waste N₂ (PIC-402 opens).
+  - **GAN header hold-up** `GAN_HEADER_GAIN` = 0.004 bar/s per kNm³/h (~70 m³ of site grid). It was 0.02 (~14 m³): losing the GAN supply emptied the header from 8 to 3 bar(g) in a minute.
+  - Backup pumps P-505 / P-506 are "kept cold" (running on minimum-flow recirculation): send-out = pump run × valve × capacity (E-507 30, E-508 `LIN_VAP_CAPACITY` 40 kNm³/h), vaporizer lag 20 s. Discharge = header + shut-off head, falling with send-out; a tank below 5 % starves the suction. No pump, no send-out.
+  - T-506 now has an outlet (`l506 += (lin − vap_n)`), T-505 as before.
   - **Purity draw ratio and sump surplus:**
     - **Credit:** the inventory drawdown (`gox + lox − o2_avail`) is credited while the sump is above normal: none at 65 %, full at 75 %. Liquid drained from a too-full sump (e.g. what piled up while P-501 was stopped) is surplus, not production.
     - **Without the credit:** every pump trip was followed by a fake purity crash to ~95 % while LIC-404 drained the surplus.
@@ -129,7 +134,9 @@ Tuning facts that are easy to break:
   - **SP ramp:** optional rate `sp_rate` (FIC-101 defaults to 1.45 kNm³/h per minute ≈ 1 %/min).
   - **Anti-windup** comes from clamping the integrated output.
 - **Cascades** are declared on the master: `cascade: [{slave, op:[lo,hi], sp:[lo,hi|"sp_hi"]}]`.
-  - **Split range:** PIC-502 GOX header → FIC-501 GOX (OP 0–80 %) and FIC-507 vaporizer (OP 80–100 %). That is how the backup vaporizer cuts in.
+  - **Split range:** PIC-502 GOX header → FIC-501 GOX (OP 0–80 %) and FIC-507 vaporizer (OP 80–100 %); PIC-504 GAN header → FIC-503 K-503 (0–80 %) and FIC-508 LIN vaporizer (80–100 %). That is how the backup vaporizers cut in. FIC-507/508 are tuned Kc 1.2 / Ti 20 (vaporizer lag 20 s); at the old Kc 0.3 / Ti 10 they took over a minute to deliver.
+  - **Trip handover** (interlock key `handover: {master: slave}`, I-500 and I-503): on the trip, `_handover()` moves the master's OP straight to where the backup slave's SP equals the lost flow (feed-forward); the PI trims from there. No PI tuning could do it alone: either the header dipped to 3–5 bar(g) (GAN) / 23.8 bar(g) (GOX, below LL) or the vaporizer oscillated in the steep half of the split range.
+  - **Handback** (the same pairs, reversed): when that slave goes back to CAS (line-up or mode change), `_handback()` re-initialises the master so the slave's SP = the total flow of all its slaves now. Without it the slave got whatever SP the master's OP implied (often full range) and the GAN header overshot to 9.4 bar(g).
   - **Bumpless return:** a master whose slaves are all out of CAS back-calculates its OP from the first slave's SP.
 - **Override:** PIC-102 has `limits: "FIC-101"`. Its OP becomes FIC-101's output high limit (low select). External reset keeps PIC-102 at FIC-101.OP + 5 so it can take over without unwinding from 100 %.
   - LIC-415 (reboiler low-level override, SP 45 %, direct action) does the same on FIC-501. With pumped LOX, a header demand the column can't make (low air after a restart) would otherwise empty the sump; this was a gap in the old model too, hidden by the GOX vapour cap.
@@ -138,25 +145,32 @@ Tuning facts that are easy to break:
   - `xlimit` (FIC-501): the SP is capped at `PV(xlimit) / (its ratio × 0.96)`, so it follows on increase. Status: `xlimited`, shown as `XLIM` / "CROSS-LIMIT".
   - **Why:** without it, a line-up after a restart let PIC-502 slam FIC-501 to full flow before the booster followed, and TI-512 tripped I-500.
   - **The 4 % margin** is wider than the flow noise (no flicker), and keeps the real ratio ≥ 1.46, above the 0.95 pinch.
+- **Load limit** (generic key `sp_cap: "<tag>"`, used on FIC-501): the SP is capped at that tag's PV. `sp_lim` is the lower of the cross-limit and the cap; `lim_by` (snapshot) says which, shown as `XLIM` / "CROSS-LIMIT" or `CAP` / "LOAD LIMIT".
+  - `FY-501` = `GOX_AIR_LIMIT` (0.208) × FIC-101 − FI-408 + `GOX_SUMP_ALLOWANCE` (0.5) × (LIC-404 − its SP, if above). The oxygen the air brings in, at the purity edge (~99.4 % if held there); the allowance lets P-501 draw down liquid that piled up while it was stopped (already separated, costs no purity).
+  - **Why:** with pumped LOX nothing limited the draw any more. On the EO demand step PIC-502 drove FIC-501 to 31.5, the sump drained for hours and purity crashed to 94 % (a step 2a gap, found in 2b). Now the vaporizer covers the excess and purity sits at the spec edge until the air is raised. Restart at low air: ~99.2 % instead of 94 %.
+  - 0.209 was too high (purity 98.9 % at reduced load: AIC-602 raises the reflux ratio when the site still takes full GAN). 0.205 would cap normal operation.
 - **Scan order:** cascade masters, then overrides, then the rest.
 - **Alarms (state-based, ISA-18.2-ish):**
   - H/HH/L/LL with a 1 % of span deadband, priorities 1–3.
-  - Tags with `suppress: "<equipment key>"` (MAC, EXP, BAC, LOXP) are not evaluated while that equipment isn't running. They clear silently.
+  - Tags with `suppress: "<equipment key>"` (MAC, EXP, BAC, LOXP, GANC, LOXB, LINB) are not evaluated while that equipment isn't running. They clear silently.
   - Discrete alarms: `<interlock>.TRIP` (one per configured interlock, text from `trip_message`), `KS-201.*`, `IO.COMM`.
 - **Interlocks:**
   - They latch and record a first-out. Reset is only allowed when no armed cause is active.
-  - **Armed causes:** a cause armed with an equipment key (`"MAC"`, `"BAC"`, `"LOXP"`) only counts once that equipment has run longer than its `bypass_s` (MAC 600 s, BAC 120 s, LOXP 60 s); otherwise a stopped plant could never be reset. `STARTUP_BYPASS_S` = the MAC's.
-  - **Parents:** an interlock with `parents` trips when a parent trips, and can only be reset after it. I-100 → I-300 and I-110; I-110 → I-500.
+  - **Armed causes:** a cause armed with an equipment key (`"MAC"`, `"BAC"`, `"LOXP"`, `"GANC"`, `"LOXB"`, `"LINB"`) only counts once that equipment has run longer than its `bypass_s` (MAC 600 s, BAC/GANC 120 s, LOXP 60 s, backup pumps 30 s); otherwise a stopped plant could never be reset. `STARTUP_BYPASS_S` = the MAC's.
+  - **Parents:** an interlock with `parents` trips when a parent trips, and can only be reset after it. I-100 → I-300, I-110 and I-503; I-110 → I-500. I-505 / I-506 (backup pumps, tank LL) have **no** parent on purpose: the backup must survive an ASU trip.
   - **Motor protection:** any equipment whose run feedback drops while commanded trips its own interlock.
   - **I-500** (LOX pump) trips on TI-512 LL −25 °C (cold oxygen into the carbon-steel header) or PI-511 LL 20 bar(g) (cavitation). Both are armed on LOXP.
   - **I-100** also trips on LIC-404 HH 95 %: a reboiler flooded because the LOX pump stays down. Single pump, no standby, by design choice.
   - While latched, `forces` hold loops in MAN at a fixed OP. An operator *stop* deliberately goes through the trip path, so it has to be reset like a trip.
-- **Normal line-up** restores `LINEUP` modes, but skips loops on stopped equipment (in AUTO they would just wind up; this once made the expander overspeed-trip on restart). It reports the skipped loops. Equipment start sets a fixed start OP: FIC-101 40 %, FIC-303 30 %, FIC-111 30 %, FIC-501 20 %.
+- **Normal line-up** restores `LINEUP` modes, but skips loops on stopped equipment (in AUTO they would just wind up; this once made the expander overspeed-trip on restart). It reports the skipped loops. Equipment start sets a fixed start OP: FIC-101 40 %, FIC-303 30 %, FIC-111 30 %, FIC-501 20 %, FIC-503 30 %, FIC-507/508 0 %.
 - **Start permissives:**
   - MAC: lube oil.
   - EXP: MAC running and PI-401.
   - BAC: MAC running.
   - LOXP: BAC running and LIC-404 ≥ 40 %.
+  - GANC: MAC running and PI-401 ≥ 4 bar(a) (suction).
+  - LOXB / LINB: tank level above its LL (10 %).
+- **Checkpoint gotcha:** `data/dcs_state.json` restores each loop's mode, SP, OP, tuning and SP limits. After changing tuning or limits in `config.py`, move the checkpoint aside before testing, or the old values win.
 - **KS-201 PPU sequence:** steps are fractions of `PPU_CYCLE_SECONDS`. HEAT drives TIC-204 in AUTO at 180 °C; other steps hold it in MAN at 0. Switch-over is permissive on STANDBY; while the MAC is stopped the operator may switch at any time.
   - **Time compression (cycle is runtime-adjustable, 300–14400 s):** the DCS owns the value.
   - **Owner:** `DCS.set_ppu_cycle()` rescales `online_time`/`step_time` so the sequence keeps its place, logs an event, and the cycle is checkpointed.
@@ -205,7 +219,8 @@ Tuning facts that are easy to break:
 - **Maintenance:** when you move mimic elements, check the `regions`/`marker` coordinates.
 
 **Detail displays (ISA-101 L3, `operator.html`).**
-- **Displays:** K-101 (MAC + DCAC), R-201 (mole sieve + KS-201 panel), E-301 (MHE + X-303), C-401 (columns + E-404), `products` (GOX/GAN headers + PIC-502 split-range bar), T-505 (tanks + E-507). Graphics only: they use existing tags and DCS state (equipment, interlocks, KS-201), no new model data.
+- **Displays:** K-101 (MAC + DCAC), R-201 (mole sieve + KS-201 panel), K-102 (booster + ratio panel), E-301 (MHE + X-303), C-401 (columns + E-404 + P-501), `products` (GOX/GAN headers, K-503, PIC-502 and PIC-504 split-range bars), T-505 (tanks, P-505/E-507, P-506/E-508).
+  - `splitHtml(tag, x, y, w)` / `renderSplit(root, tag, …)` draw one bar per master; several per display are fine (selected by `data-split`).
 - **Registry:** `DETAILS` holds one entry per display, in process order:
   - **Identity:** `title`, `short` (display-bar label), `block`, `aliases` (every equipment tag it covers) and the overview `hot` rects.
   - **Drawing:** its own `svg` markup, plus `placements`, `valves` (ids `dv-<valve>`) and `levels`.
@@ -243,7 +258,7 @@ Tuning facts that are easy to break:
 
 ## Not built yet / open
 
-- **Not built:** OPC UA writes and an APC/MPC layer; OPC UA Alarms & Conditions (alarms are only exposed as `AlarmState` strings and `Diagnostics` counts); the argon column; LIN backup for the GAN header (it collapses on a MAC trip; planned in roadmap step 2); tank truck loadouts (deliberately not planned) (tank levels only drift); business systems (LIMS purity cross-checks, SAP-PM, ERP volumes — research §6).
+- **Not built:** OPC UA writes and an APC/MPC layer; OPC UA Alarms & Conditions (alarms are only exposed as `AlarmState` strings and `Diagnostics` counts); the argon column; tank truck loadouts (deliberately not planned; the tanks only fill from the column and drain through the backups); vaporizer outlet temperatures (E-507/E-508 are assumed big enough); business systems (LIMS purity cross-checks, SAP-PM, ERP volumes — research §6).
 - **Only the PPU is compressible:** the instructor slider speeds up the mole-sieve cycle. Everything else runs in real time. A load change at the default ramp takes ~40 min, and purity recovery after a restart ~1 h. That's intentional (research §4.4) but slow for live demos.
 
 ## Roadmap: physically complete displays (started Oct 2026)
@@ -255,13 +270,11 @@ Working agreement: one branch and one PR per step. Verify each step with the off
 - **Step 2: physically correct products.** Willem chose **internal compression** for oxygen, a **K-503 GAN compressor** for nitrogen, a **single** LOX pump (no standby), a separate motor-driven booster, and backup pumps at both tanks.
   - **Done, step 2a (oxygen internal compression):** K-102 booster, P-501 LOX pump, cross-limited ratio FIC-111/FIC-501, FFI-111, TI-512, PI-511, LIC-415 override, I-110/I-500 with generic interlock parents and per-equipment bypass, booster/cavitation scenarios, KPI-701 incl. booster.
     - **Displays done here:** a new K-102 display; E-301, C-401 and products updated; booster and pump symbols on the overview. The rest of the L2 redraw is still open.
-  - **Step 2b (nitrogen + backups):**
-    - K-503 GAN compressor from the HP-column GAN (~5.3 bar(a)) to the 8 bar(g) header. Today FV-503 alone still raises the pressure, which is physically wrong.
-    - P-505 LOX backup pump in front of E-507: today E-507 still feeds the 30 bar header straight from an almost atmospheric tank.
-    - P-506 LIN backup pump + E-508 vaporizer.
-    - KPI-701 gets the GAN compressor power too.
-  - **Step 2c:** the overview (L2) redraw below, plus the nitrogen-side and storage display updates.
-  - **Also in step 2: LIN backup vaporizer.** Add E-508 / `FIC-508` from T-506 into the GAN header. PIC-504 becomes split range like PIC-502: FIC-503 at OP 0–80 %, FIC-508 at OP 80–100 %. The storage display then gets T-506's outlet (today the tank only fills, about +0.09 %/h), and the products display gets a second split-range bar. No truck loadouts.
+  - **Done, step 2b (nitrogen + backups):** K-503 GAN compressor (FIC-503 on its IGV, PI-513, JI-514, VI-515, I-503 child of I-100); P-505 / P-506 backup pumps kept cold on recirculation (PI-516, PI-517, I-505 / I-506 on tank LL, no parents); E-508 + FIC-508 with PIC-504 split range; trip handover / handback; GAN header hold-up ×5; KPI-701 incl. JI-514 (H 0.60); scenarios `gan_compressor_trip`, `lox_backup_pump_trip`.
+    - **Also fixed here (2a gap):** the GOX load limit FY-501 (`sp_cap`), see the DCS section.
+    - **Displays done here:** products (K-503, second split bar) and T-505 (pumps, E-508); on the overview K-503, P-505 and the P-506 / E-508 riser. The rest of the L2 redraw is 2c.
+    - **Known, not fixed:** after a restart at low air (FIC-101 not yet raised) the site still takes full GAN, AIC-602 raises the reflux and GOX purity sits at ~99.2 % (L alarm) until the air is raised — the documented procedure raises it.
+  - **Step 2c:** the overview (L2) redraw below. The nitrogen-side and storage L3 displays were already updated in 2b. Also on L2: the GAN line crosses the reflux / LIN-to-storage (x 872) and rich-liquid (x 902) risers, and the FV-507 riser (x 1330) crosses the GAN header, all without line hops.
   - **Also in step 2: overview (L2) drawing fixes.** The L3 displays already draw these correctly:
     - LOX is drawn leaving at the condenser's height instead of from the LP sump.
     - LIN is not drawn as coming from E-404.

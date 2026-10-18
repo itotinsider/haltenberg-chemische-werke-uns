@@ -12,7 +12,8 @@ Address space (namespace urn:haltenberg:hcw:asu1:dcs, string NodeIds "HCW.ASU1.<
                 SP, OP, Mode                 controllers only (SP/OP historized too)
                 AlarmState                   tags with alarm limits: NORMAL / H / HH / L / LL
               KS-201/                        PPU switching sequence (in FrontEndPurification)
-            Equipment/MAC, EXP, BAC, LOXP    State, Running
+            Equipment/MAC, EXP, BAC, LOXP,   State, Running (one object per configured equipment)
+                      GANC, LOXB, LINB
             Interlocks/I-100, I-300, ...     Tripped, FirstOut (one object per configured interlock)
             Diagnostics/                     FieldIOConnected, ActiveAlarms, UnackedAlarms, ...
 

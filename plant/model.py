@@ -6,8 +6,9 @@ Six blocks, following the research note ("linde air seperation research.md" §2-
     3 Main heat exchanger + turbo-expander  refrigeration balance, very slow cold-box drift
     4 Linde double column                   pressures (minutes), levels (integrators),
                                             purities (static map -> dead time -> slow lag)
-    5 Product delivery (GOX / GAN headers)  integrating headers vs. consumer demand
-    6 Backup & storage (LOX / LIN tanks)    integrators, backup vaporizer
+    5 Product delivery (GOX / GAN headers)  internal compression (P-501), GAN compressor K-503,
+                                            integrating headers vs. consumer demand
+    6 Backup & storage (LOX / LIN tanks)    integrators, backup pumps P-505 / P-506 + vaporizers
 
 No rigorous thermodynamics: a handful of "handles" (air flow, LP pressure, reflux, expander
 flow, product draws) drive purities, levels and power as visible consequences. All flows are in
@@ -47,6 +48,15 @@ BOOSTER_RATIO = 1.52        # kNm3 booster air needed per kNm3 pumped O2 to vapo
 # drains it over hours, and a stopped LOX pump floods it in ~10 min (research §4.4).
 LP_SUMP_GAIN = 0.00185
 LIN_TANK_CAPACITY = 700.0
+# GAN compressor K-503: HP-column GAN (~5.05 bar(a) after E-301) to the 8 bar(g) header. Power from the
+# MAC's specific work per unit of ln(pressure ratio): 0.64 MW at 25 kNm3/h.
+GAN_DESIGN = 25.0
+GAN_POWER_DESIGN = 0.64
+GAN_RATIO_DESIGN = 9.41 / 5.05
+# Site N2 grid hold-up: bar/s per kNm3/h of imbalance (~70 m3 of pipe). It was 0.02 (~14 m3), which
+# emptied the header from 8 to 3 bar(g) within a minute of losing the GAN supply.
+GAN_HEADER_GAIN = 0.004
+LIN_VAP_CAPACITY = 40.0     # kNm3/h, E-508: covers peak N2 demand (purge jobs, a purge campaign)
 
 
 def lag(x, target, tau, dt):
@@ -144,6 +154,14 @@ SCENARIOS = {
         description="Suction conditions of P-501 degrade over ~10 min (e.g. a warm suction line): "
                     "discharge pressure becomes unsteady and falls, flow drops, until the pump trips. A "
                     "stopped pump re-cools in ~5 min; restarted, it degrades again until the fault is cleared."),
+    "gan_compressor_trip": dict(
+        label="GAN compressor K-503 motor trip", kind="oneshot", group="Nitrogen & backup",
+        description="Motor protection trips the GAN compressor. The GAN header pressure falls until the "
+                    "split range brings in the LIN backup (P-506 / E-508); the column has to vent the GAN."),
+    "lox_backup_pump_trip": dict(
+        label="LOX backup pump P-505 motor trip", kind="oneshot", group="Nitrogen & backup",
+        description="The LOX backup pump trips. Nothing changes in the GOX header yet, but until it is "
+                    "restarted there is no backup if P-501 or the ASU trips."),
     "expander_loss_of_load": dict(
         label="Expander loss of loading (overspeed)", kind="oneshot", group="Cold box",
         description="The booster brake loses load and the expander accelerates towards overspeed."),
@@ -193,9 +211,10 @@ class Plant:
         self.ao = {
             "FV-101": 76.3, "UV-103": 0.0, "TV-204": 0.0, "FV-303": 60.0, "PV-402": 50.0,
             "LV-403": 53.0, "LV-404": 26.7, "FV-405": 57.1, "FV-409": 30.0,
-            "FV-501": 72.5, "FV-503": 41.7, "FV-507": 0.0, "WD-900": 0.0, "FV-111": 73.3,
+            "FV-501": 72.5, "FV-503": 41.7, "FV-507": 0.0, "FV-508": 0.0, "WD-900": 0.0, "FV-111": 73.3,
         }
-        self.do = {"HS-101": True, "HS-301": True, "HS-201": False, "HS-102": True, "HS-501": True}
+        self.do = {"HS-101": True, "HS-301": True, "HS-201": False, "HS-102": True, "HS-501": True,
+                   "HS-503": True, "HS-505": True, "HS-506": True}
 
         # Disturbance generators
         self.w_amb = Walk(1.2, 3 * 3600)
@@ -267,10 +286,23 @@ class Plant:
         self.p511 = 33.3
         self.t_gox = 9.5            # degC, GOX leaving the E-301 warm end
 
-        # Blocks 5/6 — headers, tanks, vaporizer
+        # Block 5 — GAN compressor K-503
+        self.gnc_run = 1.0
+        self.gnc_trip_latched = False
+        self.gan_power = GAN_POWER_DESIGN
+        self.gan_vib = 1.8
+        self.p513 = 8.4
+
+        # Blocks 5/6 — headers, tanks, backup pumps (kept cold on recirculation) and vaporizers
         self.p_gox = 30.0
         self.p_gan = 8.0
+        self.p505_run = 1.0
+        self.p505_trip_latched = False
+        self.p506_run = 1.0
         self.vap = 0.0
+        self.vap_n = 0.0
+        self.p516 = 35.5
+        self.p517 = 12.0
         self.l505 = 65.0
         self.l506 = 60.0
         self.o2_demand = 29.0
@@ -312,6 +344,10 @@ class Plant:
             self.mac_trip_latched = True
         if "booster_motor_trip" in self.pending_oneshots:
             self.bac_trip_latched = True
+        if "gan_compressor_trip" in self.pending_oneshots:
+            self.gnc_trip_latched = True
+        if "lox_backup_pump_trip" in self.pending_oneshots:
+            self.p505_trip_latched = True
         if "expander_loss_of_load" in self.pending_oneshots:
             self.exp_overspeed = 1.0
         self.pending_oneshots.clear()
@@ -466,7 +502,16 @@ class Plant:
         rp = self.loxp_run if self.loxp_run > 0.02 else 0.0
         gox_ss = rp * clamp(ao["FV-501"], 0, 100) / 100.0 * 40.0 * (1.0 - 0.8 * self.cav) if self.l404 > 2 else 0.0
         self.gox = lag(self.gox, gox_ss, 10.0 if gox_ss > self.gox else 3.0, dt)   # a stopped pump stops fast
-        self.gan = lag(self.gan, min(clamp(ao["FV-503"], 0, 100) / 100.0 * 60.0, 0.30 * self.f_air), 10.0, dt)
+        # GAN compressor K-503 draws the HP-column GAN (warmed in E-301). No column pressure, no suction:
+        # it can't run without the air. Latched motor trip like the MAC. A stopped compressor stops the
+        # draw; the column then vents that nitrogen with the waste N2 (PIC-402 opens).
+        if not do["HS-503"]:
+            self.gnc_trip_latched = False
+        gnc_cmd = do["HS-503"] and not self.gnc_trip_latched and self.p_hp > 2.5
+        self.gnc_run = lag(self.gnc_run, 1.0 if gnc_cmd else 0.0, 10.0 if gnc_cmd else 4.0, dt)
+        rg = self.gnc_run if self.gnc_run > 0.02 else 0.0
+        gan_ss = rg * min(clamp(ao["FV-503"], 0, 100) / 100.0 * 60.0, 0.30 * self.f_air)
+        self.gan = lag(self.gan, gan_ss, 10.0 if gan_ss > self.gan else 4.0, dt)
         lox_ss = 3.0 * clamp(ao["LV-404"], 0, 100) / 100.0 if self.l404 > 2 else 0.0
         self.lox = lag(self.lox, lox_ss, 10.0, dt)
         self.lin = lag(self.lin, 2.0 * clamp(ao["FV-409"], 0, 100) / 100.0 if self.l404 > 2 else 0.0, 10.0, dt)
@@ -539,12 +584,39 @@ class Plant:
         self.p511 = rp * (self.p_gox + 2.5 + 0.8 * self.gox / 29.0) * (1.0 - 0.6 * self.cav) \
             + (1 - rp) * max(0.0, self.p_lp - P_ATM + 0.3)
 
-        vap_ss = 30.0 * clamp(ao["FV-507"], 0, 100) / 100.0 if self.l505 > 2.0 else 0.0
+        # Backup pumps P-505 (LOX) / P-506 (LIN) lift tank liquid (~0.5 bar(g)) to header pressure; the
+        # vaporizers E-507 / E-508 boil it. Kept cold on minimum-flow recirculation, so they deliver as
+        # soon as their flow valve opens. No pump, no send-out.
+        if not do["HS-505"]:
+            self.p505_trip_latched = False
+        self.p505_run = lag(self.p505_run, 1.0 if do["HS-505"] and not self.p505_trip_latched else 0.0, 3.0, dt)
+        self.p506_run = lag(self.p506_run, 1.0 if do["HS-506"] else 0.0, 3.0, dt)
+        r5 = self.p505_run if self.p505_run > 0.02 else 0.0
+        r6 = self.p506_run if self.p506_run > 0.02 else 0.0
+        vap_ss = r5 * 30.0 * clamp(ao["FV-507"], 0, 100) / 100.0 if self.l505 > 2.0 else 0.0
         self.vap = lag(self.vap, vap_ss, 20.0, dt)
+        vapn_ss = r6 * LIN_VAP_CAPACITY * clamp(ao["FV-508"], 0, 100) / 100.0 if self.l506 > 2.0 else 0.0
+        self.vap_n = lag(self.vap_n, vapn_ss, 20.0, dt)
         self.p_gox = clamp(self.p_gox + 0.00556 * (self.gox + self.vap - self.o2_demand) * dt, 0.0, 40.0)
-        self.p_gan = clamp(self.p_gan + 0.02 * (self.gan - self.n2_demand) * dt, 0.0, 12.0)
+        self.p_gan = clamp(self.p_gan + GAN_HEADER_GAIN * (self.gan + self.vap_n - self.n2_demand) * dt, 0.0, 12.0)
         self.l505 = clamp(self.l505 + (self.lox - self.vap) / LOX_TANK_CAPACITY / 36.0 * dt, 0.0, 100.0)
-        self.l506 = clamp(self.l506 + self.lin / LIN_TANK_CAPACITY / 36.0 * dt, 0.0, 100.0)
+        self.l506 = clamp(self.l506 + (self.lin - self.vap_n) / LIN_TANK_CAPACITY / 36.0 * dt, 0.0, 100.0)
+        # Discharge: shut-off head on recirculation, falling with send-out; a nearly empty tank starves
+        # the suction. Stopped: tank pressure.
+        starve5 = 1.0 - 0.6 * clamp((5.0 - self.l505) / 5.0, 0.0, 1.0)
+        starve6 = 1.0 - 0.6 * clamp((5.0 - self.l506) / 5.0, 0.0, 1.0)
+        self.p516 = r5 * (self.p_gox + 1.5 + 4.0 * (1.0 - self.vap / 30.0)) * starve5 + (1 - r5) * 0.5
+        self.p517 = r6 * (self.p_gan + 1.0 + 3.0 * (1.0 - self.vap_n / LIN_VAP_CAPACITY)) * starve6 + (1 - r6) * 0.5
+
+        # K-503 discharge, power and vibration (the header sets the discharge pressure).
+        p_suc = max(self.p_hp - 0.25, 1.0)
+        p_d = self.p_gan + P_ATM + 0.4 * (self.gan / GAN_DESIGN) ** 2
+        self.p513 = rg * (p_d - P_ATM) + (1 - rg) * max(0.0, p_suc - P_ATM)
+        gan_pw = (GAN_POWER_DESIGN * (self.gan / GAN_DESIGN)
+                  * math.log(max(p_d / p_suc, 1.0)) / math.log(GAN_RATIO_DESIGN))
+        self.gan_power = lag(self.gan_power, gan_pw + 0.05 * rg, 3.0, dt)
+        # Below ~8 kNm3/h the compressor approaches surge: vibration rises sharply.
+        self.gan_vib = rg * (1.8 + 10.0 * max(0.0, (8.0 - self.gan) / 8.0)) + (1 - rg) * 0.3
 
     # ---- outputs ----
     def measurements(self):
@@ -592,8 +664,14 @@ class Plant:
             "LT-505": clamp(self.l505 + g(0, 0.02), 0, 100),
             "LT-506": clamp(self.l506 + g(0, 0.02), 0, 100),
             "FT-507": max(0.0, self.vap + g(0, 0.03) if self.vap > 0.05 else 0.0),
+            "FT-508": max(0.0, self.vap_n + g(0, 0.03) if self.vap_n > 0.05 else 0.0),
             "PT-511": max(0.0, self.p511 + g(0, 0.05 + 1.5 * self.cav)),
             "TT-512": self.t_gox + g(0, 0.05),
+            "PT-513": max(0.0, self.p513 + g(0, 0.01)),
+            "JT-514": max(0.0, self.gan_power + g(0, 0.003)),
+            "VT-515": max(0.0, self.gan_vib + g(0, 0.06)),
+            "PT-516": max(0.0, self.p516 + g(0, 0.05)),
+            "PT-517": max(0.0, self.p517 + g(0, 0.02)),
             "AT-601": clamp(100.0 - self.imp_gox + g(0, 0.005), 90.0, 100.0),
             "AT-602": max(0.0, self.ppm_gan + g(0, 0.05)),
             "AT-603": max(0.0, self.thc + g(0, 0.5)),
@@ -607,6 +685,9 @@ class Plant:
             "YS-301": self.exp_run > 0.9,
             "YS-102": self.bac_run > 0.9,
             "YS-501": self.loxp_run > 0.9,
+            "YS-503": self.gnc_run > 0.9,
+            "YS-505": self.p505_run > 0.9,
+            "YS-506": self.p506_run > 0.9,
             "ZS-201A": not self.bed_b_online,
             "ZS-201B": self.bed_b_online,
         }
@@ -634,6 +715,8 @@ class Plant:
                 "booster_trip_latched": self.bac_trip_latched,
                 "lox_pump_cavitation": r1(self.cav, 2),
                 "booster_excess_air": r1(self.bst_excess, 1),
+                "gan_compressor_trip_latched": self.gnc_trip_latched,
+                "lox_backup_pump_trip_latched": self.p505_trip_latched,
             },
             "commands": {"ao": {k: r1(v, 1) for k, v in self.ao.items()}, "do": dict(self.do)},
             "scenarios": {

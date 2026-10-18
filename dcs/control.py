@@ -62,7 +62,8 @@ class PID:
         self.rsp = None                   # remote SP written by a cascade master
         self.op_hi_eff = cfg["op_hi"]     # after override limiting
         self.limited = False
-        self.sp_lim = None                # cross-limit: SP cap from the ratio partner (None = none)
+        self.sp_lim = None                # SP cap: cross-limit partner or sp_cap tag (None = none)
+        self.lim_by = None                # tag that sets sp_lim
         self.xlimited = False
         self.forced = False               # held by an interlock
 
@@ -218,6 +219,8 @@ class DCS:
         self.order = ([p for p in loops if p.cfg["cascade"]] + [p for p in loops if p.cfg["limits"]]
                       + [p for p in loops if not p.cfg["cascade"] and not p.cfg["limits"]])
         self.limiters = {p.cfg["limits"]: p for p in loops if p.cfg["limits"]}
+        # Trip handover pairs, reversed: slave -> split-range master (see _handback).
+        self.handback = {s: m for il in C.INTERLOCKS.values() for m, s in il.get("handover", {}).items()}
         self._seq_entered = None
 
     # ---------------------------------------------------------------- helpers
@@ -290,12 +293,19 @@ class DCS:
                     w, partner = self.pv(p.cfg["ratio_of"]), self.loops[p.cfg["ratio_of"]]
                     demand = partner.rsp if partner.mode == "CAS" and partner.rsp is not None else partner.target
                     p.rsp = None if w is None else p.ratio * max(w, demand if partner.mode != "MAN" else w)
-                if p.cfg.get("xlimit"):
-                    # Follow on increase: never ask for more than the measured ratio flow can handle.
-                    # 4 % margin: wider than the flow noise (no LIM flicker in steady state), narrow
-                    # enough that the real ratio stays above where E-301 starts to pinch (~95 %).
-                    b, partner = self.pv(p.cfg["xlimit"]), self.loops[p.cfg["xlimit"]]
-                    p.sp_lim = b / (partner.ratio * 0.96) if b is not None and partner.ratio else None
+                if p.cfg.get("xlimit") or p.cfg.get("sp_cap"):
+                    lims = []
+                    if p.cfg.get("xlimit"):
+                        # Follow on increase: never ask for more than the measured ratio flow can handle.
+                        # 4 % margin: wider than the flow noise (no LIM flicker in steady state), narrow
+                        # enough that the real ratio stays above where E-301 starts to pinch (~95 %).
+                        b, partner = self.pv(p.cfg["xlimit"]), self.loops[p.cfg["xlimit"]]
+                        if b is not None and partner.ratio:
+                            lims.append((b / (partner.ratio * 0.96), p.cfg["xlimit"]))
+                    cap = self.pv(p.cfg["sp_cap"]) if p.cfg.get("sp_cap") else None
+                    if cap is not None:
+                        lims.append((max(cap, 0.0), p.cfg["sp_cap"]))
+                    p.sp_lim, p.lim_by = min(lims) if lims else (None, None)
                 lim = self.limiters.get(p.tag)
                 p.op_hi_eff = min(p.cfg["op_hi"], lim.op) if lim and lim.mode != "MAN" else p.cfg["op_hi"]
                 # Loops flagged `ppu_time` (TIC-204) run on the PPU's compressed clock, matching
@@ -338,11 +348,17 @@ class DCS:
         v["TY-411"] = t_sat(p_hp, *T_SAT_N2)
         v["TY-412"] = t_sat(p_lp, *T_SAT_O2)
         v["TY-413"] = t_sat(p_lp, *T_SAT_N2)
+        # GOX load limit: the oxygen the air brings in (0.208 ≈ 21 % O2 x ~99.3 % recovery at the
+        # purity edge), less what goes to storage as LOX, plus an allowance for liquid already standing
+        # in an over-full sump (e.g. after a P-501 stop): that oxygen is separated, pumping it costs no purity.
+        f101, f408, l404 = v.get("FIC-101"), v.get("FI-408"), v.get("LIC-404")
+        v["FY-501"] = (round(C.GOX_AIR_LIMIT * f101 - f408 + C.GOX_SUMP_ALLOWANCE * max(0.0, l404 - self.loops["LIC-404"].sp), 4)
+                       if None not in (f101, f408, l404) else None)
         f111, f501 = v.get("FIC-111"), v.get("FIC-501")
         v["FFI-111"] = round(f111 / f501, 4) if f111 is not None and f501 is not None and f501 > 3.0 else None
-        # Specific power: every machine that compresses for the oxygen product (MAC + booster).
-        p, pb, f = v.get("JI-104"), v.get("JI-113"), v.get("FIC-501")
-        v["KPI-701"] = round((p + pb) / f, 5) if None not in (p, pb, f) and f > 3.0 else None
+        # Specific power: the ASU's compressor power (MAC + booster + GAN compressor) per unit of GOX.
+        p, pb, pg, f = v.get("JI-104"), v.get("JI-113"), v.get("JI-514"), v.get("FIC-501")
+        v["KPI-701"] = round((p + pb + pg) / f, 5) if None not in (p, pb, pg, f) and f > 3.0 else None
 
     def _drive_slaves(self, master):
         links = master.cfg["cascade"]
@@ -472,12 +488,57 @@ class DCS:
         self.event("trip", key, f"{il.cfg['label']} — first out: {cause}", 1)
         for eq in il.cfg["stops"]:
             self.equipment[eq].cmd = False
+        for master, slave in il.cfg.get("handover", {}).items():
+            self._handover(master, slave)
         for tag, (mode, op) in il.cfg["forces"].items():
             loop = self.loops[tag]
             loop.mode, loop.op, loop.forced = mode, op, True
         for child, cil in self.interlocks.items():   # I-100 -> I-300 / I-110 -> I-500, ...
             if key in cil.cfg.get("parents", []):
                 self._trip(child, self._parent_cause(key))
+
+    def _handover(self, master_tag, slave_tag):
+        """Trip feed-forward: the supply behind `slave_tag` just tripped. Move the split-range master's
+        OP straight to where its backup slave's SP equals the lost flow, instead of waiting for the
+        header pressure to fall far enough for the PI to get there. The PI trims from that point."""
+        master = self.loops[master_tag]
+        flow = self.pv(slave_tag)
+        if master.mode == "MAN" or not flow:
+            return
+        for link in master.cfg["cascade"]:
+            if link["slave"] == slave_tag:
+                continue
+            backup = self.loops[link["slave"]]
+            sp_lo, sp_hi = link["sp"][0], (backup.sp_hi if link["sp"][1] == "sp_hi" else link["sp"][1])
+            op_lo, op_hi = link["op"]
+            op = op_lo + clamp((flow - sp_lo) / max(sp_hi - sp_lo, 1e-9), 0.0, 1.0) * (op_hi - op_lo)
+            if op > master.op:
+                master.op, master.e_prev = op, None
+                self.event("trip", master_tag, f"Trip handover: {slave_tag} {flow:.1f} → {link['slave']} "
+                           f"(OP {op:.1f} %)")
+            return
+
+    def _handback(self, slave_tag):
+        """The reverse of _handover, when a restarted supply's flow loop goes back to CAS. While it was
+        down (or in MAN at its start output) the master's OP drifted to wherever the backup alone, or
+        backup + start flow, held the pressure: taken as is, that hands the slave an arbitrary SP
+        (e.g. full range from the backup half) and bumps the header. Re-initialise the master so this
+        slave's SP is the total flow all its slaves deliver now; the backup then winds down as the
+        slave takes over."""
+        master_tag = self.handback.get(slave_tag)
+        if not master_tag:
+            return
+        master = self.loops[master_tag]
+        link = next(l for l in master.cfg["cascade"] if l["slave"] == slave_tag)
+        op_lo, op_hi = link["op"]
+        if master.mode == "MAN":
+            return
+        total = sum(self.pv(l["slave"]) or 0.0 for l in master.cfg["cascade"])
+        s = self.loops[slave_tag]
+        sp_lo, sp_hi = link["sp"][0], (s.sp_hi if link["sp"][1] == "sp_hi" else link["sp"][1])
+        master.op = op_lo + clamp((total - sp_lo) / max(sp_hi - sp_lo, 1e-9), 0.0, 1.0) * (op_hi - op_lo)
+        master.e_prev = None
+        self.event("operator", master_tag, f"Handback to {slave_tag}: {total:.1f} (OP {master.op:.1f} %)")
 
     def _parent_cause(self, key):
         return f"{key} {self.interlocks[key].cfg['label']}"
@@ -570,6 +631,8 @@ class DCS:
                     p.e_prev = None
                 msgs.append(f"mode {p.mode} → {mode}")
                 p.mode = mode
+                if mode == "CAS":
+                    self._handback(tag)
         if "sp" in kw and kw["sp"] is not None:
             if p.mode == "CAS":
                 return False, "SP is remote in CAS"
@@ -635,6 +698,21 @@ class DCS:
                 return False, "permissive: reboiler level LIC-404 < 40 % (pump suction / NPSH)"
             fic = self.loops["FIC-501"]
             fic.mode, fic.op = "MAN", 20.0      # start on part flow; Normal line-up returns it to CAS
+        if key == "GANC":
+            if not self.running("MAC"):
+                return False, "permissive: MAC not running (no GAN from the HP column)"
+            p401 = self.pv("PI-401")
+            if p401 is None or p401 < 4.0:
+                return False, "permissive: HP column pressure PI-401 < 4.0 bar(a) (compressor suction)"
+            fic = self.loops["FIC-503"]
+            fic.mode, fic.op = "MAN", 30.0      # start above minimum flow (surge)
+        if key in ("LOXB", "LINB"):
+            tank, fic = ("LI-505", "FIC-507") if key == "LOXB" else ("LI-506", "FIC-508")
+            lvl, ll = self.pv(tank), C.TAG_INDEX[tank]["alarms"]["LL"]
+            if lvl is None or lvl <= ll:
+                return False, f"permissive: tank level {tank} ≤ {ll} % (pump suction)"
+            loop = self.loops[fic]
+            loop.mode, loop.op = "MAN", 0.0     # start on minimum-flow recirculation
         eq.cmd = True
         eq.cmd_since = self.now
         self.event("operator", key, f"{eq.cfg['label']} start")
@@ -666,6 +744,8 @@ class DCS:
                 continue
             p.mode = mode
             p.e_prev = None
+            if mode == "CAS":
+                self._handback(tag)
             changed.append(f"{tag}→{mode}")
         msg = ", ".join(changed) or "no change"
         if skipped:
@@ -682,7 +762,7 @@ class DCS:
             if t["kind"] == "PID":
                 p = self.loops[t["tag"]]
                 row.update(sp=round(p.sp, 5), target=round(p.target, 5), op=round(p.op, 3),
-                           mode=p.mode, forced=p.forced, limited=p.limited, xlimited=p.xlimited, sp_hi=p.sp_hi,
+                           mode=p.mode, forced=p.forced, limited=p.limited, xlimited=p.xlimited, lim_by=p.lim_by if p.xlimited else None, sp_hi=p.sp_hi,
                            sp_lo=p.sp_lo, kc=p.kc, ti=p.ti, sp_rate=p.sp_rate)
                 if p.cfg.get("ratio_of"):
                     row["ratio"] = p.ratio

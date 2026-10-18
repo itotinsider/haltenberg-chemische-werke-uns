@@ -188,7 +188,7 @@
   .lad[data-tag], .lad-dt { cursor: pointer; }
   .lad[data-tag]:hover .lv, .lad-dt:hover { text-decoration: underline; }
 
-  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px; background: var(--line); }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(136px, 1fr)); gap: 1px; background: var(--line); }
   .kpi { background: var(--panel); padding: 8px 10px; }
   .kpi small { display: block; color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; }
   .kpi b { display: block; font: 700 20px var(--mono); color: var(--value); margin-top: 2px; }
@@ -468,8 +468,11 @@
           <!-- booster air leaves the cold end as liquid air: JT valve HV-116 -> HP column -->
           <path class="pipe" d="M572 476H724a6 6 0 0 1 12 0H742"/>
           <g id="v-HV-116" transform="translate(690,476)"><polygon class="valve open" points="-8,-6 -8,6 8,-6 8,6"/></g>
-          <path class="pipe n2" d="M822 392H1420"/>
-          <g id="v-FV-503" transform="translate(1040,392)"><polygon class="valve" points="-8,-6 -8,6 8,-6 8,6"/></g>
+          <!-- GAN: HP column top → K-503 GAN compressor (guide vanes FV-503) → 8 bar(g) header -->
+          <path class="pipe n2" d="M822 392H1000"/>
+          <polygon id="eq-GANC" class="equip" points="1000,378 1032,385 1032,399 1000,406"/>
+          <text class="lbl" x="996" y="372">K-503</text>
+          <path class="pipe n2" d="M1032 392H1420"/>
           <path class="pipe o2" d="M822 332H1150V470"/>
           <g id="v-LV-404" transform="translate(1040,332)"><polygon class="valve" points="-8,-6 -8,6 8,-6 8,6"/></g>
           <text class="lbl big" x="1066" y="275">GOX header</text>
@@ -485,6 +488,8 @@
           <rect id="lvl-505" class="liquid lox" clip-path="url(#clip-505)" x="1112" y="540" width="78" height="60"/>
           <text class="lbl" x="1118" y="488">T-505 LOX</text>
           <path class="pipe o2" d="M1190 586H1236"/>
+          <circle id="eq-LOXB" class="equip" cx="1213" cy="586" r="7"/>
+          <text class="lbl" x="1198" y="574">P-505</text>
           <rect class="equip" id="vap" x="1236" y="566" width="56" height="40" rx="3"/>
           <path d="M1244 572v28M1252 572v28M1260 572v28M1268 572v28M1276 572v28M1284 572v28" stroke="#9aa0a5" stroke-width="1"/>
           <text class="lbl" x="1232" y="622">E-507 vaporizer</text>
@@ -493,6 +498,14 @@
           <rect class="vessel" x="1412" y="470" width="78" height="132" rx="10"/>
           <rect id="lvl-506" class="liquid lin" clip-path="url(#clip-506)" x="1412" y="540" width="78" height="60"/>
           <text class="lbl" x="1420" y="488">T-506 LIN</text>
+          <!-- LIN backup: T-506 → P-506 → E-508 vaporizer → FV-508 → GAN header -->
+          <path class="pipe n2" d="M1412 560H1386V392"/>
+          <g id="v-FV-508" transform="translate(1386,416)"><polygon class="valve" points="-6,-8 6,-8 -6,8 6,8"/></g>
+          <rect class="equip" id="vapn" x="1376" y="486" width="20" height="40" rx="2"/>
+          <path d="M1381 490v32M1386 490v32M1391 490v32" stroke="#9aa0a5" stroke-width="1"/>
+          <circle id="eq-LINB" class="equip" cx="1386" cy="542" r="7"/>
+          <text class="lbl" x="1342" y="510">E-508</text>
+          <text class="lbl" x="1342" y="546">P-506</text>
           <path class="pipe n2" d="M872 368V640H1451V602"/>
           <g id="v-FV-409" transform="translate(940,640)"><polygon class="valve" points="-8,-6 -8,6 8,-6 8,6"/></g>
           <text class="lbl" x="1300" y="658">LIN to storage</text>
@@ -625,12 +638,12 @@ const PLACEMENTS = [
   ["LIC-403", 922, 470], ["PI-401", 922, 524],
   ["FIC-501", 1066, 200], ["PIC-502", 1170, 200], ["AI-601", 1274, 200],
   ["FIC-503", 1066, 312], ["PIC-504", 1170, 312], ["AIC-602", 1274, 312], ["FI-408", 1172, 420],
-  ["LI-505", 1112, 612], ["FIC-507", 1236, 470], ["LI-506", 1412, 612], ["FIC-409", 960, 600],
+  ["LI-505", 1112, 612], ["FIC-507", 1236, 470], ["LI-506", 1412, 612], ["FIC-409", 960, 600], ["FIC-508", 1416, 422],
   ["KPI-701", 1380, 96], ["TI-306", 680, 566],
 ];
 const VALVES = {
   "UV-103": "UIC-103", "FV-303": "FIC-303", "FV-405": "FIC-405", "LV-403": "LIC-403", "PV-402": "PIC-402",
-  "FV-501": "FIC-501", "FV-503": "FIC-503", "LV-404": "LIC-404", "FV-507": "FIC-507", "FV-409": "FIC-409",
+  "FV-501": "FIC-501", "LV-404": "LIC-404", "FV-507": "FIC-507", "FV-409": "FIC-409", "FV-508": "FIC-508",
 };
 const LEVELS = { "lvl-404": ["LIC-404", 290, 28], "lvl-403": ["LIC-403", 520, 40], "lvl-505": ["LI-505", 472, 128], "lvl-506": ["LI-506", 472, 128] };
 const MINIS = [
@@ -931,8 +944,8 @@ const DETAILS = {
   },
   "products": {
     title: "Product delivery · GOX & GAN headers", short: "Products",
-    block: "ProductDelivery", aliases: ["GOX", "GAN"],
-    hot: [[1416, 242, 102, 80, "GOX consumers"], [1416, 374, 102, 36, "Site N₂ grid"]],
+    block: "ProductDelivery", aliases: ["GOX", "GAN", "K-503", "GANC"],
+    hot: [[1416, 242, 102, 80, "GOX consumers"], [1416, 374, 102, 36, "Site N₂ grid"], [994, 366, 44, 44, "K-503 GAN compressor"]],
     svg: `
       <text class="lbl big" x="40" y="44">GOX · gaseous oxygen header</text>
       ${opc(40, 120, "GOX from E-301", "E-301")}
@@ -945,34 +958,43 @@ const DETAILS = {
       <rect class="vessel" x="1240" y="80" width="150" height="30"/><text class="lbl big" x="1250" y="100">EO / EG plant</text>
       <rect class="vessel" x="1240" y="130" width="150" height="30"/><text class="lbl big" x="1250" y="150">Acetylene POX</text>
       <text class="lbl big" x="40" y="364">GAN · gaseous nitrogen header</text>
-      ${opc(40, 440, "GAN from E-301", "E-301")}
-      <path class="pipe main n2" d="M172 440H1240"/>${vH("FV-503", 300, 440)}
+      <!-- K-503: HP-column GAN (~5 bar(a), warmed in E-301) → 8 bar(g) header; FV-503 = its inlet guide vanes -->
+      ${opc(40, 440, "GAN from E-301", "E-301")}<path class="pipe n2" d="M172 440H250"/>${vH("FV-503", 214, 440)}
+      <polygon id="dq-GANC" class="equip" points="250,412 330,426 330,454 250,468"/>
+      <text class="lbl" x="250" y="404">K-503 GAN compressor</text>
+      <path class="pipe main n2" d="M330 440H1240"/>
       <rect class="vessel" x="1240" y="425" width="150" height="30"/><text class="lbl big" x="1250" y="445">Site N₂ grid</text>
+      ${opc(40, 520, "GAN from E-508", "T-505")}
+      <path class="pipe n2" d="M172 520H800V440"/>${vH("FV-508", 300, 520)}<circle class="node" cx="800" cy="440" r="3.5" style="fill:var(--n2)"/>
+      <text class="lbl" x="810" y="514">LIN backup vaporizer send-out</text>
       <!-- AIC-602 sets the reflux setpoint on the column display -->
       <path class="pipe thin" d="M776 400H820"/>${opc(820, 400, "SP → FIC-405 reflux", "C-401", { w: 150 })}`,
-    build: () => splitHtml("PIC-502", 420, 280, 500),
+    build: () => splitHtml("PIC-502", 420, 280, 500) + splitHtml("PIC-504", 420, 566, 500),
     placements: [
       ["FIC-501", 250, 56], ["TI-512", 404, 60], ["PIC-502", 560, 56], ["AI-601", 680, 60], ["FIC-507", 250, 236],
-      ["LIC-415", 560, 150],
-      ["FIC-503", 250, 376], ["PIC-504", 560, 376], ["AIC-602", 680, 376],
+      ["LIC-415", 560, 150], ["FY-501", 680, 150],
+      ["FIC-503", 40, 376], ["PIC-504", 560, 376], ["AIC-602", 680, 376],
+      ["PI-513", 350, 456], ["JI-514", 460, 456], ["VI-515", 570, 456], ["FIC-508", 250, 536],
     ],
-    valves: { "FV-507": "FIC-507", "FV-503": "FIC-503" },
+    valves: { "FV-507": "FIC-507", "FV-503": "FIC-503", "FV-508": "FIC-508" },
     levels: {},
-    status: { x: 40, y: 540, items: [["eq", "LOXP"], ["ilk", "I-500"], ["eq", "MAC"]] },
-    render: root => renderSplit(root, "PIC-502", 420, 280, 500),
+    equip: { "dq-GANC": "GANC" },
+    status: { x: 1000, y: 500, items: [["eq", "LOXP"], ["ilk", "I-500"], ["eq", "GANC"], ["ilk", "I-503"], ["eq", "MAC"]] },
+    render: root => { renderSplit(root, "PIC-502", 420, 280, 500); renderSplit(root, "PIC-504", 420, 566, 500); },
     minis: [
       { title: "GOX header pressure", pts: ["PIC-502.PV", "PIC-502.SP"] },
       { title: "GOX from cold box vs vaporizer", pts: ["FIC-501.PV", "FIC-507.PV"], shared: true },
       { title: "GOX purity", pts: ["AI-601.PV"] },
       { title: "GAN header pressure", pts: ["PIC-504.PV", "PIC-504.SP"] },
-      { title: "GAN product flow", pts: ["FIC-503.PV", "FIC-503.SP"] },
+      { title: "GAN from K-503 vs LIN vaporizer", pts: ["FIC-503.PV", "FIC-508.PV"], shared: true },
       { title: "O₂ in GAN", pts: ["AIC-602.PV", "AIC-602.SP"] },
     ],
   },
   "T-505": {
-    title: "T-505 / T-506 / E-507 · Liquid storage & backup vaporizer", short: "T-505 Storage",
-    block: "BackupStorage", aliases: ["T-506", "E-507"],
-    hot: [[1108, 466, 86, 140, "T-505 LOX tank"], [1232, 562, 64, 48, "E-507 vaporizer"], [1408, 466, 86, 140, "T-506 LIN tank"]],
+    title: "T-505 / T-506 · Liquid storage & backup (P-505 / E-507, P-506 / E-508)", short: "T-505 Storage",
+    block: "BackupStorage", aliases: ["T-506", "E-507", "E-508", "P-505", "P-506", "LOXB", "LINB"],
+    hot: [[1108, 466, 86, 140, "T-505 LOX tank"], [1200, 562, 96, 48, "P-505 / E-507 LOX backup"], [1408, 466, 86, 140, "T-506 LIN tank"],
+          [1338, 404, 66, 160, "P-506 / E-508 LIN backup"]],
     svg: `
       <!-- LOX: column sump → T-505 → E-507 vaporizer → GOX header -->
       ${opc(40, 120, "LOX from C-402", "C-401")}
@@ -980,7 +1002,10 @@ const DETAILS = {
       <rect class="vessel" x="300" y="150" width="140" height="360" rx="20"/>
       ${clip("505", 300, 150, 140, 360, 20)}<rect id="d-lvl-505" class="liquid lox" clip-path="url(#dclip-505)" x="300" y="152" width="140" height="356"/>
       <text class="lbl big" x="370" y="176" text-anchor="middle">T-505 LOX</text>
+      <!-- P-505 is kept cold on minimum-flow recirculation: it delivers as soon as FV-507 opens -->
       <path class="pipe o2" d="M370 510V560H600"/>
+      <circle id="dq-LOXB" class="equip" cx="480" cy="560" r="12"/><path class="noarrow" d="M474 570l-6 8h24l-6-8" fill="none" stroke="var(--equip)" stroke-width="1.6"/>
+      <text class="lbl" x="480" y="544" text-anchor="middle">P-505</text>
       <rect id="dq-vap" class="equip" x="600" y="530" width="120" height="60" rx="3"/>
       <path d="M612 536v48M626 536v48M640 536v48M654 536v48M668 536v48M682 536v48M696 536v48M710 536v48" stroke="#9aa0a5" stroke-width="1"/>
       <text class="lbl" x="660" y="610" text-anchor="middle">E-507 vaporizer (ambient air)</text>
@@ -990,20 +1015,34 @@ const DETAILS = {
       <path class="pipe n2" d="M1300 120H1070V150"/>${vH("FV-409", 1200, 120)}
       <rect class="vessel" x="1000" y="150" width="140" height="360" rx="20"/>
       ${clip("506", 1000, 150, 140, 360, 20)}<rect id="d-lvl-506" class="liquid lin" clip-path="url(#dclip-506)" x="1000" y="152" width="140" height="356"/>
-      <text class="lbl big" x="1070" y="176" text-anchor="middle">T-506 LIN</text>`,
+      <text class="lbl big" x="1070" y="176" text-anchor="middle">T-506 LIN</text>
+      <!-- LIN backup: T-506 → P-506 → E-508 vaporizer → FV-508 → GAN header (PIC-504 split range) -->
+      <path class="pipe n2" d="M1070 510V560H1200"/>
+      <circle id="dq-LINB" class="equip" cx="1130" cy="560" r="12"/><path class="noarrow" d="M1124 570l-6 8h24l-6-8" fill="none" stroke="var(--equip)" stroke-width="1.6"/>
+      <text class="lbl" x="1130" y="544" text-anchor="middle">P-506</text>
+      <rect id="dq-vapn" class="equip" x="1200" y="530" width="120" height="60" rx="3"/>
+      <path d="M1212 536v48M1226 536v48M1240 536v48M1254 536v48M1268 536v48M1282 536v48M1296 536v48M1310 536v48" stroke="#9aa0a5" stroke-width="1"/>
+      <text class="lbl" x="1260" y="610" text-anchor="middle">E-508 vaporizer (ambient air)</text>
+      <path class="pipe n2" d="M1320 560H1350V300H1368"/>${vV("FV-508", 1350, 430)}${opc(1368, 300, "GAN → GAN header", "products", { w: 140 })}`,
     placements: [
       ["FI-408", 180, 56], ["LI-505", 460, 300], ["FIC-507", 812, 316], ["FIC-409", 1160, 56], ["LI-506", 1160, 300],
+      ["PI-516", 432, 584], ["PI-517", 1040, 584], ["FIC-508", 1240, 410],
     ],
-    valves: { "LV-404": "LIC-404", "FV-507": "FIC-507", "FV-409": "FIC-409" },
+    valves: { "LV-404": "LIC-404", "FV-507": "FIC-507", "FV-409": "FIC-409", "FV-508": "FIC-508" },
     levels: { "d-lvl-505": ["LI-505", 152, 356], "d-lvl-506": ["LI-506", 152, 356] },
-    render: root => $("#dq-vap", root).setAttribute("class", "equip" + (ST.tags["FIC-507"].op > 2 ? " run" : "")),
+    equip: { "dq-LOXB": "LOXB", "dq-LINB": "LINB" },
+    status: { x: 470, y: 216, items: [["eq", "LOXB"], ["ilk", "I-505"], ["eq", "LINB"], ["ilk", "I-506"]] },
+    render: root => {
+      $("#dq-vap", root).setAttribute("class", "equip" + (ST.tags["FIC-507"].op > 2 ? " run" : ""));
+      $("#dq-vapn", root).setAttribute("class", "equip" + (ST.tags["FIC-508"].op > 2 ? " run" : ""));
+    },
     minis: [
       { title: "Tank levels", pts: ["LI-505.PV", "LI-506.PV"], shared: true },
-      { title: "Backup vaporizer send-out", pts: ["FIC-507.PV", "FIC-507.SP"] },
+      { title: "LOX backup send-out (E-507)", pts: ["FIC-507.PV", "FIC-507.SP"] },
+      { title: "LIN backup send-out (E-508)", pts: ["FIC-508.PV", "FIC-508.SP"] },
       { title: "GOX header pressure", pts: ["PIC-502.PV", "PIC-502.SP"] },
-      { title: "LOX draw to storage", pts: ["FI-408.PV"] },
-      { title: "LIN draw to storage", pts: ["FIC-409.PV", "FIC-409.SP"] },
-      { title: "Reboiler level", pts: ["LIC-404.PV", "LIC-404.SP"] },
+      { title: "GAN header pressure", pts: ["PIC-504.PV", "PIC-504.SP"] },
+      { title: "Draw to storage (LOX / LIN)", pts: ["FI-408.PV", "FIC-409.PV"], shared: true },
     ],
   },
 };
@@ -1261,14 +1300,14 @@ function splitHtml(tag, x, y, w) {
       <text class="lbl" x="${x1 + 4}" y="${y + 34}">${c.slave} · OP ${c.op[0]}–${c.op[1]} %</text>
       <text class="lbl" x="${x1 + 4}" y="${y + 48}" style="font-weight:400">${esc(TAG[c.slave].desc)}</text>`;
   }).join("");
-  return `<g class="split" data-tag="${tag}" style="cursor:pointer">
+  return `<g class="split" data-tag="${tag}" data-split="${tag}" style="cursor:pointer">
     <text class="lbl big" x="${x}" y="${y - 10}">${tag} split range</text>${segs}
     <path class="sr-mk" d=""/><text class="lad-dt sr-v" x="${x + w + 10}" y="${y + 14}"></text></g>`;
 }
 function renderSplit(root, tag, x, y, w) {
-  const op = ST.tags[tag].op, mx = x + w * Math.max(0, Math.min(100, op)) / 100;
-  $(".split .sr-mk", root).setAttribute("d", `M${mx - 6} ${y - 8}L${mx + 6} ${y - 8}L${mx} ${y}ZM${mx} ${y}V${y + 18}`);
-  $(".split .sr-v", root).textContent = `OP ${op.toFixed(1)} %`;
+  const op = ST.tags[tag].op, mx = x + w * Math.max(0, Math.min(100, op)) / 100, g = $(`[data-split="${tag}"]`, root);
+  $(".sr-mk", g).setAttribute("d", `M${mx - 6} ${y - 8}L${mx + 6} ${y - 8}L${mx} ${y}ZM${mx} ${y}V${y + 18}`);
+  $(".sr-v", g).textContent = `OP ${op.toFixed(1)} %`;
 }
 
 function buildTagTable() {
@@ -1353,9 +1392,12 @@ function renderKpis() {
     ["GOX product", fmt("FIC-501", gox), "kNm³/h", false],
     ["GOX purity", fmt("AI-601", pur), "% O₂ · spec ≥ 99.5", pur != null && pur < 99.5],
     ["Specific power", fmt("KPI-701", kpi), "kWh/Nm³ O₂", kpi != null && kpi > TAG["KPI-701"].alarms.H],
-    ["Main air compressor", eq.MAC.state, `${fmt("JI-104", pv("JI-104"))} MW`, eq.MAC.state !== "RUNNING"],
+    ["MAC K-101", eq.MAC.state, `${fmt("JI-104", pv("JI-104"))} MW`, eq.MAC.state !== "RUNNING"],
     ["Booster K-102", eq.BAC.state, `${fmt("JI-113", pv("JI-113"))} MW`, eq.BAC.state !== "RUNNING"],
     ["LOX pump P-501", eq.LOXP.state, `${fmt("PI-511", pv("PI-511"))} bar(g)`, eq.LOXP.state !== "RUNNING"],
+    ["GAN K-503", eq.GANC.state, `${fmt("JI-514", pv("JI-514"))} MW`, eq.GANC.state !== "RUNNING"],
+    ["Backup P-505 · P-506", eq.LOXB.state === "RUNNING" && eq.LINB.state === "RUNNING" ? "READY" : `${eq.LOXB.state.slice(0, 4)} · ${eq.LINB.state.slice(0, 4)}`,
+     `send-out ${fmt("FIC-507", pv("FIC-507"))} · ${fmt("FIC-508", pv("FIC-508"))} kNm³/h`, eq.LOXB.state !== "RUNNING" || eq.LINB.state !== "RUNNING"],
     ["Expander", eq.EXP.state, `${fmt("SI-304", pv("SI-304"))} rpm`, eq.EXP.state !== "RUNNING"],
     ["PPU · KS-201", q.display, `CO₂ ${fmt("AI-202", co2)} ppm`, co2 != null && co2 >= 1],
   ];
@@ -1384,7 +1426,7 @@ function renderDataBlocks(root) {
       $('[data-f="barsp"]', g).setAttribute("transform", `translate(${barX(t, w, row.sp)},0)`);
       const md = $('[data-f="mode"]', g);
       md.setAttribute("x", a ? w - 20 : w - 4);   // make room for the alarm badge
-      md.textContent = row.mode + (row.forced ? " ILK" : row.xlimited ? " XLIM" : row.limited ? " LIM" : "");
+      md.textContent = row.mode + (row.forced ? " ILK" : row.xlimited ? (row.lim_by === t.sp_cap ? " CAP" : " XLIM") : row.limited ? " LIM" : "");
       md.classList.toggle("man", row.mode === "MAN");
       $('[data-f="sp"]', g).textContent = `SP ${fmt(tag, row.sp)} · ${row.op.toFixed(0)}%`;
     }
@@ -1454,7 +1496,9 @@ function renderMimic() {
   $("#eq-EXP").setAttribute("class", eqCls(ST.equipment.EXP));
   $("#eq-BAC").setAttribute("class", eqCls(ST.equipment.BAC));
   $("#eq-LOXP").setAttribute("class", eqCls(ST.equipment.LOXP));
+  for (const k of ["GANC", "LOXB", "LINB"]) $("#eq-" + k).setAttribute("class", eqCls(ST.equipment[k]));
   $("#vap").setAttribute("class", "equip" + (ST.tags["FIC-507"].op > 2 ? " run" : ""));
+  $("#vapn").setAttribute("class", "equip" + (ST.tags["FIC-508"].op > 2 ? " run" : ""));
   const q = ST.sequences["KS-201"];
   for (const b of ["A", "B"]) {
     const on = q.online === b;
@@ -1479,7 +1523,7 @@ function renderTagTable() {
     const st = [];
     if (a) st.push(`${prioSvg(a.priority)} ${a.limit}`);
     if (row.forced) st.push(`<span class="chip forced">ILK</span>`);
-    if (row.xlimited) st.push(`<span class="chip lim">CROSS-LIMIT</span>`);
+    if (row.xlimited) st.push(`<span class="chip lim">${row.lim_by === t.sp_cap ? "LOAD LIMIT" : "CROSS-LIMIT"}</span>`);
     else if (row.limited) st.push(`<span class="chip lim">OVERRIDE LIM</span>`);
     $('[data-f="st"]', r).innerHTML = st.join(" ");
   }
@@ -1586,6 +1630,7 @@ function buildFaceplate() {
   if (pid && t.ratio_of) casc += `<div class="note">Ratio station: in CAS, SP = ratio × the higher of ${t.ratio_of} flow and demand (leads on increase)</div>
       <div class="entry"><label>Ratio</label><input data-in="ratio" inputmode="decimal" placeholder="${t.ratio_lo}–${t.ratio_hi}"><button data-set="ratio">Set</button></div>`;
   if (pid && t.xlimit) casc += `<div class="note">Cross-limited: SP capped at ${t.xlimit} flow ÷ its ratio (follows on increase)</div>`;
+  if (pid && t.sp_cap) casc += `<div class="note">Load limit: SP capped at ${t.sp_cap} (${esc(TAG[t.sp_cap].desc)})</div>`;
   $("#fp-body").innerHTML = `
     <div class="fp-desc">${esc(t.desc)}</div>
     <div class="fp-pv"><b data-f="pv"></b><span>${esc(t.unit)}</span></div>
@@ -1647,7 +1692,8 @@ function renderFaceplate() {
   $$("[data-mode]", body).forEach(b => b.classList.toggle("on", b.dataset.mode === row.mode));
   const warn = [];
   if (row.forced) warn.push("Held in MAN by an interlock — reset the interlock first.");
-  if (row.xlimited) warn.push(`SP capped by the cross-limit: not enough ${t.xlimit} flow for more.`);
+  if (row.xlimited) warn.push(row.lim_by === t.sp_cap ? `SP capped by the load limit ${t.sp_cap}: the air can't make more — raise the air or let the backup cover the rest.`
+                                                        : `SP capped by the cross-limit: not enough ${t.xlimit} flow for more.`);
   else if (row.limited) warn.push("Output clamped by the override controller.");
   if (row.mode === "MAN") warn.push("MAN: SP tracks PV; operator sets the output.");
   if (row.mode === "CAS") warn.push("CAS: setpoint comes from the cascade master.");
@@ -1885,19 +1931,19 @@ const TRAIN = [
       <p>The clever bit is the <b>main condenser</b> between them. At higher pressure nitrogen condenses at a higher temperature, so nitrogen from the bottom column can condense while it boils the liquid oxygen in the top column. One heat exchanger does two jobs. Liquid nitrogen <b>reflux</b> (FIC-405) washes oxygen out of the top of the LP column.</p>
       <p>Safety: hydrocarbons from the air collect in the boiling liquid oxygen. Analysers AI-603 and AI-604 watch them, because too much can ignite.</p>`,
     think: "No reboiler fuel, no condenser cooling water: the column heats and cools itself." },
-  { title: "Product delivery", regions: [[1040, 190, 480, 268]], marker: [1052, 168],
-    watch: ["FIC-501", "PIC-502", "AI-601", "PI-511", "TI-512", "FIC-503", "AIC-602"],
-    text: `<p>The oxygen leaves the column as a <b>liquid</b>. The LOX pump <b>P-501</b> brings it to about 33 bar, it boils in the main heat exchanger, and it arrives as gas (<b>GOX</b>) at about 30 bar in the pipeline header to the EO/EG plant and the acetylene plant. Pumping a liquid is much easier and safer than compressing hot oxygen gas. Gaseous nitrogen (<b>GAN</b>) goes to the site nitrogen grid for inerting and purging.</p>
-      <p>The header pressure controller <b>PIC-502</b> works in <b>split range</b>. First it raises the pumped oxygen from the cold box. If that isn't enough, it starts the backup vaporizer (step ⑥). Analysers check that the oxygen is pure enough (AI-601, spec ≥ 99.5 %).</p>`,
+  { title: "Product delivery", regions: [[990, 190, 530, 268]], marker: [1052, 168],
+    watch: ["FIC-501", "PIC-502", "AI-601", "FY-501", "TI-512", "FIC-503", "PIC-504", "AIC-602"],
+    text: `<p>The oxygen leaves the column as a <b>liquid</b>. The LOX pump <b>P-501</b> brings it to about 33 bar, it boils in the main heat exchanger, and it arrives as gas (<b>GOX</b>) at about 30 bar in the pipeline header to the EO/EG plant and the acetylene plant. Pumping a liquid is much easier and safer than compressing hot oxygen gas. Gaseous nitrogen (<b>GAN</b>) leaves the high-pressure column at about 5 bar; the compressor <b>K-503</b> brings it up to the 8 bar site grid for inerting and purging.</p>
+      <p>The header pressure controllers <b>PIC-502</b> (oxygen) and <b>PIC-504</b> (nitrogen) work in <b>split range</b>. First they raise the product from the cold box. If that isn't enough, or the pump or compressor trips, they start a backup vaporizer (step ⑥). The oxygen can never be more than the air brings in: the <b>load limit</b> FY-501 caps the pumped oxygen. More demand needs <i>more air</i>; pumping harder would only spoil the purity. Analysers check that the oxygen is pure enough (AI-601, spec ≥ 99.5 %).</p>`,
     think: "Customers see only the header pressure: if it holds, they are happy." },
-  { title: "Backup & storage", regions: [[1104, 462, 412, 206], [930, 592, 140, 62]], marker: [1096, 448],
-    watch: ["LI-505", "LI-506", "FIC-507", "FIC-409"],
+  { title: "Backup & storage", regions: [[1104, 404, 412, 264], [930, 592, 140, 62]], marker: [1096, 448],
+    watch: ["LI-505", "LI-506", "FIC-507", "FIC-508", "PI-516", "PI-517"],
     text: `<p>Part of the product is kept as a <b>liquid</b> in insulated tanks: liquid oxygen (LOX) and liquid nitrogen (LIN). This is the plant's insurance.</p>
-      <p>If the ASU trips, or a customer suddenly needs more oxygen than the cold box can make, the <b>backup vaporizer</b> (FIC-507) turns LOX back into gas and feeds the GOX header. Customers can then carry on for hours while the operators restart the plant.</p>`,
-    think: "A full LOX tank buys the operators time." },
+      <p>If the ASU trips, or a customer suddenly needs more than the cold box can make, a <b>backup pump</b> lifts the liquid to pipeline pressure and a <b>backup vaporizer</b> turns it back into gas: P-505 / E-507 for the oxygen header (FIC-507), P-506 / E-508 for the nitrogen grid (FIC-508). The pumps run all the time on a small recirculation flow, so they stay cold and can take over within seconds. Customers can then carry on for hours while the operators restart the plant.</p>`,
+    think: "A full tank buys the operators time — but only if its backup pump is running." },
   { title: "Energy", regions: [[1370, 86, 148, 74]], marker: [1356, 80],
-    watch: ["KPI-701", "JI-104", "JI-113", "FIC-501"],
-    text: `<p>Nearly all the energy goes into the two air compressors: the main air compressor and the booster. <b>Specific power</b> (KPI-701) is their power divided by the oxygen made, in kWh per Nm³ of O₂. Lower is better. The booster is the price of internal compression: it replaces an oxygen compressor.</p>
+    watch: ["KPI-701", "JI-104", "JI-113", "JI-514", "FIC-501"],
+    text: `<p>Nearly all the energy goes into compressors: the main air compressor, the booster and the nitrogen compressor K-503. <b>Specific power</b> (KPI-701) is their power divided by the oxygen made, in kWh per Nm³ of O₂. Lower is better. The booster is the price of internal compression: it replaces an oxygen compressor.</p>
       <p>It goes up when the compressor gets dirty, on hot days (warm air is harder to compress), or when the plant runs a lot of air for little product.</p>`,
     think: "Electricity is the biggest running cost of an air separation unit." },
 ];
@@ -1925,7 +1971,8 @@ function trainLive(i) {
     if (running("MAC")) L.push(`The plant is taking in <b>${u("FIC-101", -1)}</b> of air — about <b>${load.toFixed(0)} %</b> of its design load.`);
     else L.push(`The main air compressor is <b>${eq.MAC.state.toLowerCase()}</b>: no air is being separated.`);
     L.push(`It delivers <b>${u("FIC-501", -1)}</b> of oxygen gas at <b>${u("AI-601", -1)}</b> purity and ${u("FIC-503", -1)} of nitrogen gas.`);
-    if (pv("FIC-507") > 0.5) L.push(`The backup vaporizer is helping out with ${u("FIC-507", -1)}: the cold box alone can't keep up with demand.`);
+    if (pv("FIC-507") > 0.5) L.push(`The oxygen backup vaporizer is helping out with ${u("FIC-507", -1)}: the cold box alone can't keep up with demand.`);
+    if (pv("FIC-508") > 0.5) L.push(`The nitrogen backup vaporizer is supplying ${u("FIC-508", -1)} from the LIN tank.`);
     const al = ST.alarms.filter(a => a.active).length;
     L.push(al ? `${al} alarm${al > 1 ? "s are" : " is"} active — see the banner at the top.` : `No alarms are active: the plant is in a steady, normal state.`);
   }
@@ -1970,19 +2017,26 @@ function trainLive(i) {
     const pur = pv("AI-601"), p = pv("PIC-502"), sp = ST.tags["PIC-502"].sp;
     L.push(`GOX header at <b>${u("PIC-502")}</b> (set point ${fmt("PIC-502", sp)})${p != null && p < sp - 1 ? " — <b>below set point</b>: customers are taking more than is supplied" : ""}.`);
     if (!running("LOXP")) L.push(`The LOX pump P-501 is <b>${ST.equipment.LOXP.state.toLowerCase()}</b>: the cold box sends no oxygen, the header relies on the backup vaporizer.`);
-    else if (ST.tags["FIC-501"].limited) L.push(`The LOX pump is held back${ST.tags["FIC-501"].xlimited ? " by the booster air (cross-limit)" : " by the reboiler low-level override (LIC-415)"}: the column can't give more right now.`);
+    else if (ST.tags["FIC-501"].limited) { const r = ST.tags["FIC-501"]; L.push(!r.xlimited ? `The LOX pump is held back by the reboiler low-level override (LIC-415): the column can't give more right now.`
+      : r.lim_by === "FY-501" ? `The LOX pump is held back by the <b>load limit</b> (FY-501): the air going in can't make more oxygen. Raise the air (FIC-101) to make more.`
+      : `The LOX pump is held back by the booster air (cross-limit): it can't boil more oxygen right now.`); }
     L.push(`Oxygen send-out <b>${u("FIC-501", -1)}</b> at <b>${u("AI-601", -1)}</b>${pur != null && pur < 99.5 ? " — <b>off spec!</b> Too much oxygen is being drawn for the air going in" : " — on spec"}.`);
     L.push(pv("FIC-507") > 0.5 ? `The <b>backup vaporizer</b> is running (${u("FIC-507", -1)}) — the split range has moved into its second half.` : `The backup vaporizer is closed: the cold box covers the whole demand.`);
-    L.push(`Nitrogen send-out ${u("FIC-503", -1)}, ${u("AIC-602", -1)} oxygen left in it.`);
+    L.push(running("GANC") ? `Nitrogen compressor K-503: send-out ${u("FIC-503", -1)} at ${u("PIC-504")}, ${u("AIC-602", -1)} oxygen left in it.`
+                           : `The nitrogen compressor K-503 is <b>${ST.equipment.GANC.state.toLowerCase()}</b>: the nitrogen grid (${u("PIC-504")}) relies on the LIN backup (${u("FIC-508", -1)}).`);
   }
   if (i === 6) {
     L.push(`LOX tank <b>${u("LI-505", -1)}</b> full, LIN tank <b>${u("LI-506", -1)}</b> full.`);
-    L.push(pv("FIC-507") > 0.5 ? `The vaporizer is sending out <b>${u("FIC-507", -1)}</b> of oxygen from the tank, so the tank level is falling.` : `The vaporizer is on standby, ready to take over automatically if the header pressure drops.`);
+    for (const [k, fic, gas] of [["LOXB", "FIC-507", "oxygen"], ["LINB", "FIC-508", "nitrogen"]]) {
+      const name = CFG.equipment[k].label;
+      if (!running(k)) L.push(`<b>${name} is ${ST.equipment[k].state.toLowerCase()}</b>: there is no ${gas} backup until it is restarted.`);
+      else L.push(pv(fic) > 0.5 ? `${name} is sending out <b>${u(fic, -1)}</b> of ${gas} from the tank, so the tank level is falling.` : `${name} is on standby (recirculating), ready to take over automatically if the ${gas} header pressure drops.`);
+    }
   }
   if (i === 7) {
     const k = pv("KPI-701");
     L.push(k == null ? `No specific power right now: no oxygen is being produced.` : `Specific power <b>${k.toFixed(3)} kWh/Nm³</b>${k > TAG["KPI-701"].alarms.H ? " — <b>high</b>: the plant is using more energy than it should for this output" : " — normal for this plant"}.`);
-    L.push(`Main air compressor ${u("JI-104", -1)}, booster ${u("JI-113", -1)}.`);
+    L.push(`Main air compressor ${u("JI-104", -1)}, booster ${u("JI-113", -1)}, nitrogen compressor ${u("JI-514", -1)}.`);
   }
   return L;
 }

@@ -117,9 +117,9 @@ minutes).
 plant container                         dcs container
 ┌──────────────────────────┐  Modbus   ┌────────────────────────────────────┐   OPC UA
 │ ASU process model        │   TCP     │ 1 s scan                           │  :4840
-│ (6 blocks, 0.5 s step)   │◄─────────►│ 18 PI controllers (cascade, ratio, ├──────────► agents,
+│ (6 blocks, 0.5 s step)   │◄─────────►│ 19 PI controllers (cascade, ratio, ├──────────► agents,
 │ instructor station :8111 │  :5020    │   split range, override)           │            UaExpert,
-│ fault scenarios (hidden) │           │ interlocks I-100/I-110/I-300/I-500 │            IT systems
+│ fault scenarios (hidden) │           │ 7 interlocks (I-100 … I-506)       │            IT systems
 └──────────────────────────┘           │ PPU sequence KS-201                │
                                        │ alarms (state-based)               │
                                        │ historian (SQLite) ── data/        │
@@ -203,8 +203,8 @@ The overview (ISA-101 level 2) shows the whole unit. Each unit also has a **deta
 | `K-102` | Booster air compressor, its ratio to the pumped LOX (internal compression) |
 | `E-301` | Main heat exchanger (all streams) and X-303 expander |
 | `C-401` | HP / LP columns, E-404 main condenser, P-501 LOX pump, boiling-point scale |
-| `products` | GOX and GAN headers, consumers, PIC-502 split range |
-| `T-505` | LOX / LIN tanks, E-507 backup vaporizer |
+| `products` | GOX and GAN headers, consumers, K-503 GAN compressor, PIC-502 / PIC-504 split ranges |
+| `T-505` | LOX / LIN tanks, backup pumps P-505 / P-506, backup vaporizers E-507 / E-508 |
 
 How to use them:
 - Open one by clicking the equipment on the overview, from the *Detail displays* bar, or with a
@@ -244,16 +244,18 @@ The **PPU bed cycle** slider on the instructor station runs from *real time* (4 
 
 | Scenario | What the operator sees |
 |---|---|
-| EO plant demand step | GOX header drops, GOX send-out saturates, backup vaporizer cuts in, purity falls unless air load is raised |
+| EO plant demand step | GOX header drops; the pumped LOX runs into its load limit FY-501 and the backup vaporizer covers the rest. Purity sits at the spec edge until the air load is raised |
 | Acetylene burner trip | Sharp O₂ demand drop for 15 min |
-| N₂ purge campaign | GAN demand +10 kNm³/h |
-| MAC motor trip | I-100 ASU shutdown: expander, booster and LOX pump trip with it; the vaporizer holds the GOX header |
+| N₂ purge campaign | GAN demand +10 kNm³/h: K-503 load and power (JI-514) go up |
+| MAC motor trip | I-100 ASU shutdown: expander, booster, LOX pump and GAN compressor trip with it. The backups hold both headers: E-507 the GOX header (~23 h from a 65 % tank), E-508 the GAN header (~14 h from 60 %) |
 | MAC bearing degradation | VI-105 / TI-106 creep up over ~40 min → H alarm → HH trip |
 | MAC impeller fouling | Same air, more MW: KPI-701 specific power drifts up |
 | DCAC water carry-over | CO₂ breakthrough at the PPU outlet ~35 min in → 10 ppm trip unless beds are switched |
 | Regeneration heater fault | KS-201 "regeneration incomplete", breakthrough one cycle later |
 | Booster motor trip | I-110 → I-500: without booster air the pumped LOX can't vaporize, so P-501 trips; vaporizer takes the header. Restart within ~10 min or the reboiler floods (LIC-404 HH → I-100) |
 | LOX pump cavitation | PI-511 unsteady and falling over ~5 min → LL → I-500. The suction re-cools in ~5 min, then P-501 can be restarted |
+| GAN compressor K-503 trip | I-503: the GAN header dips to ~7.6 bar(g) while PIC-504 hands over to the LIN backup (P-506 / E-508). The column vents the GAN it no longer sends out |
+| LOX backup pump P-505 trip | I-505 alarm "no GOX backup" and nothing else, until the next P-501 or ASU trip: then the GOX header collapses. Reset I-505 and restart P-505 |
 | Expander loss of loading | Overspeed trip; reboiler level then drains over hours |
 | MHE fouling | Warm-end ΔT creeps up |
 | Hydrocarbon event | Hydrocarbons in the intake rise six-fold. The pumped LOX flushes them out with the product, so AI-603 only becomes a problem while P-501 is down |
@@ -273,15 +275,43 @@ GOX leaves ASU1 at pipeline pressure without an oxygen compressor (research §3,
   ratio; the operator sets it on the FIC-111 faceplate (1.35–2.0).
 - **TI-512**, the GOX temperature leaving E-301, is the safety variable: too little booster air →
   cold (eventually liquid) oxygen towards the carbon-steel header → LL −25 °C trips **I-500**.
+- **Load limit FY-501** = 0.208 × air (FIC-101) − LOX to storage (FI-408), plus an allowance for a
+  sump above its setpoint. FIC-501's setpoint is capped there (status `CAP`, "LOAD LIMIT"): the pump
+  can't take more oxygen than the air brings in. More demand → the backup vaporizer covers it and
+  the operator raises the air. Without it, the EO demand step pumped the sump down and crashed
+  purity to 94 % (found while testing step 2b; a gap in step 2a).
 - **LIC-415**, a reboiler low-level override, limits FIC-501 below 45 %. The column can't be
-  pumped empty when the header asks for more than it makes (e.g. at low air after a restart); the
-  backup vaporizer covers the difference.
-- **Specific power** KPI-701 = (MAC + booster power) ÷ GOX, ≈ 0.51 kWh/Nm³ (H alarm 0.57).
+  pumped empty when the header asks for more than it makes; the backup vaporizer covers the
+  difference.
+
+## Nitrogen product and backup supply
+
+- **K-503 GAN compressor.** GAN leaves the HP column top at ~5.3 bar(a), is warmed in E-301 and
+  compressed to the 8 bar(g) site grid. FIC-503 drives its inlet guide vanes (FV-503). Minimum flow
+  10 kNm³/h (FIC-503 SP low limit); it surges below ~8 kNm³/h (VI-515). Also PI-513 discharge
+  pressure and JI-514 motor power. It needs the MAC running and PI-401 ≥ 4 bar(a) to start.
+- **Backup pumps P-505 (LOX) and P-506 (LIN)** lift tank liquid to header pressure for the
+  vaporizers **E-507** (GOX header, FIC-507) and **E-508** (GAN header, FIC-508, up to 40 kNm³/h).
+  They are *kept cold*: running all the time on minimum-flow recirculation (PI-516 / PI-517 show
+  the shut-off head), so they deliver as soon as their valve opens. They are not tripped by I-100:
+  the backup has to survive an ASU trip. I-505 / I-506 trip them on tank level LL (10 %).
+- **Split range** on both headers: PIC-502 → FIC-501 (OP 0–80 %) / FIC-507 (80–100 %), and now
+  PIC-504 → FIC-503 (0–80 %) / FIC-508 (80–100 %).
+- **Trip handover (feed-forward).** When I-500 or I-503 trips, the header master's OP jumps at
+  once to where the backup vaporizer takes over the lost flow, instead of waiting for the pressure
+  to fall far enough. GOX header minimum on a booster trip: 27.8 bar(g) (was 23.8, below LL);
+  GAN header on a K-503 trip: ~7.6 bar(g).
+- **Handback.** When FIC-501 / FIC-503 go back to CAS after a restart, the master is re-initialised
+  so the restarted supply's setpoint equals the total flow now delivered; the vaporizer winds
+  down as it takes over (no pressure bump).
+- **Specific power** KPI-701 = (MAC + booster + GAN compressor power) ÷ GOX, ≈ 0.55 kWh/Nm³
+  (H alarm 0.60).
 
 ## Restart after a trip
 
-1. Interlocks tab: **Reset I-100**, then I-300, I-110 and I-500. A child interlock can only be
-   reset after its parent (I-100 → I-300 / I-110 → I-500).
+1. Interlocks tab: **Reset I-100**, then I-300, I-110, I-503 and I-500. A child interlock can only
+   be reset after its parent (I-100 → I-300 / I-110 / I-503, I-110 → I-500). The backup pumps
+   P-505 / P-506 keep running through an ASU trip; the vaporizers hold both headers meanwhile.
 2. **Start** the main air compressor. It starts in MAN on minimum guide vanes.
 3. Once it is RUNNING, press **Normal line-up**, then raise the FIC-101 setpoint to 145.
    - It ramps at 1.45 kNm³/h per minute by default; the ramp rate is set on the faceplate.
@@ -292,10 +322,14 @@ GOX leaves ASU1 at pipeline pressure without an oxygen compressor (research §3,
 6. Start the **LOX pump P-501** (needs the booster running and LIC-404 ≥ 40 %). It starts on part
    flow in MAN. Once it is RUNNING, press **Normal line-up**: FIC-501 returns to CAS under the GOX
    header pressure. Line-up skips loops whose equipment isn't running yet and says so.
-7. Purity takes ~1 h to recover.
+7. Start the **GAN compressor K-503** (needs the MAC running and PI-401 ≥ 4 bar(a)). Once it is
+   RUNNING (~25 s), press **Normal line-up**: FIC-503 takes the GAN grid back from the LIN backup.
+8. Purity takes ~1 h to recover.
 
 After a booster or LOX pump trip alone, only steps 5–6 are needed, but be quick: with the pump
 down the oxygen stays in the reboiler sump, which floods in ~10 min (LIC-404 HH trips the ASU).
+After a K-503 trip alone, only step 7. After a backup pump trip: reset I-505 / I-506, start the
+pump (tank level above 10 %) and press **Normal line-up**.
 
 ## Configuration
 
@@ -331,3 +365,7 @@ docker compose down              # stop
 rm data/historian.db* data/dcs_state.json   # wipe history and controller state
 rm exports/*.csv                            # wipe the Node-RED averages
 ```
+
+After pulling a change to `dcs/config.py` (controller tuning, SP limits), remove or rename
+`data/dcs_state.json` before `docker compose up -d --build`. The checkpoint restores each loop's
+tuning and limits, so otherwise the DCS keeps the old values.

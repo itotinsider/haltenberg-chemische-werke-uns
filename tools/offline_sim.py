@@ -22,7 +22,7 @@ from model import Plant  # noqa: E402
 from control import DCS  # noqa: E402
 
 COLUMNS = ["FIC-101", "JI-104", "UIC-103", "AI-202", "PIC-402", "LIC-403", "LIC-404", "FIC-405",
-           "AIC-602", "AI-601", "FIC-501", "FIC-111", "TI-512", "PIC-502", "FIC-503", "PIC-504", "FIC-507",
+           "AIC-602", "AI-601", "FIC-501", "FIC-111", "TI-512", "PIC-502", "FIC-503", "PIC-504", "FIC-507", "FIC-508",
            "KPI-701"]
 
 
