@@ -87,15 +87,17 @@ outlet, regeneration gas temperature, bed ΔP and valve stroke time over three b
 
 ## 🎓 Training overlay
 
-**🎓 Training** in the console header walks students through the process step by step. It:
+**🎓 Training** in the console header opens the [trainers](Trainers): 🎓 Process, ⚙️ Engineering and
+🔌 IT/OT, as an overlay card on the live console. The Process trainer walks through the process step
+by step. It:
 - Dims the overview except for one process step and numbers the steps ①–⑦.
 - Shows a card with a plain-language explanation and what that step is doing **right now**,
   e.g. which bed is heating and to what temperature, or whether the vaporizer is helping out.
 - Lists the tags worth watching; clicking one opens its faceplate.
-- Has **Go deeper** links into the [Engineering and IT/OT trainers](Trainers), at the same unit.
+- Has **Go deeper** buttons into the Engineering and IT/OT trainers, at the same unit.
 
-This is the 🎓 Process trainer; the [Trainers](Trainers) page describes all three. Step with ◀ ▶
-(or the arrow keys) or click a numbered circle; Esc closes it. Like the rest of the
+Step with ◀ ▶ (or the arrow keys) or click a numbered circle; Esc closes it. The console never
+opens the card by itself. Like the rest of the
 console, it is built only from DCS data. It never reveals the instructor's hidden scenarios.
 
 ![Training overlay](images/operator-training.png)
@@ -109,6 +111,6 @@ Every view can be opened directly, which is also how the screenshots are taken (
 | `/operator#overview`, `#tags`, `#ilk`, `#alarms`, `#trends` | a tab |
 | `/operator#detail/C-401` | a detail display |
 | `/operator?tag=PIC-502` | a faceplate |
-| `/operator?training=1&step=2` | the training overlay at a step |
-| `/operator?embed=1#detail/C-401` | the console without its header, as the trainer page embeds it |
+| `/operator?training=1&step=2` | the Process trainer at a step |
+| `/operator?training=eng&topic=C-401&step=2` | an Engineering or IT/OT topic at a step ([Trainers](Trainers)) |
 | `/operator?trend=AI-202.PV,TIC-204.PV&range=15` | trend points and window (minutes) |

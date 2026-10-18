@@ -51,7 +51,7 @@ PUBLIC_LINKS = {
     "nodered": os.getenv("PUBLIC_NODERED_URL", "http://localhost:1880"),
 }
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
-PAGES = {"/": "index.html", "/operator": "operator.html", "/trainer": "trainer.html"}
+PAGES = {"/": "index.html", "/operator": "operator.html"}
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("dcs")

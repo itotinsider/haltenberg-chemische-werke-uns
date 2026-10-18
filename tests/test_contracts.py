@@ -227,7 +227,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 WIKI_PAGES = sorted(p.relative_to(ROOT).as_posix() for p in (ROOT / "wiki").glob("*.md"))
 
 
-@pytest.mark.parametrize("page", ["dcs/web/operator.html", "dcs/web/trainer.html", "dcs/web/index.html", "plant/web/instructor.html",
+@pytest.mark.parametrize("page", ["dcs/web/operator.html", "dcs/web/index.html", "plant/web/instructor.html",
                                   "README.md", "CLAUDE.md", "linde air seperation research.md"] + WIKI_PAGES)
 def test_pages_only_name_existing_instruments(page):
     known = set(C.TAG_INDEX) | set(AI + AO + DI + DO) | {"KS-201", "ISA-101"} | set(DRAWING_ONLY)

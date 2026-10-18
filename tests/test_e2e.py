@@ -162,8 +162,6 @@ def test_datapath_api(stack, inv):
     assert c["field_in"] is None and c["calc_from"] == ["PI-401"]
     with pytest.raises(urllib.error.HTTPError):
         get(stack["dcs"] + "/api/datapath?tag=NO-SUCH")
-    with urllib.request.urlopen(stack["dcs"] + "/trainer", timeout=10) as r:
-        assert r.status == 200 and b"<title>" in r.read()
 
 
 def test_history_api(stack):

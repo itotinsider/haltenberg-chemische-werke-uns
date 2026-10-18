@@ -43,8 +43,7 @@ dcs/historian.py         SQLite historian (exception reporting) + event journal
 dcs/opcua_server.py      asyncua server, address space generated from config, HistoryRead → historian
 dcs/main.py              asyncio scan loop (pymodbus client), checkpointing, HTTP :8110
 dcs/web/index.html       hub (the only page that isn't a persona HMI)
-dcs/web/operator.html    operator console (overview mimic + L3 detail displays, tag list, interlocks, alarms/events, trends)
-dcs/web/trainer.html     Engineering + IT/OT trainers: the live console (embedded) next to lessons and deep-dive figures
+dcs/web/operator.html    operator console (overview mimic + L3 detail displays, tag list, interlocks, alarms/events, trends, the three trainers)
 tools/offline_sim.py     plant model + control layer coupled directly, faster than real time (Sim class = test harness)
 tools/publish_wiki.py    copies wiki/ + docs/screenshots/ to the GitHub wiki repo and pushes (by hand, after an OK)
 tools/inventory.py       generates inventory/ from every layer's source of truth (needs asyncua: run in the tests image)
@@ -261,27 +260,16 @@ Tuning facts that are easy to break:
 - **Endpoint:** `opc.tcp://dcs:4840/hcw/asu1/`, the compose service name, never localhost.
 - **Known log noise:** "Encrypted credentials not found" and the node-opcua `[NODE-OPCUA-W27] … CVE-2023-46809` warning (we use SecurityPolicy None) are harmless.
 
-**Trainers (step 4, Willem: "one trainer per audience").** Three trainers over the same plant, at three depths. Switching keeps the topic, so there are no links inside links:
-- 🎓 **Process** = the training overlay below (operator.html). Everyone, plain language.
-- ⚙️ **Engineering** and 🔌 **IT/OT** = `dcs/web/trainer.html` (`/trainer`). The IT/OT trainer is for our core audience and must stay easy to find: first card on the hub.
-- **Layout:** the live console in an iframe (`/operator?embed=1#…`) on the left, the lesson on the right. A step either *steers the console* (`go` display address, `hl` regions in that display's viewBox: overview 1520×672, detail 1520×630, `sel` faceplate) or shows a *deep-dive figure* (`fig`, a `FIG` entry with `build(el)` once and `update(el)` every poll) in place of the console.
-- **Console embed protocol (postMessage, same origin only):** trainer → console `{type: "hcw-train", go, highlight: {on, regions}, select}`; console → trainer `{type: "hcw-console", ready | route | select}`. The console only accepts messages after it posted `ready` (CFG loaded). In the iframe, trainer-driven navigation uses `replaceState` (the iframe shares the browser history with the page). `applyHighlight()` redraws the `.hl-layer` after every `route()`, because `buildDetail()` replaces the SVG.
-- **Content:** `TRAINERS.<eng|ot>.topics[]` with `steps[]` (title, text, go/hl/sel or fig, `deep` button, `watch`, `think`, `live()` bullets from `ST` only). A topic's `process` is the matching Process step for the switch; operator.html's `DEEPER` maps the other way (Process step → Engineering topic). Routes `#<trainer>/<topic>/<step>`, `?tag=` for the IT/OT tag.
-- **IT/OT data path:** `GET /api/datapath?tag=` (`dcs/main.datapath()`), read-only from what the runtime already holds: the raw Modbus words of the last scan (`Runtime.wire`, set in `read_io`/`write_io`), the DCS tag and quality, the historian points (`historian.last`, `historian.count()` for the last hour) and the OPC UA NodeIds / browse paths / status. Calculated tags show `calc_from` = `config.CALC_INPUTS` (contract test: covers every CALC tag and PID with a calculated PV).
+**Trainers (step 4, `operator.html`, 🎓 Training).** Three trainers over the same plant, one per audience (Willem): 🎓 **Process** (`TRAIN`, the overview, plain language), ⚙️ **Engineering** (`TRAINERS.eng`, how the units work) and 🔌 **IT/OT** (`TRAINERS.ot`, from sensor to OPC UA; our core audience, so the first card on the hub).
+- **One overlay card, no separate page** (Willem, after trying a side-by-side `/trainer` page: "I like the overlays, not the side screen"). The switch at the top of the card keeps the unit: Process step → topic via `DEEPER`, topic → Process step via its `process`; IT/OT follows the step's first watch tag.
+- **Never opens by itself:** only 🎓 Training or `?training=1|eng|ot&topic=&step=&tag=`. The position (`hcw.train.pos`) is remembered for the button, on/off is not (bug: reopening the console used to land in a lesson).
+- **State:** `TR {on, trainer, topic, step}`; `trSet()` validates, stores, and steers the console (`go(step.go)`, `select(step.sel)`). `renderTraining()` runs on every `render()` and after every `route()`: it moves `#train-card` to its host (`#mimic-wrap`, `#dmimic-wrap`, or the deep-dive panel's `.tf-side`; hidden on other tabs), rebuilds it only when the build key (trainer, topic, step, fig, hash, tab) changes, and otherwise only patches `[data-live]`. One delegated click handler on the card (`data-sw`, `data-topic`, `data-tr`, `data-fig`, `data-back`, `data-tag`).
+- **Steps:** Process steps use `regions` + `marker` on the overview (`#train-layer`). Engineering/IT/OT steps steer the console (`go` display address, `hl` regions in that display's viewBox: overview 1520×672, detail 1520×630, `sel` faceplate) or open a **deep dive** (`fig`, or a `deep` button): `FIG[id].build(el)` once, `update(el)` every poll, in `#train-fig`, a fixed panel over the console with the card beside it. `drawHighlights()` redraws the `.hl-layer` when `buildDetail()` has replaced the SVG. If the user navigates away, the card offers "↺ Back to this step's display".
+- **Live text:** `trainLive(i)` (Process) and each step's `live()` build "Right now in ASU1" from `ST`/`TAG` only. Never instructor scenarios or ground truth. The model's documented time constants (purity dead time ~4 min, lag ~10 min) may be *described*, as process knowledge.
+- **IT/OT data path:** `GET /api/datapath?tag=` (`dcs/main.datapath()`), read-only from what the runtime already holds: the raw Modbus words of the last scan (`Runtime.wire`, set in `read_io`/`write_io`), the DCS tag and quality, the historian points (`historian.last`, `historian.count()` for the last hour) and the OPC UA NodeIds / browse paths / status. Calculated tags show `calc_from` = `config.CALC_INPUTS` (contract test: covers every CALC tag and PID with a calculated PV). Clicking any value on the console follows it (`select()` → `setTag()`).
 - **Deep dives draw with the DCS's own constants:** `/api/config` carries `t_sat` (Clausius-Clapeyron, = `control.T_SAT_*`) and the historian settings come from `/api/historian`. The rich-liquid temperatures are an ideal-mixture (Raoult) estimate at 35 % O₂, labelled as such; no new calculated tags were needed.
-- **Same rule as the overlay:** DCS data only, never instructor scenarios or ground truth. The model's documented time constants (purity dead time ~4 min, lag ~10 min) may be *described*, as process knowledge.
-- **Maintenance:** moving elements on C-401 or E-301 means checking the `hl` rects of their steps. Every instrument named in trainer.html must exist (contract test).
-
-**Training overlay (`operator.html`, 🎓 Training).** For students: the Process trainer.
-- **Data:** the `TRAIN` array holds, per step: title, plain-language `text`, the mimic `regions` it highlights (viewBox rects), `marker` position, `watch` tags and a `think` line. The card's "Go deeper" links go to the Engineering topic (`DEEPER`) and the IT/OT data path of the step's first watch tag.
-- **Live text:** `trainLive(i)` builds the "Right now in ASU1" bullets from `ST`/`TAG` only, i.e. DCS data. It must never reference instructor scenarios or plant ground truth.
-- **Rendering:**
-  - Highlighting is an SVG mask in `#train-layer`.
-  - The card is absolutely positioned next to the region inside `#mimic-wrap`; below 900 px wide it is stacked under the mimic instead.
-  - The card is built once per step; polls only patch the `[data-live]` list.
-  - Teal (`--train`) is the training colour only.
-- **Deep link:** `?training=1&step=n`. On/off and the current step are kept in localStorage.
-- **Maintenance:** when you move mimic elements, check the `regions`/`marker` coordinates.
+- **Rendering:** the card sits next to the step's regions (left or right), top-right without regions, stacked under the drawing below 900 px; its body scrolls. Teal (`--train`) is the training colour only.
+- **Maintenance:** when you move mimic or detail-display elements, check the `regions`/`marker` (Process) and `hl` (C-401, E-301 steps) coordinates.
 
 **Detail displays (ISA-101 L3, `operator.html`).**
 - **Displays:** K-101 (MAC + DCAC), R-201 (mole sieve + KS-201 panel), K-102 (booster + ratio panel), E-301 (MHE + X-303; warm end on top, cold end at the bottom, a data block above each stream), C-401 (columns + E-404 + P-501), `products` (GOX/GAN headers, K-503, PIC-502 and PIC-504 split-range bars), T-505 (tanks, P-505/E-507, P-506/E-508).
@@ -353,7 +341,7 @@ Tuning facts that are easy to break:
   - cascade / limits / ratio / xlimit / sp_cap / handover / LINEUP / PRIORITY_OVERRIDE references;
   - every tag has a value after one scan, and the historian points;
   - OPC UA units and ranges, and that hidden faults stay hidden;
-  - every instrument tag named in operator.html, trainer.html, index.html, instructor.html, README, CLAUDE.md, the research doc and every wiki page exists (`DRAWING_ONLY` lists HV-116);
+  - every instrument tag named in operator.html, index.html, instructor.html, README, CLAUDE.md, the research doc and every wiki page exists (`DRAWING_ONLY` lists HV-116);
   - every DCS tag has a data block (`["TAG", x, y` placement);
   - console equipment and valve ids;
   - instructor ground-truth keys and Node-RED NodeIds;
@@ -368,7 +356,7 @@ Tuning facts that are easy to break:
   - per-GOX figures not applicable without production;
   - E-301: the balance recomputed from DCS tags closes within 2 % (steady and with the expander stopped), TDI-302 = TI-307 − TI-310, the expander cools 60–75 K; expander stop warms the cold end; at reduced air the booster follows the load limit.
 - **`test_e2e`:** runs `plant/main.py` and `dcs/main.py` as processes on free ports (`PYTHONPATH=common`, temp `DATA_DIR`). It checks against the committed inventory:
-  - the HTTP shapes, and `/api/datapath` (raw words = float = DCS PV, NodeId, a calculated tag's inputs, `/trainer` served);
+  - the HTTP shapes, and `/api/datapath` (raw words = float = DCS PV, NodeId, a calculated tag's inputs);
   - the raw Modbus registers vs the DCS PVs;
   - an OPC UA browse (the same `walk()` as the generator), values Good and in range, HistoryRead;
   - a mode change via the API showing up on OPC UA;

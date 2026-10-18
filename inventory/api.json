@@ -5,7 +5,6 @@
     "get": [
       "/",
       "/operator",
-      "/trainer",
       "/api/state",
       "/api/config",
       "/api/history?tags=&minutes=&points=",

@@ -116,8 +116,8 @@ rules above:
   and on dead time / lags / historian quality.
 - **Later PRs:** deep dives on E-301 and internal compression, the mole sieve, compressor surge,
   control strategies, interlocks. No energy deep dive; "try it" exercises another day.
-- **Touches:** `dcs/web/operator.html` (`TRAIN`, detail displays), a new trainer page in `dcs/web/`,
-  `dcs/main.py` (page route; possibly a read-only data-path API), hub card, wiki Operator console.
+- **Touches:** `dcs/web/operator.html` (the trainers), `dcs/main.py` (read-only data-path API),
+  `dcs/config.py` (`CALC_INPUTS`), hub cards, wiki (Trainers page).
 - **Reserves:** nothing. No Modbus addresses, no tags (the valve flash temperatures are computed in the
   trainer from TY-411/413 and an ideal-mixture estimate, so TY-414/415 were not needed).
 - **Depends on:** `mhe-expander-tags` (done).
@@ -127,15 +127,18 @@ rules above:
   - 2026-10-18 Willem: three trainers, Process / Engineering / IT/OT (names OK); interlocks deep dive
     added to the later list, no energy deep dive, "try it" exercises another day.
   - 2026-10-18 progress (Claude): first-PR scope built on `step4-training`, tests green (99).
-    - `/trainer`: the live console embedded (`/operator?embed=1`, postMessage steering, teal highlights)
-      next to the lesson; the trainer switch keeps the topic.
+    - First version: a separate `/trainer` page with the console embedded next to the lesson (replaced, see below).
     - Engineering: C-401 (6 steps, deep dives boiling point vs pressure and the valve letdown) and
       E-301 (4 steps, deep dive temperature profile).
     - IT/OT: "From sensor to OPC UA" (5 steps, the live data path of any tag) and "Time and quality"
       (dead time, deadband, Bad is not zero).
-    - Interface: `GET /api/datapath?tag=`, `/trainer`, `/api/config` keys `t_sat` and `calc_inputs`
+    - Interface: `GET /api/datapath?tag=`, `/api/config` keys `t_sat` and `calc_inputs`
       (inventory regenerated). Process overlay cards got "Go deeper" links; hub got a "Learn" row.
     - Wiki: new page Trainers; screenshots trainer-*.png and a new hub.png.
+  - 2026-10-18 Willem, after trying it: "I like those overlays, not the side screen", and the console
+    reopened in a lesson by itself. Reworked: all three trainers are one overlay card on the operator
+    console (switch at the top of the card, deep dives in a panel over the console); `/trainer` and the
+    console's embed mode are gone; the console only opens a lesson from 🎓 Training or a `?training=` link.
 
 ## Planned
 
