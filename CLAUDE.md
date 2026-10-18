@@ -138,7 +138,7 @@ Verification is the test suite (below) plus, for new behaviour or graphics, the 
   - Cavitation comes from a low sump (< 25 %) or the `lox_pump_cavitation` scenario. That scenario only builds while the pump runs and re-cools in ~5 min when stopped.
   - The pumped LOX boils in E-301 only with enough booster air: ratio = booster ÷ (1.52 × LOX). Below 0.95 the GOX outlet (TT-512) drops, by up to 200 K. The time constant scales with the flow, so a stopped pump doesn't "cool" a dead line.
   - The K-102 booster takes clean air after the PPU, needs the MAC running, and surges below ~14 kNm³/h (VT-114). Its power uses the MAC's specific work: 4.2 MW at 44 kNm³/h, 60 bar(a).
-  - Booster air with no LOX to condense against (`bst_excess`) costs 0.04 refrigeration per kNm³/h and raises the warm-end ΔT.
+  - Booster air with no LOX to condense against (`bst_excess`) costs 0.04 refrigeration per kNm³/h; in E-301 it warms the profile (see the heat balance below).
   - Hydrocarbons: every liquid leaving the sump flushes it (`flush = LOX + GOX`), so THC is ~8 ppm normally and only climbs while P-501 is down. Initial `thc` = 7.6.
 - **Nitrogen product and backups (step 2b):**
   - K-503 GAN compressor: GAN flow = run × FV-503 (its IGV) × 60, capped at 0.30 × air; it can't run without HP-column pressure (`p_hp > 2.5`). Power from the MAC's specific work: 0.64 MW at 25 kNm³/h, 5.05 → 9.41 bar(a). Surge vibration below ~8 kNm³/h (VT-515). Latched motor trip like the MAC/booster. A stopped K-503 simply stops the draw; the column then vents that N₂ with the waste N₂ (PIC-402 opens).
@@ -150,6 +150,16 @@ Verification is the test suite (below) plus, for new behaviour or graphics, the 
     - **Without the credit:** every pump trip was followed by a fake purity crash to ~95 % while LIC-404 drained the surplus.
     - **What still counts:** a sustained over-draw (more GOX than the air makes) still hits purity.
   - **LIC-404 Kc = 12** (was 4): tripled with the sump hold-up, so the level loop is as fast as before and doesn't overshoot. Steady 4 h: AI-601 mean 99.67 %, sd 0.05 (the old model: 99.60 %, sd 0.12, regular dips below the 99.5 % L alarm).
+
+- **E-301 heat balance (step 3, `Plant._mhe()`, `mhe_balance()`):** every stream's temperature at both ends, plus X-303 in/out.
+  - **Assumptions (Willem: "simple, ideal conditions"):** ideal gases with one constant cp `CP_GAS` 1.30 kJ/(Nm³·K); constant heats of vaporisation (`L_O2_PUMPED`); no heat leak into E-301; a clean exchanger (`mhe_fouling` comes on top).
+  - **Inlets** from upstream: air TT-108 + `PPU_HEAT`; booster TT-108 + `BOOSTER_COOLER_DT`; column streams at their boiling points (pressures); LOX = sump + `LOX_PUMP_HEAT`.
+  - **Outlets** from design approaches: warm end `MHE_WARM_DT` (3 K, less at low load); cold end `MHE_COLD_END` + ½ `dt_coldbox`; expander draw at `MHE_SIDE_DRAW` of the air's cooling.
+  - **Closure:** the residual (warm duty − cold duty) / total capacity = `mhe_shift`, lagged by `MHE_TAU` (600 s metal), clamped ±15 K, added to every outlet. If the warm end would cross (product warmer than the air in), the excess spills to the cold end. GOX (TI-512) is excluded: it keeps its pinch logic (I-500 is tuned on it).
+  - **Calibrated:** `BOOSTER_LATENT` (~200 kJ/Nm³, the 60 bar booster air's pseudo-latent heat) is computed at import so the design point balances; `EXP_DT_PER_LN` likewise fits the expander to −110 → −178 °C at 85 %.
+  - **Waste through E-301** = air × (1 − recovered O₂) − GAN − LIN, *not* `self.waste`: with P-501 stopped the O₂ piles up in the sump, it doesn't leave as cold gas. (`self.waste` still drives the LP pressure, unchanged.)
+  - **Stopped streams** (`flow_lag`): a sensor drifts slowly (~30 min) to the metal around it; TDT-302 is clamped at 0.
+  - **Effects:** expander stop → warm end pinches (TDI-302 ~0.2), TI-301 H after ~20 min; P-501 lost → cold end ~+10 K; fouling → TDI-302 H after ~70 min. The refrigeration balance (`p_liq`, `dt_coldbox`, sump levels) is unchanged.
 
 Tuning facts that are easy to break:
 - **GOX purity sensitivity:** the width is 0.020 on the draw ratio. At 0.010, normal demand wander alone pushed purity through the 99.0 % LL limit.
@@ -170,7 +180,7 @@ Tuning facts that are easy to break:
 - **Override:** PIC-102 has `limits: "FIC-101"`. Its OP becomes FIC-101's output high limit (low select). External reset keeps PIC-102 at FIC-101.OP + 5 so it can take over without unwinding from 100 %.
   - LIC-415 (reboiler low-level override, SP 45 %, direct action) does the same on FIC-501. With pumped LOX, a header demand the column can't make (low air after a restart) would otherwise empty the sump; this was a gap in the old model too, hidden by the GOX vapour cap.
 - **Cross-limiting ratio control** (burner air/fuel style), generic config keys:
-  - `ratio_of` (FIC-111): in CAS, `rsp = ratio × max(partner PV, partner demand)`, so it leads on increase. The ratio is operator-settable within `ratio_lo..ratio_hi` (API field `ratio`, faceplate "Ratio").
+  - `ratio_of` (FIC-111): in CAS, `rsp = ratio × max(partner PV, partner demand)`, so it leads on increase. The demand is capped at the partner's `sp_cap` (FY-501): before step 3 the booster ran for the uncapped demand, ~11 kNm³/h of air with no LOX to condense against at reduced load (found with the heat balance). The ratio is operator-settable within `ratio_lo..ratio_hi` (API field `ratio`, faceplate "Ratio").
   - `xlimit` (FIC-501): the SP is capped at `PV(xlimit) / (its ratio × 0.96)`, so it follows on increase. Status: `xlimited`, shown as `XLIM` / "CROSS-LIMIT".
   - **Why:** without it, a line-up after a restart let PIC-502 slam FIC-501 to full flow before the booster followed, and TI-512 tripped I-500.
   - **The 4 % margin** is wider than the flow noise (no flicker), and keeps the real ratio ≥ 1.46, above the 0.95 pinch.
@@ -255,7 +265,7 @@ Tuning facts that are easy to break:
 - **Maintenance:** when you move mimic elements, check the `regions`/`marker` coordinates.
 
 **Detail displays (ISA-101 L3, `operator.html`).**
-- **Displays:** K-101 (MAC + DCAC), R-201 (mole sieve + KS-201 panel), K-102 (booster + ratio panel), E-301 (MHE + X-303), C-401 (columns + E-404 + P-501), `products` (GOX/GAN headers, K-503, PIC-502 and PIC-504 split-range bars), T-505 (tanks, P-505/E-507, P-506/E-508).
+- **Displays:** K-101 (MAC + DCAC), R-201 (mole sieve + KS-201 panel), K-102 (booster + ratio panel), E-301 (MHE + X-303; warm end on top, cold end at the bottom, a data block above each stream), C-401 (columns + E-404 + P-501), `products` (GOX/GAN headers, K-503, PIC-502 and PIC-504 split-range bars), T-505 (tanks, P-505/E-507, P-506/E-508).
   - `splitHtml(tag, x, y, w)` / `renderSplit(root, tag, …)` draw one bar per master; several per display are fine (selected by `data-split`).
 - **Registry:** `DETAILS` holds one entry per display, in process order:
   - **Identity:** `title`, `short` (display-bar label), `block`, `aliases` (every equipment tag it covers) and the overview `hot` rects.
@@ -335,7 +345,8 @@ Tuning facts that are easy to break:
   - `SIGNATURES`: one per instructor scenario (first-out regex, required alarms, an extra check). A new scenario fails `test_every_scenario_has_a_signature` until it has one;
   - the README restart procedures;
   - permissives, reset refused while a cause is active, ESD, I/O loss, checkpoint, PPU compression at 900 / 300 s;
-  - per-GOX figures not applicable without production.
+  - per-GOX figures not applicable without production;
+  - E-301: the balance recomputed from DCS tags closes within 2 % (steady and with the expander stopped), TDI-302 = TI-307 − TI-310, the expander cools 60–75 K; expander stop warms the cold end; at reduced air the booster follows the load limit.
 - **`test_e2e`:** runs `plant/main.py` and `dcs/main.py` as processes on free ports (`PYTHONPATH=common`, temp `DATA_DIR`). It checks against the committed inventory:
   - the HTTP shapes;
   - the raw Modbus registers vs the DCS PVs;
@@ -347,7 +358,12 @@ Tuning facts that are easy to break:
 
   `asyncua` `read_data_value()` raises on Bad unless `raise_on_bad_status=False`.
 
-**Limits are bands, not traces, and robust across seeds.** The behaviour tests pass on seeds 1–22.
+**Limits are bands, not traces, and robust across seeds.** The behaviour tests pass on seeds 1–44 except 37 (step 3).
+- **Transmitter noise has its own random stream** (`Plant.noise`, step 3). Before, every `gauss()` in `measurements()` came from the global stream, so adding an instrument changed the demand wander and purge jobs of every seed. That is how step 3 found that the 2.5 "seeds 1–22" result held for those 22 draws only.
+- **What the new draws exposed, fixed in step 3 (Willem's choice):**
+  - Design O₂ demand sat on the GOX load limit (~29.2 vs FY-501 29.4, which is at the purity edge), so normal wander held GOX on the limit for up to 45 min in 2 h and purity dipped to 99.46 % (L) in "steady state". The "Other" O₂ consumers went 2.7 → 2.2 kNm³/h (average demand ~28.7).
+  - The GAN handback band went 8.8 → 9.1 bar(g): purge jobs that end just at the handback add ~0.2 (without the handback: 9.4).
+- **Seed 37, known:** in the second hour after a full MAC restart purity touches 99.49 % (L): a high EO-demand draw keeps GOX on FY-501. Same mechanism, rarer; more margin would mean less GOX (Willem chose 2.2).
 - **Header limits come from config alarm limits.** On trips the backups keep both headers above **LL**, not L. When a site N₂ purge job coincides with a K-503 or MAC trip, the GAN header touches ~7.27 bar(g), below L (7.3), for under a minute. Without the handover it fell to 3–5.
 - **The GAN header in steady state** is only checked against its alarm limits, because purge jobs move it.
 - **Range tolerance:** 2 % of span for measured tags.

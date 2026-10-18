@@ -116,6 +116,32 @@ TAGS = [
        alarms={"H": 40, "HH": 60}),
     ai("TI-306", "Expander bearing temperature", "°C", 0, 120, "TT-306", "ColdBoxHeatExchange", dec=1,
        alarms={"H": 85, "HH": 95}),
+    # Every stream through E-301 at both ends (step 3). The plant closes an enthalpy balance over the
+    # exchanger, so these agree with each other and with the flows; TDI-302 = TI-307 − TI-310.
+    ai("TI-307", "Main air into E-301 (warm end, after the PPU)", "°C", -20, 50, "TT-307", "ColdBoxHeatExchange",
+       dec=1, suppress="MAC"),
+    ai("TI-308", "Booster air into E-301 (warm end, after E-102)", "°C", -20, 60, "TT-308", "ColdBoxHeatExchange",
+       dec=1, suppress="BAC"),
+    ai("TI-309", "GAN leaving E-301 (warm end, to K-503)", "°C", -50, 50, "TT-309", "ColdBoxHeatExchange",
+       dec=1, suppress="GANC"),
+    ai("TI-310", "Waste N2 leaving E-301 (warm end, to PPU regeneration)", "°C", -50, 50, "TT-310",
+       "ColdBoxHeatExchange", dec=1, suppress="MAC"),
+    ai("TI-311", "Booster air leaving E-301 (cold end, liquefied, to HV-116)", "°C", -200, -100, "TT-311",
+       "ColdBoxHeatExchange", dec=1, suppress="BAC"),
+    ai("TI-312", "Pumped LOX into E-301 (cold end, from P-501)", "°C", -200, -100, "TT-312", "ColdBoxHeatExchange",
+       dec=1, suppress="LOXP"),
+    ai("TI-313", "GAN into E-301 (cold end, from the HP column)", "°C", -200, -100, "TT-313", "ColdBoxHeatExchange",
+       dec=1, suppress="MAC"),
+    ai("TI-314", "Waste N2 into E-301 (cold end, from the LP column)", "°C", -200, -100, "TT-314",
+       "ColdBoxHeatExchange", dec=1, suppress="MAC"),
+    # Expander X-303: a too-warm inlet means a warm cold box or an unbalanced E-301; an outlet close to the
+    # dew point (~ −188 °C at 1.4 bar(a)) means liquid in the expander; a warm outlet, too little work extracted.
+    ai("TI-315", "Expander inlet temperature (E-301 side draw)", "°C", -160, -40, "TT-315", "ColdBoxHeatExchange",
+       dec=1, alarms={"H": -95}, suppress="EXP"),
+    ai("PI-316", "Expander inlet pressure", "bar(a)", 0, 8, "PT-316", "ColdBoxHeatExchange", dec=3, suppress="EXP"),
+    ai("TI-317", "Expander outlet temperature (to the LP column)", "°C", -200, -100, "TT-317", "ColdBoxHeatExchange",
+       dec=1, alarms={"L": -186, "H": -165}, suppress="EXP"),
+    ai("PI-318", "Expander outlet pressure", "bar(a)", 0, 3, "PT-318", "ColdBoxHeatExchange", dec=3, suppress="EXP"),
 
     # ---- 4 · double column ----
     ai("PI-401", "HP column top pressure", "bar(a)", 0, 8, "PT-401", "DoubleColumn", dec=3,

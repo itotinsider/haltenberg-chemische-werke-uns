@@ -102,20 +102,6 @@ rules above:
 
 ## In progress
 
-### `mhe-expander-tags` — Step 3: E-301 and expander tags
-- **Status:** 🚧 In progress · **Owner:** Claude agent for Willem · **Branch:** `step3-mhe-expander` (uncommitted, in the main checkout) · **PR:** —
-- **Goal:** every stream through E-301 gets in/out temperatures, so the E-301 detail display gets
-  data blocks. X-303 gets inlet/outlet temperature and pressure (≈ −110 °C at 5.5 bar(a) in,
-  ≈ −178 °C at 1.3 bar(a) out). The plant closes an enthalpy balance over the exchanger.
-- **Touches:** `common/iomap.py` (area 3), `dcs/config.py` (ColdBoxHeatExchange block),
-  `plant/model.py`, the E-301 detail display, `inventory/`.
-- **Reserves:** field TT-307 … TT-315, PT-316, TT-317, PT-318 at IR 312–335; DCS tags
-  TI-307 … TI-315, PI-316, TI-317, PI-318.
-- **Done when:** the E-301 display shows every stream at both ends; the values agree with the flows
-  (balance) and stay in range in every scenario; tests green, inventory regenerated.
-- **Notes:** 2026-10-18: its uncommitted files share the main checkout with `docs-primer`'s.
-  Separate them before either commits (see "Several agents on one machine", rule 1).
-
 ### `docs-primer` — README and documentation for new users
 - **Status:** 🚧 In progress · **Owner:** Claude agent for Willem · **Branch:** `docs-primer` (uncommitted; the branch name is not in git right now) · **PR:** —
 - **Goal:** the README and the docs work for people who have never been on a production site: a
@@ -233,3 +219,13 @@ rules above:
     behaviour, end-to-end).
   - **What the tests led to:** Modbus addresses fixed per process area; KPI-701 and FFI-111 not
     applicable without GOX production; FY-501 clamped; TDI-410 range −15…10.
+- ✅ **Step 3: E-301 and expander tags** (`mhe-expander-tags`). [PR #7](https://github.com/itotinsider/haltenberg-chemische-werke-uns/pull/7).
+  - **Tags:** TI-307 … TI-315, PI-316, TI-317, PI-318 (field TT/PT at IR 312–335), all on the E-301
+    detail display. Alarms only (TI-315 H, TI-317 L/H), no trips (Willem).
+  - **Model:** a simple enthalpy balance over E-301 (ideal gases, constant cp, no heat leak); TT-301
+    and TDT-302 now come from it. Details in `CLAUDE.md`.
+  - **Found with it:** FIC-111's ratio demand is capped at the load limit FY-501.
+  - **Found while verifying:** transmitter noise got its own random stream; the 2.5 seed bands were
+    luck of the draw, so design O₂ demand −0.5 kNm³/h and the GAN handback band 9.1 (Willem). Seeds
+    1–44 pass except 37 (documented).
+  - **Not done (ideas):** an E-301 duty / balance calc tag in the DCS, an expander efficiency calc.

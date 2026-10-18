@@ -833,49 +833,56 @@ const DETAILS = {
     title: "E-301 / X-303 · Main heat exchanger & expander", short: "E-301 Heat exchanger",
     block: "ColdBoxHeatExchange", aliases: ["X-303"],
     hot: [[516, 116, 62, 450, "E-301 main heat exchanger"], [606, 392, 62, 80, "X-303 expander"]],
+    // Every stream with its temperature at both ends: warm end on top, cold end at the bottom. The plant
+    // closes an enthalpy balance over E-301, so these values agree with each other and with the flows.
     svg: `
-      <rect class="vessel" x="560" y="50" width="120" height="470"/>
-      <path d="M560 70l120 40M560 130l120 40M560 190l120 40M560 250l120 40M560 310l120 40M560 370l120 40M560 430l120 40" stroke="#b6bbbf" stroke-width="1"/>
-      <text class="lbl big" x="620" y="40" text-anchor="middle">E-301 main heat exchanger</text>
-      <text class="lbl" x="552" y="64" text-anchor="end">warm end ≈ +12 °C</text>
-      <text class="lbl" x="552" y="514" text-anchor="end">cold end ≈ −173 °C</text>
-      <!-- air: warm end → cold end → HP column -->
-      ${opc(40, 100, "Air from R-201", "R-201")}<path class="pipe main" d="M172 100H560"/>
-      <path class="pipe main" d="M600 520V560${hop(640)}H1100"/>${opc(1100, 560, "Air → C-401 HP column", "C-401", { w: 160 })}
-      <!-- booster air (~60 bar): condenses in E-301 while the pumped LOX boils, then JT valve → HP column -->
-      ${opc(40, 180, "HP air from K-102", "K-102", { w: 140 })}<path class="pipe" d="M180 180H560"/>
-      <path class="pipe" d="M640 520V600H1100"/>${vH("HV-116", 760, 600)}<text class="lbl" x="742" y="590">HV-116 JT</text>
-      ${opc(1100, 600, "Liquid air → C-401 HP", "C-401", { w: 160 })}
+      <rect class="vessel" x="600" y="60" width="120" height="450"/>
+      <path d="M600 80l120 40M600 140l120 40M600 200l120 40M600 260l120 40M600 320l120 40M600 380l120 40M600 440l120 40" stroke="#b6bbbf" stroke-width="1"/>
+      <text class="lbl big" x="660" y="48" text-anchor="middle">E-301 main heat exchanger</text>
+      <text class="lbl" x="592" y="74" text-anchor="end">warm end</text>
+      <text class="lbl" x="592" y="504" text-anchor="end">cold end</text>
+      <!-- warm streams in at the warm end: main air, booster air (~60 bar, condenses while the pumped LOX boils) -->
+      ${opc(40, 100, "Air from R-201", "R-201")}<path class="pipe main" d="M172 100H600"/>
+      ${opc(40, 180, "HP air from K-102", "K-102", { w: 140 })}<path class="pipe" d="M180 180H600"/>
+      <!-- cold products out at the warm end -->
+      <path class="pipe main o2" d="M720 80H1320"/>${opc(1320, 80, "GOX 30 bar → products", "products", { w: 160 })}
+      <path class="pipe n2" d="M720 130H1320"/>${opc(1320, 130, "GAN → K-503", "products")}
+      <path class="pipe n2" d="M720 180H1320"/>${opc(1320, 180, "Waste N₂ → R-201 regen", "R-201", { w: 170 })}
       <!-- side draw: part-cooled air → FV-303 → X-303 expander → LP column -->
-      <path class="pipe" d="M680 300H780"/>${vH("FV-303", 730, 300)}
-      <polygon id="dq-EXP" class="equip" points="780,280 860,262 860,338 780,320"/>
-      <text class="lbl big" x="868" y="258">X-303 expander</text>
-      <path class="pipe" d="M860 300H1100"/>${opc(1100, 300, "Air → C-402 LP column", "C-401", { w: 160 })}
-      <path class="pipe noarrow" d="M820 330V400"/>
-      <rect id="dq-EXP-b" class="equip" x="800" y="400" width="40" height="28" rx="2"/>
-      <text class="lbl" x="848" y="418">brake</text>
-      <!-- cold products: cold end in → warm end out -->
-      <path class="pipe main o2" d="M1100 440H680"/>${opc(1100, 440, "HP LOX from P-501", "C-401", { left: true, w: 150 })}
-      <path class="pipe n2" d="M1100 470H680"/>${opc(1100, 470, "GAN from C-401", "C-401", { left: true, w: 140 })}
-      <path class="pipe n2" d="M1100 500H680"/>${opc(1100, 500, "Waste N₂ from C-402", "C-401", { left: true, w: 160 })}
-      <path class="pipe main o2" d="M680 80H1100"/>${opc(1100, 80, "GOX 30 bar → products", "products", { w: 150 })}
-      <path class="pipe n2" d="M680 110H1100"/>${opc(1100, 110, "GAN → products", "products")}
-      <path class="pipe n2" d="M680 140H1100"/>${opc(1100, 140, "Waste N₂ → R-201 regen", "R-201", { w: 160 })}`,
+      <path class="pipe" d="M720 270H940"/>${vH("FV-303", 860, 270)}
+      <polygon id="dq-EXP" class="equip" points="940,250 1020,232 1020,308 940,290"/>
+      <text class="lbl big" x="940" y="222">X-303 expander</text>
+      <path class="pipe" d="M1020 270H1320"/>${opc(1320, 270, "Air → C-402 LP column", "C-401", { w: 170 })}
+      <path class="pipe noarrow" d="M980 300V340"/>
+      <rect id="dq-EXP-b" class="equip" x="960" y="340" width="40" height="28" rx="2"/>
+      <text class="lbl" x="1006" y="358">brake</text>
+      <!-- cold streams in at the cold end -->
+      <path class="pipe main o2" d="M1320 400H720"/>${opc(1320, 400, "HP LOX from P-501", "C-401", { left: true, w: 150 })}
+      <path class="pipe n2" d="M1320 446H720"/>${opc(1320, 446, "GAN from C-401", "C-401", { left: true, w: 140 })}
+      <path class="pipe n2" d="M1320 492H720"/>${opc(1320, 492, "Waste N₂ from C-402", "C-401", { left: true, w: 170 })}
+      <!-- warm streams out at the cold end: liquefied booster air → HV-116 JT, main air → HP column -->
+      <path class="pipe" d="M680 510V548H1320"/>${vH("HV-116", 900, 548)}<text class="lbl" x="882" y="536">HV-116 JT</text>
+      ${opc(1320, 548, "Liquid air → C-401 HP", "C-401", { w: 170 })}
+      <path class="pipe main" d="M640 510V600H1320"/>${opc(1320, 600, "Air → C-401 HP column", "C-401", { w: 170 })}`,
     placements: [
-      ["TDI-302", 380, 120], ["TI-301", 480, 572], ["FIC-303", 690, 216], ["TI-512", 900, 26], ["FFI-111", 240, 196],
-      ["SI-304", 860, 350], ["VI-305", 962, 350], ["TI-306", 1064, 350],
+      ["TI-307", 300, 56], ["TI-308", 300, 136], ["TDI-302", 440, 120], ["FFI-111", 240, 196],
+      ["TI-512", 1000, 36], ["TI-309", 1000, 88], ["TI-310", 1000, 138],
+      ["FIC-303", 790, 200], ["TI-315", 730, 282], ["PI-316", 830, 282], ["TI-317", 1080, 226], ["PI-318", 1180, 226],
+      ["SI-304", 1040, 316], ["VI-305", 1142, 316], ["TI-306", 1244, 316],
+      ["TI-312", 1080, 360], ["TI-313", 1080, 406], ["TI-314", 1080, 452],
+      ["TI-311", 760, 506], ["TI-301", 760, 556],
     ],
     valves: { "FV-303": "FIC-303" },
     levels: {},
     equip: { "dq-EXP": "EXP", "dq-EXP-b": "EXP" },
     status: { x: 40, y: 440, items: [["eq", "EXP"], ["ilk", "I-300"], ["eq", "BAC"], ["eq", "LOXP"]] },
     minis: [
-      { title: "Cold-end air temperature", pts: ["TI-301.PV"] },
+      { title: "Warm end · in vs out", pts: ["TI-307.PV", "TI-309.PV", "TI-310.PV", "TI-512.PV"], shared: true },
       { title: "Warm-end ΔT", pts: ["TDI-302.PV"] },
+      { title: "Cold end · out vs in", pts: ["TI-301.PV", "TI-311.PV", "TI-313.PV", "TI-314.PV"], shared: true },
       { title: "Expander flow", pts: ["FIC-303.PV", "FIC-303.SP"] },
+      { title: "Expander in / out", pts: ["TI-315.PV", "TI-317.PV"], shared: true },
       { title: "Expander speed", pts: ["SI-304.PV"] },
-      { title: "Expander vibration", pts: ["VI-305.PV"] },
-      { title: "GOX leaving E-301 (internal compression)", pts: ["TI-512.PV"] },
     ],
   },
   "C-401": {
