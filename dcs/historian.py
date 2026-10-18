@@ -124,6 +124,14 @@ class Historian:
             args.append(limit)
         return self._db().execute(sql, args).fetchall()
 
+    def count(self, name, start, end):
+        """Number of stored samples of a point in [start, end] (exception reporting at work)."""
+        pid = self.ids.get(name)
+        if pid is None:
+            return 0
+        return self._db().execute("SELECT COUNT(*) FROM samples WHERE point_id = ? AND ts >= ? AND ts <= ?",
+                                  (pid, start, end)).fetchone()[0]
+
     def trend(self, name, start, end, points=600):
         """Downsampled for display: per time bucket min/max/last (keeps spikes visible),
         plus the last stored value before `start` so a slow-moving tag isn't blank at the left."""

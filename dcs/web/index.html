@@ -25,6 +25,8 @@
   .card.sim { border-top-color: var(--sim); }
   .card.raw { border-top-color: #8a8f94; }
   .card.nr { border-top-color: #8f1c1c; }
+  .card.learn { border-top-color: #0e7490; }
+  .card.learn.star { background: #f3fafb; border-color: #9fcbd6; border-top-color: #0e7490; }
   .card h3 { margin: 0 0 4px; font-size: 16px; }
   .card .k { font: 600 11px var(--mono); color: var(--muted); letter-spacing: .04em; text-transform: uppercase; }
   .card p { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
@@ -50,6 +52,25 @@
   </div>
 </header>
 <div class="wrap">
+  <h2>Learn · ASU1 trainers</h2>
+  <div class="grid">
+    <a class="card learn star" href="/trainer#ot">
+      <span class="k">🔌 IT/OT trainer · for IT/OT specialists</span>
+      <h3>From sensor to OPC UA</h3>
+      <p>Follow any value live through every layer: the Modbus registers it arrives in, the DCS tag, the historian and the OPC UA node. Then what dead time, exception reporting and bad quality mean for anyone who analyses plant data.</p>
+    </a>
+    <a class="card learn" href="/trainer#eng">
+      <span class="k">⚙️ Engineering trainer</span>
+      <h3>How the units work</h3>
+      <p>Guided walks through the live detail displays, with deep dives into the physics: why the Linde double column works, the main heat exchanger, internal compression and the expander.</p>
+    </a>
+    <a class="card learn" href="/operator?training=1">
+      <span class="k">🎓 Process trainer</span>
+      <h3>The plant in plain language</h3>
+      <p>Walks through the whole plant on the operator console's overview, step by step, with what each step is doing right now. No background needed.</p>
+    </a>
+  </div>
+
   <h2>Level 2 · Control — ASU1 DCS</h2>
   <div class="grid">
     <a class="card" href="/operator">

@@ -10,6 +10,7 @@
 - [Process behaviour](Process-behaviour)
 
 **Use**
+- [Trainers](Trainers)
 - [Operator console](Operator-console)
 - [Instructor station](Instructor-station)
 - [Data access](Data-access)

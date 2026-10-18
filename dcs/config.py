@@ -248,6 +248,20 @@ TAGS = [
 
 TAG_INDEX = {t["tag"]: t for t in TAGS}
 
+# The tags each calculated value is computed from in DCS.calc(), for the IT/OT trainer's data path:
+# a calculated tag has no field point, its inputs are other tags. UIC-103 is a controller whose PV
+# is calculated (the surge margin).
+CALC_INPUTS = {
+    "UIC-103": ["FI-103", "PIC-102"],
+    "FFI-111": ["FIC-111", "FIC-501"],
+    "TDI-410": ["TI-407", "TI-406"],
+    "TY-411": ["PI-401"],
+    "TY-412": ["PIC-402"],
+    "TY-413": ["PIC-402"],
+    "FY-501": ["FIC-101", "FI-408", "LIC-404"],
+    "KPI-701": ["JI-104", "JI-113", "JI-514", "FIC-501"],
+}
+
 # Severity per limit type (ISA-18.2-ish: 1 = urgent ... 3 = low)
 ALARM_PRIORITY = {"HH": 1, "LL": 1, "H": 2, "L": 2}
 # A few alarms are informational rather than abnormal-condition alarms.

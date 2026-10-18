@@ -31,6 +31,7 @@ a start-up procedure.
 | DCS operator console | http://localhost:8110/operator |
 | Historian trends | http://localhost:8110/operator#trends |
 | Detail display (e.g. the columns) | http://localhost:8110/operator#detail/C-401 |
+| Trainers (Engineering, IT/OT) | http://localhost:8110/trainer |
 | Instructor station (fault scenarios) | http://localhost:8111 |
 | OPC UA endpoint | `opc.tcp://localhost:4840/hcw/asu1/` (anonymous, no security) |
 | Modbus TCP field I/O (raw) | `localhost:5020`, unit 1 |
@@ -46,7 +47,8 @@ a start-up procedure.
 New to plants? Read [Plant automation in brief](Plant-automation-in-brief) first.
 
 1. Open the hub at http://localhost:8110 and go to the **DCS operator console**.
-2. Switch on **🎓 Training** and step through the process with ▶.
+2. Switch on **🎓 Training** and step through the process with ▶. Want more depth? Each step has
+   "Go deeper" links into the [Engineering and IT/OT trainers](Trainers).
 3. Click the value of `FIC-101` (the air flow) to open its faceplate: PV, SP, OP, mode and a trend.
 4. Click the column on the overview to open the **C-401** detail display. Back and Close take you
    back.

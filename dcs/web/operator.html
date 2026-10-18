@@ -331,6 +331,16 @@
   .tc-b .watch button { font: 700 10.5px var(--mono); padding: 2px 7px; border: 1px solid var(--train); background: #fff; color: var(--train); }
   .tc-b .watch button:hover { background: var(--train-2); }
   .tc-b .think { color: var(--muted); font-style: italic; }
+  .tc-b .deeper { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; padding-top: 8px; border-top: 1px solid #d5dadd; }
+  .tc-b .deeper h4 { width: 100%; }
+  .tc-b .deeper a { font: 600 11.5px var(--sans); padding: 3px 9px; border: 1px solid var(--train); color: var(--train); text-decoration: none; }
+  .tc-b .deeper a:hover { background: var(--train-2); }
+
+  /* embedded in the trainer page (?embed=1): the trainer has its own header and steers the console.
+     Its highlight (teal, the training colour) dims everything outside the regions the lesson is about. */
+  body.embed > header { display: none; }
+  .hl-dim { fill: #1b2a33; opacity: .30; pointer-events: none; }
+  .hl-box { fill: none; stroke: var(--train); stroke-width: 3; stroke-dasharray: 8 4; pointer-events: none; }
 
   #toast { position: fixed; right: 16px; bottom: 16px; padding: 10px 14px; background: #2f3337; color: #fff; font: 12px var(--mono); display: none; max-width: 420px; border-left: 4px solid #4caf50; z-index: 10; }
   #toast.err { border-left-color: var(--p1); }
@@ -1621,6 +1631,7 @@ async function loadEvents() {
 let fpBuiltFor = null;
 function select(tag) {
   SEL = tag; fpBuiltFor = null;
+  toTrainer({ select: tag });
   $("#faceplate").classList.add("on");
   render(); loadFpTrend();
 }
@@ -1878,6 +1889,8 @@ function route() {
     if (DETAIL !== d) { DETAIL = d; buildDetail(); }
     showTab("detail");
   } else showTab(TABS.includes(h) ? h : "overview");
+  applyHighlight();
+  toTrainer({ route: "#" + h });
 }
 function go(hash) {
   if (location.hash !== hash) history.pushState({ app: true }, "", hash);
@@ -1967,6 +1980,8 @@ const PPU_STEP_TEXT = {
 };
 
 let trainOn = false, trainStep = 0, trainBuilt = -1;
+// Process step -> its Engineering trainer topic (/trainer); steps without one link to the topic list.
+const DEEPER = { 3: ["E-301", "How the heat exchanger works"], 4: ["C-401", "How the double column works"] };
 
 function u(tag, extra = 0) { const t = TAG[tag]; return `${fmt(tag, pv(tag), extra)} ${t ? esc(t.unit) : ""}`; }
 function running(k) { return ST.equipment[k].state === "RUNNING"; }
@@ -2090,7 +2105,10 @@ function buildTraining() {
       <div class="live"><h4>Right now in ASU1</h4><ul data-live></ul></div>
       <h4>Watch these tags</h4>
       <div class="watch">${st.watch.filter(t => TAG[t]).map(t => `<button data-tag="${t}" title="${esc(TAG[t].desc)}">${t}</button>`).join("")}</div>
-      <p class="think" style="margin-top:8px">${esc(st.think)}</p></div>`;
+      <p class="think" style="margin-top:8px">${esc(st.think)}</p>
+      <div class="deeper"><h4>Go deeper</h4>
+        <a href="/trainer#eng${DEEPER[trainStep] ? "/" + DEEPER[trainStep][0] : ""}">⚙️ ${DEEPER[trainStep] ? esc(DEEPER[trainStep][1]) : "Engineering trainer"}</a>
+        <a href="/trainer?tag=${encodeURIComponent(st.watch[0])}#ot/datapath">🔌 IT/OT: follow ${esc(st.watch[0])} to OPC UA</a></div></div>`;
   $$("#train-card [data-tr]").forEach(b => b.addEventListener("click", () => b.dataset.tr === "x" ? setTraining(false) : goTrain(trainStep + +b.dataset.tr)));
   $$("#train-card [data-tag]").forEach(b => b.addEventListener("click", () => select(b.dataset.tag)));
   trainBuilt = trainStep;
@@ -2125,6 +2143,37 @@ document.addEventListener("keydown", e => {
   if (e.key === "Escape") setTraining(false);
 });
 
+/* ---------------------------------------------------------------- embedded in the trainer (?embed=1)
+   /trainer shows this console next to its lessons and steers it with postMessage (same origin only):
+   {type: "hcw-train", go: "#detail/C-401", highlight: {on: "#detail/C-401", regions: [[x, y, w, h], ...]},
+   select: "TAG"}. The console reports back what the user does: {type: "hcw-console", route | select}. */
+const EMBED = new URLSearchParams(location.search).get("embed") === "1";
+let HL = null;
+function toTrainer(msg) { if (EMBED && window.parent !== window) window.parent.postMessage({ type: "hcw-console", ...msg }, location.origin); }
+function applyHighlight() {
+  $$(".hl-layer").forEach(g => g.remove());
+  if (!HL || !HL.regions || HL.on !== location.hash) return;
+  const svg = TAB === "detail" ? $("#dmimic") : TAB === "overview" ? $("#mimic") : null;
+  if (!svg) return;
+  const [, , W, H] = svg.getAttribute("viewBox").split(" ").map(Number);
+  const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+  g.setAttribute("class", "hl-layer");
+  g.innerHTML = `<defs><mask id="hl-mask"><rect width="${W}" height="${H}" fill="#fff"/>
+      ${HL.regions.map(([x, y, w, h]) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="#000"/>`).join("")}</mask></defs>
+    <rect class="hl-dim" width="${W}" height="${H}" mask="url(#hl-mask)"/>
+    ${HL.regions.map(([x, y, w, h]) => `<rect class="hl-box" x="${x}" y="${y}" width="${w}" height="${h}" rx="6"/>`).join("")}`;
+  svg.appendChild(g);
+}
+window.addEventListener("message", e => {
+  if (e.origin !== location.origin || !e.data || e.data.type !== "hcw-train") return;
+  const m = e.data;
+  HL = m.highlight || null;
+  // replace, don't push: the iframe shares the browser's history with the trainer page
+  if (m.go && m.go !== location.hash) { history.replaceState(history.state, "", m.go); route(); } else applyHighlight();
+  if (m.select && TAG[m.select] && m.select !== SEL) select(m.select);
+});
+if (EMBED) document.body.classList.add("embed");
+
 async function poll() {
   try {
     ST = await (await fetch("/api/state")).json();
@@ -2154,10 +2203,11 @@ setInterval(() => { $("#clock").textContent = new Date().toLocaleTimeString("en-
   if (!validRoute(location.hash)) history.replaceState(history.state || { root: true }, "", "#" + (TABS.includes(stored) ? stored : "overview"));
   else if (!history.state) history.replaceState({ root: true }, "", location.hash);
   route();
+  toTrainer({ ready: true });
   // ?training=1&step=n opens the training overlay (deep link for screenshots and lesson plans)
   const qp = new URLSearchParams(location.search);
   trainStep = Math.max(0, Math.min(TRAIN.length - 1, +(qp.get("step") ?? store.get("hcw.train.step", 0)) || 0));
-  if (qp.get("training") === "1" || (qp.get("training") !== "0" && store.get("hcw.train", false))) setTraining(true);
+  if (!EMBED && (qp.get("training") === "1" || (qp.get("training") !== "0" && store.get("hcw.train", false)))) setTraining(true);
   setInterval(poll, 1000);
   setInterval(() => { loadViewMinis(); if (TAB === "trends") loadTrend(); if (TAB === "alarms") loadEvents(); if (SEL) loadFpTrend(); }, 5000);
   window.addEventListener("resize", () => { loadViewMinis(); if (TAB === "overview" && trainOn) placeTrainCard(); drawBig(); });

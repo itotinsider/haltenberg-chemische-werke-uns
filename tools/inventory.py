@@ -155,23 +155,29 @@ def api_layer():
     snap = sim.dcs.snapshot()
     kinds = {t["tag"]: t["kind"] for t in C.TAGS}
 
-    class RT:  # the bits of dcs/main.Runtime that config_payload() and runtime_status() read
+    class RT:  # the bits of dcs/main.Runtime that config_payload(), runtime_status() and datapath() read
         dcs = sim.dcs
         scan_count, scan_ms = 1, 0.0
         io = {"connected": True, "last_heartbeat": None, "heartbeat_changed": 0.0, "errors": 0}
+        snapshot = snap
+        wire = {"ir": [0] * iomap.AI_REGISTERS, "read_at": 0.0, "hr": [0] * iomap.AO_REGISTERS, "written_at": 0.0}
+        opcua = None
 
         class historian:
             stored = 0
+            last = {}
+            count = staticmethod(lambda name, start, end: 0)
     cfg = dmain.config_payload(RT)
     snap.update(dmain.runtime_status(RT))
+    path = dmain.datapath(RT, "FIC-101")
     psnap = pmain.Runtime().snapshot()
     any_alarm = next(iter(sim.dcs.alarms.values())).as_dict()
     return {
         "_source": "dcs/main.py, plant/main.py (response shapes from a live snapshot; values are not part of it)",
         "dcs": {
             "port": 8110,
-            "get": ["/", "/operator", "/api/state", "/api/config", "/api/history?tags=&minutes=&points=",
-                    "/api/events?limit=&start=", "/api/historian"],
+            "get": list(dmain.PAGES) + ["/api/state", "/api/config", "/api/history?tags=&minutes=&points=",
+                                        "/api/events?limit=&start=", "/api/historian", "/api/datapath?tag="],
             "post": ["/api/loops/<tag> {mode, sp, op, sp_hi, sp_lo, kc, ti, sp_rate, ratio}",
                      "/api/equipment/<key>/start|stop", "/api/interlocks/<key>/reset", "/api/esd", "/api/lineup",
                      "/api/sequences/KS-201/cycle {seconds, source}", "/api/sequences/KS-201/switch",
@@ -189,6 +195,9 @@ def api_layer():
                        "equipment.<key>": _keys(cfg["equipment"].values()),
                        "interlocks.<key>": _keys(cfg["interlocks"].values())},
             "historian_points": list(dmain.historian_points()),
+            "datapath": {"keys": list(path), "field_in": list(path["field_in"]), "dcs": list(path["dcs"]),
+                         "historian": list(path["historian"]), "historian.points[]": list(path["historian"]["points"][0]),
+                         "opcua": list(path["opcua"]), "opcua.nodes[]": list(path["opcua"]["nodes"][0])},
         },
         "plant": {
             "port": 8111,

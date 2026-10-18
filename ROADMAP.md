@@ -118,12 +118,24 @@ rules above:
   control strategies, interlocks. No energy deep dive; "try it" exercises another day.
 - **Touches:** `dcs/web/operator.html` (`TRAIN`, detail displays), a new trainer page in `dcs/web/`,
   `dcs/main.py` (page route; possibly a read-only data-path API), hub card, wiki Operator console.
-- **Reserves:** no Modbus addresses. Calc tags TY-414 / TY-415 if the valve flash temperatures need them.
+- **Reserves:** nothing. No Modbus addresses, no tags (the valve flash temperatures are computed in the
+  trainer from TY-411/413 and an ideal-mixture estimate, so TY-414/415 were not needed).
 - **Depends on:** `mhe-expander-tags` (done).
 - **Notes:**
   - 2026-10-18 Willem: deep dives on a separate page, without losing immersion. The IT/OT layer
     must be easy to find. Considering several trainers (process, engineering, OT) instead of sublinks.
-  - The rich-liquid flash needs a composition estimate; TY-413 already gives the LIN value.
+  - 2026-10-18 Willem: three trainers, Process / Engineering / IT/OT (names OK); interlocks deep dive
+    added to the later list, no energy deep dive, "try it" exercises another day.
+  - 2026-10-18 progress (Claude): first-PR scope built on `step4-training`, tests green (99).
+    - `/trainer`: the live console embedded (`/operator?embed=1`, postMessage steering, teal highlights)
+      next to the lesson; the trainer switch keeps the topic.
+    - Engineering: C-401 (6 steps, deep dives boiling point vs pressure and the valve letdown) and
+      E-301 (4 steps, deep dive temperature profile).
+    - IT/OT: "From sensor to OPC UA" (5 steps, the live data path of any tag) and "Time and quality"
+      (dead time, deadband, Bad is not zero).
+    - Interface: `GET /api/datapath?tag=`, `/trainer`, `/api/config` keys `t_sat` and `calc_inputs`
+      (inventory regenerated). Process overlay cards got "Go deeper" links; hub got a "Learn" row.
+    - Wiki: new page Trainers; screenshots trainer-*.png and a new hub.png.
 
 ## Planned
 
