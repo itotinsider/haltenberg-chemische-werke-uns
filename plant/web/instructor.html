@@ -160,6 +160,8 @@ function render() {
     ["LOX backup pump P-505 trip latched", h.lox_backup_pump_trip_latched ? "YES" : "no"],
     ["Surge margin (true)", h.surge_margin_pct + " %"],
     ["Cold-box temperature drift", (h.coldbox_dT_K >= 0 ? "+" : "") + h.coldbox_dT_K.toFixed(2) + " K"],
+    ["E-301 duty", h.mhe_duty_MW + " MW"],
+    ["E-301 profile shift (imbalance)", (h.mhe_profile_shift_K >= 0 ? "+" : "") + h.mhe_profile_shift_K.toFixed(2) + " K"],
     ["Main condenser ΔT", h.condenser_dT_K + " K"],
     ["Waste N₂ flow", h.waste_n2 + " kNm³/h"],
   ].map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join("");

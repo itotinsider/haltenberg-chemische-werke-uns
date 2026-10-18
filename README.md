@@ -71,6 +71,12 @@ step progress.
 
 ![Mole sieve detail display](docs/screenshots/operator-detail-ppu.png)
 
+The heat-exchanger display shows every stream through E-301 with its temperature at both ends,
+and the expander's inlet and outlet. The values come from one heat balance, so they agree with each
+other.
+
+![Heat exchanger detail display](docs/screenshots/operator-detail-mhe.png)
+
 **Tag list and controller faceplate** — every DCS tag with PV, SP, output and mode. The faceplate
 switches MAN/AUTO/CAS, changes setpoints and shows a 30-minute trend.
 
@@ -208,7 +214,7 @@ The overview (ISA-101 level 2) shows the whole unit. Each unit also has a **deta
 | `K-101` | Intake filter, main air compressor, antisurge recycle, C-102 aftercooler |
 | `R-201` | Mole-sieve beds A/B, E-204 regeneration heater, KS-201 sequence panel |
 | `K-102` | Booster air compressor, its ratio to the pumped LOX (internal compression) |
-| `E-301` | Main heat exchanger (all streams) and X-303 expander |
+| `E-301` | Main heat exchanger: every stream's temperature at both ends; X-303 expander inlet / outlet temperature and pressure |
 | `C-401` | HP / LP columns, E-404 main condenser, P-501 LOX pump, boiling-point scale |
 | `products` | GOX and GAN headers, consumers, K-503 GAN compressor, PIC-502 / PIC-504 split ranges |
 | `T-505` | LOX / LIN tanks, backup pumps P-505 / P-506, backup vaporizers E-507 / E-508 |
@@ -259,12 +265,12 @@ The **PPU bed cycle** slider on the instructor station runs from *real time* (4 
 | MAC impeller fouling | Same air, more MW: KPI-701 specific power drifts up |
 | DCAC water carry-over | CO₂ breakthrough at the PPU outlet ~35 min in → 10 ppm trip unless beds are switched |
 | Regeneration heater fault | KS-201 "regeneration incomplete", breakthrough one cycle later |
-| Booster motor trip | I-110 → I-500: without booster air the pumped LOX can't vaporize, so P-501 trips; vaporizer takes the header. Restart within ~10 min or the reboiler floods (LIC-404 HH → I-100) |
-| LOX pump cavitation | PI-511 unsteady and falling over ~5 min → LL → I-500. The suction re-cools in ~5 min, then P-501 can be restarted |
+| Booster motor trip | I-110 → I-500: without booster air the pumped LOX can't vaporize, so P-501 trips; vaporizer takes the header. Without the cold LOX stream the E-301 cold end warms (TI-301). Restart within ~10 min or the reboiler floods (LIC-404 HH → I-100) |
+| LOX pump cavitation | PI-511 unsteady and falling over ~5 min → LL → I-500; the E-301 cold end then warms (TI-301 H). The suction re-cools in ~5 min, then P-501 can be restarted |
 | GAN compressor K-503 trip | I-503: the GAN header dips to ~7.6 bar(g) while PIC-504 hands over to the LIN backup (P-506 / E-508). The column vents the GAN it no longer sends out |
 | LOX backup pump P-505 trip | I-505 alarm "no GOX backup" and nothing else, until the next P-501 or ASU trip: then the GOX header collapses. Reset I-505 and restart P-505 |
-| Expander loss of loading | Overspeed trip; reboiler level then drains over hours |
-| MHE fouling | Warm-end ΔT creeps up |
+| Expander loss of loading | Overspeed trip. Without the expander draw E-301 gets out of balance: the warm-end ΔT closes to ~0 and the cold end warms (TI-301 H after ~20 min); the reboiler level drains over hours |
+| MHE fouling | Warm-end ΔT creeps up (H after ~70 min), the cold end warms with it |
 | Hydrocarbon event | Hydrocarbons in the intake rise six-fold. The pumped LOX flushes them out with the product, so AI-603 only becomes a problem while P-501 is down |
 | Heatwave | Less MAC capacity, more power, more water load on the PPU |
 
@@ -277,7 +283,9 @@ GOX leaves ASU1 at pipeline pressure without an oxygen compressor (research §3,
   air to ~60 bar(a) (FIC-111, PI-112, JI-113, VI-114); it condenses on the other side and goes
   through the JT valve HV-116 into the HP column as liquid air.
 - **Cross-limiting ratio control**, as for burner air/fuel: FIC-111's setpoint is the ratio (1.52)
-  × the higher of LOX flow and LOX demand, so the booster leads on increase. FIC-501's setpoint is
+  × the higher of LOX flow and LOX demand, so the booster leads on increase. The demand counts only up
+  to the load limit FY-501: booster air for oxygen the pump won't deliver has no LOX to condense
+  against (found with the E-301 heat balance in step 3: at reduced air it warmed the cold end by 7 K). FIC-501's setpoint is
   capped at what the measured booster air can vaporize, so the LOX follows. FFI-111 shows the actual
   ratio; the operator sets it on the FIC-111 faceplate (1.35–2.0).
 - **TI-512**, the GOX temperature leaving E-301, is the safety variable: too little booster air →
@@ -313,6 +321,41 @@ GOX leaves ASU1 at pipeline pressure without an oxygen compressor (research §3,
   down as it takes over (no pressure bump).
 - **Specific power** KPI-701 = (MAC + booster + GAN compressor power) ÷ GOX, ≈ 0.55 kWh/Nm³
   (H alarm 0.60).
+
+## Main heat exchanger E-301: a simple heat balance
+
+Every stream through E-301 has a temperature at both ends, and the expander X-303 has its inlet and
+outlet temperature and pressure:
+
+| | Warm end (top) | Cold end (bottom) |
+|---|---|---|
+| Main air | TI-307 in, ≈ 15 °C | TI-301 out, ≈ −174 °C → HP column |
+| Booster air (~60 bar) | TI-308 in, ≈ 22 °C | TI-311 out (liquefied), ≈ −172 °C → HV-116 |
+| Pumped LOX → GOX | TI-512 out, ≈ 10 °C | TI-312 in, ≈ −178 °C |
+| GAN | TI-309 out, ≈ 12 °C → K-503 | TI-313 in, ≈ −177 °C |
+| Waste N₂ | TI-310 out, ≈ 12 °C → PPU regeneration | TI-314 in, ≈ −192 °C |
+| Expander side draw | | TI-315 / PI-316 in ≈ −110 °C, 5.6 bar(a); TI-317 / PI-318 out ≈ −178 °C, 1.4 bar(a) |
+
+The plant model closes an **enthalpy balance** over E-301 at every step, with deliberately simple
+assumptions: ideal gases with one constant cp (1.30 kJ/Nm³·K), constant heats of vaporisation, no
+heat leak into the exchanger, a clean exchanger.
+- **Inlets** come from upstream: the PPU, the booster aftercooler, the column streams at their
+  boiling points.
+- **Outlets** follow from design approaches: 3 K at the warm end, −174 °C at the cold end.
+- **What doesn't balance** shifts the whole temperature profile, through the exchanger's metal
+  (~10 min). Too much warm flow (booster air without LOX, no expander draw) warms it: the warm-end
+  ΔT closes and the cold end warms. Too much cold flow cools it: the warm-end ΔT opens.
+- **One calibrated number:** the heat the 60 bar booster air releases while it liquefies
+  (~200 kJ/Nm³), chosen so the design point balances.
+- **The expander:** an isentropic drop with 85 % efficiency, fitted to −110 → −178 °C. A loss of
+  loading extracts less work, so the outlet is warmer.
+
+So the data is consistent: TDI-302 = TI-307 − TI-310, and the balance recomputed from the OPC UA
+tags closes within 2 % (a test checks both). The refrigeration balance that drives the cold box and
+the sump levels is unchanged.
+
+Alarms (no trips): TI-315 H (warm expander inlet), TI-317 L (close to the dew point: liquid in the
+expander) and H (too little work extracted).
 
 ## Restart after a trip
 
@@ -395,7 +438,7 @@ It does not touch the running stack. The tests come in four parts:
 - **A behaviour test:** cause and effect changed. Either fix the regression, or, if the new behaviour is right, update the test and say why in the PR.
 - **New instructor scenario:** add its expected effect to `SIGNATURES` in `tests/test_behaviour.py`. A test fails until you do.
 
-The behaviour tests use a fixed seed. Their limits are meant to hold for any seed, so check another one after retuning:
+The behaviour tests use a fixed seed. Their limits are meant to hold for any seed (seeds 1–44 pass except 37, see CLAUDE.md), so check another one after retuning:
 
 ```bash
 docker compose run --rm -e HCW_TEST_SEED=3 tests python -m pytest tests/test_behaviour.py

@@ -24,6 +24,18 @@ FIC-303,PID,ColdBoxHeatExchange,Expander flow (refrigeration),kNm³/h,0,30,MAN A
 SI-304,AI,ColdBoxHeatExchange,Expander speed,rpm,0,40000,,ST-304,IR 306,,,HCW.ASU1.SI-304,Description PV AlarmState,PV,H 28000 P2; HH 30000 P1,
 VI-305,AI,ColdBoxHeatExchange,Expander vibration,µm,0,100,,VT-305,IR 308,,,HCW.ASU1.VI-305,Description PV AlarmState,PV,H 40 P2; HH 60 P1,
 TI-306,AI,ColdBoxHeatExchange,Expander bearing temperature,°C,0,120,,TT-306,IR 310,,,HCW.ASU1.TI-306,Description PV AlarmState,PV,H 85 P2; HH 95 P1,
+TI-307,AI,ColdBoxHeatExchange,"Main air into E-301 (warm end, after the PPU)",°C,-20,50,,TT-307,IR 312,,,HCW.ASU1.TI-307,Description PV,PV,,MAC
+TI-308,AI,ColdBoxHeatExchange,"Booster air into E-301 (warm end, after E-102)",°C,-20,60,,TT-308,IR 314,,,HCW.ASU1.TI-308,Description PV,PV,,BAC
+TI-309,AI,ColdBoxHeatExchange,"GAN leaving E-301 (warm end, to K-503)",°C,-50,50,,TT-309,IR 316,,,HCW.ASU1.TI-309,Description PV,PV,,GANC
+TI-310,AI,ColdBoxHeatExchange,"Waste N2 leaving E-301 (warm end, to PPU regeneration)",°C,-50,50,,TT-310,IR 318,,,HCW.ASU1.TI-310,Description PV,PV,,MAC
+TI-311,AI,ColdBoxHeatExchange,"Booster air leaving E-301 (cold end, liquefied, to HV-116)",°C,-200,-100,,TT-311,IR 320,,,HCW.ASU1.TI-311,Description PV,PV,,BAC
+TI-312,AI,ColdBoxHeatExchange,"Pumped LOX into E-301 (cold end, from P-501)",°C,-200,-100,,TT-312,IR 322,,,HCW.ASU1.TI-312,Description PV,PV,,LOXP
+TI-313,AI,ColdBoxHeatExchange,"GAN into E-301 (cold end, from the HP column)",°C,-200,-100,,TT-313,IR 324,,,HCW.ASU1.TI-313,Description PV,PV,,MAC
+TI-314,AI,ColdBoxHeatExchange,"Waste N2 into E-301 (cold end, from the LP column)",°C,-200,-100,,TT-314,IR 326,,,HCW.ASU1.TI-314,Description PV,PV,,MAC
+TI-315,AI,ColdBoxHeatExchange,Expander inlet temperature (E-301 side draw),°C,-160,-40,,TT-315,IR 328,,,HCW.ASU1.TI-315,Description PV AlarmState,PV,H -95 P2,EXP
+PI-316,AI,ColdBoxHeatExchange,Expander inlet pressure,bar(a),0,8,,PT-316,IR 330,,,HCW.ASU1.PI-316,Description PV,PV,,EXP
+TI-317,AI,ColdBoxHeatExchange,Expander outlet temperature (to the LP column),°C,-200,-100,,TT-317,IR 332,,,HCW.ASU1.TI-317,Description PV AlarmState,PV,L -186 P2; H -165 P2,EXP
+PI-318,AI,ColdBoxHeatExchange,Expander outlet pressure,bar(a),0,3,,PT-318,IR 334,,,HCW.ASU1.PI-318,Description PV,PV,,EXP
 PI-401,AI,DoubleColumn,HP column top pressure,bar(a),0,8,,PT-401,IR 400,,,HCW.ASU1.PI-401,Description PV AlarmState,PV,L 4.8 P2; H 5.8 P2,MAC
 PIC-402,PID,DoubleColumn,LP column top pressure,bar(a),0,3,MAN AUTO,PT-402,IR 402,PV-402,HR 400,HCW.ASU1.PIC-402,Description PV SP OP Mode AlarmState,PV SP OP,L 1.25 P2; H 1.45 P2,MAC
 LIC-403,PID,DoubleColumn,HP column sump level,%,0,100,MAN AUTO,LT-403,IR 404,LV-403,HR 402,HCW.ASU1.LIC-403,Description PV SP OP Mode AlarmState,PV SP OP,L 30 P2; H 70 P2; HH 85 P1,MAC

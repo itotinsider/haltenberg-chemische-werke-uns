@@ -292,6 +292,11 @@ class DCS:
                     # Lead on increase: follow the partner's demand (its SP) or its flow, whichever is higher.
                     w, partner = self.pv(p.cfg["ratio_of"]), self.loops[p.cfg["ratio_of"]]
                     demand = partner.rsp if partner.mode == "CAS" and partner.rsp is not None else partner.target
+                    # ... but not beyond the partner's load limit: it will never get there, and the excess
+                    # booster air would have no LOX to condense against in E-301 (found with its heat balance).
+                    cap = self.pv(partner.cfg["sp_cap"]) if partner.cfg.get("sp_cap") else None
+                    if cap is not None:
+                        demand = min(demand, max(cap, 0.0))
                     p.rsp = None if w is None else p.ratio * max(w, demand if partner.mode != "MAN" else w)
                 if p.cfg.get("xlimit") or p.cfg.get("sp_cap"):
                     lims = []

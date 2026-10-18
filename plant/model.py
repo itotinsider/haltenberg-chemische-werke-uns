@@ -58,6 +58,22 @@ GAN_RATIO_DESIGN = 9.41 / 5.05
 GAN_HEADER_GAIN = 0.004
 LIN_VAP_CAPACITY = 40.0     # kNm3/h, E-508: covers peak N2 demand (purge jobs, a purge campaign)
 
+# E-301 heat balance (step 3). Ideal conditions: ideal gases with one constant cp, constant heats of
+# vaporisation, no heat leak into the exchanger itself, a clean exchanger (mhe_fouling comes on top).
+CP_GAS = 1.30               # kJ/(Nm3.K): air, N2 and O2
+CP_LOX = 2.41               # kJ/(Nm3.K): liquid oxygen
+L_O2_PUMPED = 160.0         # kJ/Nm3: O2 heat of vaporisation at the pumped pressure (~34 bar(a); 304 at 1 atm)
+MHE_WARM_DT = 3.0           # K: warm-end approach at design (cold products leave this much below the air in)
+MHE_COLD_END = -174.0       # degC: main air leaving the cold end at design (close to its dew point)
+MHE_SIDE_DRAW = 0.661       # expander side draw sits at this fraction of the air's cooling: -110 degC at design
+MHE_TAU = 600.0             # s: exchanger metal, how fast the temperature profile follows an imbalance
+MHE_SHIFT_MAX = 15.0        # K
+PPU_HEAT = 3.0              # K: heat of adsorption, the air leaves the PPU warmer than TT-108
+BOOSTER_COOLER_DT = 10.0    # K: booster air after its aftercooler E-102, above TT-108 (cooling water vs chilled water)
+LOX_PUMP_HEAT = 2.0         # K: pump work warms the LOX from the sump to E-301
+EXP_EFF = 0.85              # expander isentropic efficiency at design loading
+EXP_OUT_DESIGN = -178.0     # degC at design: -110 degC, 5.6 -> 1.4 bar(a)
+
 
 def lag(x, target, tau, dt):
     """First-order lag step."""
@@ -83,6 +99,61 @@ def t_sat_o2(p):
 
 def t_sat_n2(p):
     return t_sat(p, 77.36, 5570.0)
+
+
+def t_dew_air(p):
+    return t_sat(p, 81.6, 5900.0)
+
+
+def flow_lag(x, target, stagnant, w, dt):
+    """A stream temperature: follows its target while the stream flows (w = 1), and drifts slowly to
+    the temperature of the metal around the sensor when it stops (w = 0)."""
+    return lag(x, w * target + (1.0 - w) * stagnant, 20.0 + 1800.0 * (1.0 - w), dt)
+
+
+def o2_heat(t_in, t_out, t_boil):
+    """kJ/Nm3 to warm pumped LOX from t_in to t_out, boiling at t_boil on the way (if it gets there)."""
+    if t_out <= t_boil:
+        return CP_LOX * (t_out - t_in)
+    return CP_LOX * (t_boil - t_in) + L_O2_PUMPED + CP_GAS * (t_out - t_boil)
+
+
+def mhe_balance(f, t, booster_latent):
+    """E-301 enthalpy balance in kJ/Nm3 x kNm3/h: (heat the warm streams give up, heat the cold streams take).
+
+    Warm streams, cooled from the warm end: main air (part of it leaves at the expander side draw, the
+    rest at the cold end to the HP column) and booster air (liquefied: it condenses against the pumped
+    LOX). Cold streams, warmed from the cold end: pumped LOX (boils, leaves as GOX), GAN and waste N2.
+    """
+    warm = (CP_GAS * (f["air"] * t["air_in"] - f["exp"] * t["side"] - (f["air"] - f["exp"]) * t["air_out"])
+            + f["bst"] * (CP_GAS * (t["bst_in"] - t["bst_out"]) + booster_latent))
+    cold = (f["gox"] * o2_heat(t["lox_in"], t["gox_out"], t["o2_boil"])
+            + CP_GAS * (f["gan"] * (t["gan_out"] - t["gan_in"]) + f["waste"] * (t["wst_out"] - t["wst_in"])))
+    return warm, cold
+
+
+def _design_mhe():
+    """The design point: E-301 temperatures and flows at 145 kNm3/h air, 15 degC ambient."""
+    t108, t301 = 6.0 + 0.4 * 15.0, MHE_COLD_END
+    t_ai = t108 + PPU_HEAT
+    t = dict(air_in=t_ai, bst_in=t108 + BOOSTER_COOLER_DT, air_out=t301, bst_out=t301 + 1.5,
+             side=t_ai + MHE_SIDE_DRAW * (t301 - t_ai), lox_in=t_sat_o2(P_LP_DESIGN) - 0.3 * 0.35 + LOX_PUMP_HEAT,
+             gox_out=t108 - 2.5, o2_boil=t_sat_o2(33.3 + P_ATM), gan_in=t_sat_n2(P_HP_DESIGN) + 0.5,
+             gan_out=t_ai - MHE_WARM_DT, wst_in=t_sat_n2(P_LP_DESIGN) + 1.5, wst_out=t_ai - MHE_WARM_DT)
+    f = dict(air=AIR_DESIGN - BOOSTER_DESIGN, exp=EXPANDER_DESIGN, bst=BOOSTER_DESIGN, gox=29.0, gan=GAN_DESIGN,
+             waste=AIR_DESIGN - 29.0 - GAN_DESIGN - 0.8 - 0.6)
+    return f, t
+
+
+# The one calibrated number: the heat the 60 bar(a) booster air releases while it liquefies, chosen so the
+# design point balances (~200 kJ/Nm3). Everything else follows from the flows and temperatures.
+_f, _t = _design_mhe()
+_warm, _cold = mhe_balance(_f, _t, 0.0)
+BOOSTER_LATENT = (_cold - _warm) / _f["bst"]
+MHE_SIDE_DESIGN = _t["side"]
+# Expander temperature drop per unit ln(pressure ratio) at the design inlet temperature (isentropic). An
+# ideal-gas exponent would give only ~45 K from -110 degC; real air near its dew point cools more.
+EXP_DT_PER_LN = (MHE_SIDE_DESIGN - EXP_OUT_DESIGN) / (EXP_EFF * math.log(5.60 / 1.40))
 
 
 class DeadTime:
@@ -203,6 +274,9 @@ class Plant:
     def __init__(self, t0, ppu_cycle_s=PPU_DESIGN_CYCLE):
         self.t = t0
         self.ppu_cycle = ppu_cycle_s
+        # Transmitter noise has its own random stream, so adding an instrument doesn't change the process
+        # disturbances (demand wander, purge jobs) a seed produces.
+        self.noise = random.Random(random.getrandbits(32))
         self.sc = ScenarioState()
         self.pending_oneshots = set()
 
@@ -261,6 +335,15 @@ class Plant:
         self.t306 = 60.0
         self.dt_coldbox = 0.0       # K, lumped cold-box temperature deviation (hours/days)
         self.fouling = 0.0          # K added to warm-end dT
+        # E-301 stream temperatures (degC), from the heat balance at the end of step()
+        self.mhe_shift = 0.0        # K: the whole profile shifts warmer (+) / colder (-) to close the balance
+        self.mhe_duty = 0.0         # MW exchanged
+        self.t_ai, self.t_bi = 15.0, 22.0
+        self.t_lox_in, self.t_gan_in, self.t_wst_in = -178.1, -177.0, -191.6
+        self.t301, self.t_bo = MHE_COLD_END, MHE_COLD_END + 1.5
+        self.t_gan_out = self.t_wst_out = 12.0
+        self.t_xi, self.t_xo = MHE_SIDE_DESIGN, EXP_OUT_DESIGN
+        self.p_xi, self.p_xo = 5.60, 1.40
 
         # Block 4 — double column
         self.p_hp = P_HP_DESIGN
@@ -560,7 +643,9 @@ class Plant:
         # ---- blocks 5/6: headers, consumers, tanks, vaporizer ----
         eo = 14.6 * (1.0 + self.w_eo.step(dt)) * (1.2 if sc.on("eo_demand_step") else 1.0)
         ace = 11.7 * (2.0 / 3.0 if sc.on("acetylene_burner_trip") else 1.0)
-        misc = max(0.0, 2.7 * (1.0 + self.w_misc.step(dt)))
+        # 2.2 (was 2.7): average demand ~28.7 kNm3/h leaves ~0.7 below the load limit FY-501 (29.4 at design),
+        # which sits at the purity edge. At 2.7 normal wander held GOX on the limit and purity dipped to 99.46 %.
+        misc = max(0.0, 2.2 * (1.0 + self.w_misc.step(dt)))
         self.o2_demand = (eo + ace + misc) * math.sqrt(max(self.p_gox, 0.0) / 30.0)
         self.consumers = {"EO": eo, "Acetylene": ace, "Other": misc}
 
@@ -618,10 +703,79 @@ class Plant:
         # Below ~8 kNm3/h the compressor approaches surge: vibration rises sharply.
         self.gan_vib = rg * (1.8 + 10.0 * max(0.0, (8.0 - self.gan) / 8.0)) + (1 - rg) * 0.3
 
+        # ---- block 3b: E-301 heat balance, expander temperatures ----
+        self._mhe(dt, load, rb, rp)
+
+    def _mhe(self, dt, load, rb, rp):
+        """Every stream's temperature at both ends of E-301, from one enthalpy balance.
+
+        1. Inlets come from upstream: air after the PPU, booster air after its aftercooler, the column
+           streams at their boiling points (pressures), the pumped LOX from the sump.
+        2. Design approaches give the outlets: warm end = air in - 3 K (less at low load), cold end =
+           -174 degC (plus the slow cold-box drift), the expander draw part-way.
+        3. Whatever doesn't balance (warm streams give up more heat than the cold ones can take, or less)
+           shifts all outlets by the same amount, through the exchanger's metal mass (MHE_TAU). Excess
+           warm flow (booster air without LOX) warms the profile: smaller warm-end dT, warmer cold end.
+           Excess cold flow (LOX without booster air) cools it: larger warm-end dT.
+        GOX (TI-512) keeps its own pinch logic: it leaves cold when the booster air can't boil the LOX.
+        """
+        w_air = clamp(self.f_air / (0.2 * AIR_DESIGN), 0.0, 1.0)
+        self.t_ai = flow_lag(self.t_ai, self.t108 + PPU_HEAT, self.t_amb, w_air, dt)
+        self.t_bi = lag(self.t_bi, self.t108 + BOOSTER_COOLER_DT if rb > 0.5 else self.t_amb, 120.0 if rb > 0.5 else 1800.0, dt)
+        lox_in = t_sat_o2(self.p_lp) - 0.3 * self.imp_gox + LOX_PUMP_HEAT
+        self.t_lox_in = lag(self.t_lox_in, lox_in if rp > 0.5 else -170.0, 30.0 if rp > 0.5 else 900.0, dt)
+        self.t_gan_in = lag(self.t_gan_in, t_sat_n2(self.p_hp) + 0.5, 30.0, dt)
+        self.t_wst_in = lag(self.t_wst_in, t_sat_n2(self.p_lp) + 1.5, 30.0, dt)
+
+        dtw = MHE_WARM_DT + 0.6 * (min(load, 1.2) - 1.0)
+        t301 = MHE_COLD_END + 0.5 * self.dt_coldbox + 0.6 * (1.0 - min(1.0, load))
+        side = self.t_ai + MHE_SIDE_DRAW * (t301 - self.t_ai)
+        t = dict(air_in=self.t_ai, bst_in=self.t_bi, air_out=t301, bst_out=t301 + 1.5, side=side,
+                 lox_in=self.t_lox_in, gox_out=self.t_gox, o2_boil=t_sat_o2(self.p511 + P_ATM),
+                 gan_in=self.t_gan_in, gan_out=self.t_ai - dtw, wst_in=self.t_wst_in, wst_out=self.t_ai - dtw)
+        f_main = max(0.0, self.f_air - self.f_bst)
+        # Waste N2 through E-301 = the air minus its oxygen and the nitrogen products. Oxygen that isn't
+        # drawn (P-501 stopped) piles up as liquid in the sump; it doesn't leave as cold waste gas.
+        waste = max(0.0, self.f_air * (1.0 - O2_RECOVERY * O2_FRACTION) - self.gan - self.lin)
+        f = dict(air=f_main, exp=min(self.exp_flow, f_main), bst=self.f_bst, gox=self.gox, gan=self.gan, waste=waste)
+        warm, cold = mhe_balance(f, t, BOOSTER_LATENT)
+        c_warm = CP_GAS * (f_main + self.f_bst)
+        c_cold = CP_GAS * (self.gan + waste)
+        if c_warm + c_cold > CP_GAS * 0.1 * AIR_DESIGN:
+            shift = clamp((warm - cold) / (c_warm + c_cold), -MHE_SHIFT_MAX, MHE_SHIFT_MAX)
+            self.mhe_shift = lag(self.mhe_shift, shift, MHE_TAU, dt)
+        else:
+            self.mhe_shift = lag(self.mhe_shift, 0.0, 3600.0, dt)     # no flow: the profile relaxes
+        self.mhe_duty = max(0.0, cold) / 3600.0                      # kJ/Nm3 x kNm3/h -> MW
+
+        # A counterflow exchanger can't warm a product above the warm air coming in: what the warm end can't
+        # take (pinch) goes to the cold end. Fouling (instructor scenario) on top: worse heat transfer at
+        # both ends. Either way the balance still closes.
+        fo = self.fouling
+        sh_cold = min(self.mhe_shift, dtw - 0.2 + fo)
+        k = c_cold / max(c_warm, CP_GAS)
+        sh = self.mhe_shift + (self.mhe_shift - sh_cold) * k + fo * k
+        w_bst = clamp(self.f_bst / (0.2 * BOOSTER_DESIGN), 0.0, 1.0)
+        self.t301 = flow_lag(self.t301, t301 + sh, t301, w_air, dt)
+        self.t_bo = flow_lag(self.t_bo, t301 + 1.5 + sh, t301 + 1.5, w_bst, dt)
+        self.t_xi = flow_lag(self.t_xi, side + sh, side, w_air, dt)
+        warm_out = self.t_ai - dtw + sh_cold - fo
+        idle_out = self.t_ai - 0.5 - fo             # a stopped stream: its nozzle sits at the warm-end metal
+        self.t_gan_out = flow_lag(self.t_gan_out, warm_out, idle_out, clamp(self.gan / 5.0, 0.0, 1.0), dt)
+        self.t_wst_out = flow_lag(self.t_wst_out, warm_out, idle_out, clamp(waste / 10.0, 0.0, 1.0), dt)
+
+        # Expander X-303: medium-pressure air from the side draw, expanded into the LP column. Less work
+        # extracted (loss of loading) = less cooling.
+        self.p_xi = max(self.p_dis - 0.15 * min(load, 1.2) ** 2, 0.5)
+        self.p_xo = self.p_lp + 0.05 * (self.exp_flow / EXPANDER_DESIGN) ** 2
+        eta = EXP_EFF * (1.0 - 0.4 * min(self.exp_overspeed, 1.0))
+        drop = EXP_DT_PER_LN * math.log(max(self.p_xi / self.p_xo, 1.0)) * (self.t_xi + 273.15) / (MHE_SIDE_DESIGN + 273.15)
+        t_xo = max(self.t_xi - eta * drop, t_dew_air(self.p_xo))
+        self.t_xo = flow_lag(self.t_xo, t_xo, t_sat_n2(self.p_lp) + 12.0, clamp(self.exp_flow / 3.6, 0.0, 1.0), dt)
+
     # ---- outputs ----
     def measurements(self):
-        g = random.gauss
-        running = self.mac_run > 0.5
+        g = self.noise.gauss
         return {
             "FT-101": max(0.0, self.f_air + g(0, 0.25)),
             "PT-102": self.p_dis + g(0, 0.004),
@@ -640,14 +794,25 @@ class Plant:
             "PDT-203": max(0.0, 60.0 * (self.f_air / AIR_DESIGN) ** 2 + 40.0 * self.switch_transient + g(0, 0.4)),
             "TT-204": self.t204 + g(0, 0.3),
             "ZT-205": self.stroke_time,
-            "TT-301": -174.0 + 0.5 * self.dt_coldbox + 0.6 * (1.0 - min(1.0, self.f_air / AIR_DESIGN)) + g(0, 0.03),
-            "TDT-302": (3.0 + self.fouling + 0.6 * (self.f_air / AIR_DESIGN - 1.0)
-                        + 3.0 * min(1.0, abs(self.f_bst - BOOSTER_RATIO * self.gox) / BOOSTER_DESIGN) + g(0, 0.03))
-                       if running else 0.5 + self.fouling,
+            "TT-301": self.t301 + g(0, 0.03),
+            # Warm-end dT: air in vs waste N2 out. Its range starts at 0 (with no flow the two pipes drift apart).
+            "TDT-302": max(0.0, self.t_ai - self.t_wst_out) + g(0, 0.03),
             "FT-303": max(0.0, self.exp_flow + g(0, 0.06)),
             "ST-304": max(0.0, self.exp_speed + g(0, 25)) if self.exp_speed > 200 else 0.0,
             "VT-305": max(0.0, 15.0 * (self.exp_speed / EXPANDER_SPEED_DESIGN) ** 2 * (1 + 0.6 * max(0, self.exp_overspeed - 0.5)) + g(0, 0.4)),
             "TT-306": self.t306 + g(0, 0.1),
+            "TT-307": self.t_ai + g(0, 0.05),
+            "TT-308": self.t_bi + g(0, 0.05),
+            "TT-309": self.t_gan_out + g(0, 0.05),
+            "TT-310": self.t_wst_out + g(0, 0.05),
+            "TT-311": self.t_bo + g(0, 0.05),
+            "TT-312": self.t_lox_in + g(0, 0.05),
+            "TT-313": self.t_gan_in + g(0, 0.03),
+            "TT-314": self.t_wst_in + g(0, 0.03),
+            "TT-315": self.t_xi + g(0, 0.05),
+            "PT-316": self.p_xi + g(0, 0.004),
+            "TT-317": self.t_xo + g(0, 0.05),
+            "PT-318": self.p_xo + g(0, 0.002),
             "PT-401": self.p_hp + g(0, 0.003),
             "PT-402": self.p_lp + g(0, 0.002),
             "LT-403": clamp(self.l403 + g(0, 0.3), 0, 100),
@@ -709,6 +874,8 @@ class Plant:
                 "ppu_loading": {k: r1(v, 3) for k, v in self.loading.items()},
                 "coldbox_dT_K": r1(self.dt_coldbox, 3),
                 "mhe_fouling_K": r1(self.fouling, 2),
+                "mhe_profile_shift_K": r1(self.mhe_shift, 2),
+                "mhe_duty_MW": r1(self.mhe_duty, 2),
                 "expander_overspeed": r1(self.exp_overspeed, 2),
                 "condenser_dT_K": r1(self.dT_cond, 2),
                 "waste_n2": r1(self.waste, 1),
