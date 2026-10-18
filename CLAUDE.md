@@ -274,11 +274,9 @@ Working agreement: one branch and one PR per step. Verify each step with the off
     - **Also fixed here (2a gap):** the GOX load limit FY-501 (`sp_cap`), see the DCS section.
     - **Displays done here:** products (K-503, second split bar) and T-505 (pumps, E-508); on the overview K-503, P-505 and the P-506 / E-508 riser. The rest of the L2 redraw is 2c.
     - **Known, not fixed:** after a restart at low air (FIC-101 not yet raised) the site still takes full GAN, AIC-602 raises the reflux and GOX purity sits at ~99.2 % (L alarm) until the air is raised — the documented procedure raises it.
-  - **Step 2c:** the overview (L2) redraw below. The nitrogen-side and storage L3 displays were already updated in 2b. Also on L2: the GAN line crosses the reflux / LIN-to-storage (x 872) and rich-liquid (x 902) risers, and the FV-507 riser (x 1330) crosses the GAN header, all without line hops.
-  - **Also in step 2: overview (L2) drawing fixes.** The L3 displays already draw these correctly:
-    - LOX is drawn leaving at the condenser's height instead of from the LP sump.
-    - LIN is not drawn as coming from E-404.
-    - GOX, GAN and waste N₂ bypass E-301 on the overview.
+  - **Done, step 2c (overview drawing fixes, "light" scope chosen by Willem):** LOX to storage leaves the LP sump (y 308), LIN reflux and LIN to storage start at E-404 (node at x 872, y 339), every pipe crossing on L2 has a line hop, and the backup send-outs join their headers with junction dots.
+    - **Deliberately not done:** GAN and waste N₂ still go straight to their headers on the overview. Routing them through E-301's cold end would mean relocating ~8 data blocks in the cold-box area; the E-301 detail display shows them passing the exchanger. GOX already passes E-301 on L2 (since 2a).
+    - **Overview hop convention:** the static SVG writes hops literally as `H{x-6}a6 6 0 0 1 12 0` (the same arc the detail displays' `hop(x)` makes). The horizontal line hops; a vertical line never does.
 - **Step 3: MHE + expander tags.**
   - Every stream through E-301 gets in/out temperatures, so the E-301 display gets data blocks.
   - X-303 gets inlet/outlet temperature and pressure tags (≈ −110 °C at 5.5 bar(a) in, ≈ −178 °C at 1.3 bar(a) out).

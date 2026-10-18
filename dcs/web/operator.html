@@ -446,11 +446,12 @@
           <rect class="vessel" x="742" y="358" width="80" height="204" rx="18"/>
           <rect id="lvl-403" class="liquid rich" clip-path="url(#clip-403)" x="742" y="520" width="80" height="40"/>
           <text class="lbl" x="752" y="378">C-401 HP</text>
-          <!-- reflux HP top -> LP top -->
-          <path class="pipe n2" d="M822 368H872V76H822"/>
+          <!-- LIN from E-404: reflux to the LP top; the branch at the node goes to storage (T-506) -->
+          <path class="pipe n2" d="M822 339H872V76H822"/>
+          <circle class="node" cx="872" cy="339" r="3.5" style="fill:var(--n2)"/>
           <g id="v-FV-405" transform="translate(872,250)"><polygon class="valve" points="-6,-8 6,-8 -6,8 6,8"/></g>
           <!-- rich liquid HP sump -> LP middle -->
-          <path class="pipe rich" d="M822 548H902V200H822"/>
+          <path class="pipe rich" d="M822 548H866a6 6 0 0 1 12 0H902V200H822"/>
           <g id="v-LV-403" transform="translate(902,470)"><polygon class="valve" points="-6,-8 6,-8 -6,8 6,8"/></g>
           <!-- waste N2 -->
           <path class="pipe n2" d="M782 62V24H1100"/>
@@ -469,15 +470,16 @@
           <path class="pipe" d="M572 476H724a6 6 0 0 1 12 0H742"/>
           <g id="v-HV-116" transform="translate(690,476)"><polygon class="valve open" points="-8,-6 -8,6 8,-6 8,6"/></g>
           <!-- GAN: HP column top → K-503 GAN compressor (guide vanes FV-503) → 8 bar(g) header -->
-          <path class="pipe n2" d="M822 392H1000"/>
+          <path class="pipe n2" d="M822 392H866a6 6 0 0 1 12 0H896a6 6 0 0 1 12 0H1000"/>
           <polygon id="eq-GANC" class="equip" points="1000,378 1032,385 1032,399 1000,406"/>
           <text class="lbl" x="996" y="372">K-503</text>
-          <path class="pipe n2" d="M1032 392H1420"/>
-          <path class="pipe o2" d="M822 332H1150V470"/>
-          <g id="v-LV-404" transform="translate(1040,332)"><polygon class="valve" points="-8,-6 -8,6 8,-6 8,6"/></g>
+          <path class="pipe n2" d="M1032 392H1038a6 6 0 0 1 12 0H1324a6 6 0 0 1 12 0H1420"/>
+          <!-- LOX to storage leaves the LP sump as liquid -->
+          <path class="pipe o2" d="M822 308H866a6 6 0 0 1 12 0H896a6 6 0 0 1 12 0H1044V452H1130V470"/>
+          <g id="v-LV-404" transform="translate(980,308)"><polygon class="valve" points="-8,-6 -8,6 8,-6 8,6"/></g>
           <text class="lbl big" x="1066" y="275">GOX header</text>
           <text class="lbl big" x="1066" y="385">GAN header</text>
-          <text class="lbl" x="1066" y="326">LOX to storage</text>
+          <text class="lbl" x="1052" y="444">LOX to storage</text>
           <rect class="vessel" x="1420" y="246" width="94" height="28"/><text class="lbl big" x="1428" y="265">EO / EG plant</text>
           <rect class="vessel" x="1420" y="290" width="94" height="28"/><text class="lbl big" x="1428" y="309">Acetylene POX</text>
           <path class="pipe o2" d="M1420 282H1414V260H1420M1414 282V304H1420"/>
@@ -494,19 +496,21 @@
           <path d="M1244 572v28M1252 572v28M1260 572v28M1268 572v28M1276 572v28M1284 572v28" stroke="#9aa0a5" stroke-width="1"/>
           <text class="lbl" x="1232" y="622">E-507 vaporizer</text>
           <path class="pipe o2" d="M1292 586H1330V282"/>
+          <circle class="node" cx="1330" cy="282" r="3.5" style="fill:var(--o2)"/>
           <g id="v-FV-507" transform="translate(1330,520)"><polygon class="valve" points="-6,-8 6,-8 -6,8 6,8"/></g>
           <rect class="vessel" x="1412" y="470" width="78" height="132" rx="10"/>
           <rect id="lvl-506" class="liquid lin" clip-path="url(#clip-506)" x="1412" y="540" width="78" height="60"/>
           <text class="lbl" x="1420" y="488">T-506 LIN</text>
           <!-- LIN backup: T-506 → P-506 → E-508 vaporizer → FV-508 → GAN header -->
           <path class="pipe n2" d="M1412 560H1386V392"/>
+          <circle class="node" cx="1386" cy="392" r="3.5" style="fill:var(--n2)"/>
           <g id="v-FV-508" transform="translate(1386,416)"><polygon class="valve" points="-6,-8 6,-8 -6,8 6,8"/></g>
           <rect class="equip" id="vapn" x="1376" y="486" width="20" height="40" rx="2"/>
           <path d="M1381 490v32M1386 490v32M1391 490v32" stroke="#9aa0a5" stroke-width="1"/>
           <circle id="eq-LINB" class="equip" cx="1386" cy="542" r="7"/>
           <text class="lbl" x="1342" y="510">E-508</text>
           <text class="lbl" x="1342" y="546">P-506</text>
-          <path class="pipe n2" d="M872 368V640H1451V602"/>
+          <path class="pipe n2" d="M872 339V640H1451V602"/>
           <g id="v-FV-409" transform="translate(940,640)"><polygon class="valve" points="-8,-6 -8,6 8,-6 8,6"/></g>
           <text class="lbl" x="1300" y="658">LIN to storage</text>
 
