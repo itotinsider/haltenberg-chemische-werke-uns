@@ -42,6 +42,8 @@ EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 GOOD = ua.StatusCode(ua.StatusCodes.Good)
 BAD_COMM = ua.StatusCode(ua.StatusCodes.BadNoCommunication)
+# A calculated value that doesn't apply right now (I/O fine), e.g. KPI-701 while no GOX is produced.
+BAD_OOS = ua.StatusCode(ua.StatusCodes.BadOutOfService)
 
 
 def to_dt(ts):
@@ -98,7 +100,7 @@ class HistorianStorage(HistoryStorageInterface):
             dt = to_dt(ts)
             dvs.append(ua.DataValue(
                 Value=ua.Variant(value if value is not None else 0.0, ua.VariantType.Double),
-                StatusCode=GOOD if q == 0 else BAD_COMM, SourceTimestamp=dt, ServerTimestamp=dt))
+                StatusCode={0: GOOD, 2: BAD_OOS}.get(q, BAD_COMM), SourceTimestamp=dt, ServerTimestamp=dt))
         return dvs, cont
 
     async def new_historized_event(self, source_id, evtypes, period, count=0):
@@ -294,7 +296,9 @@ class OpcUaServer:
         process_keys = {f"{t['tag']}.{a}" for t in C.TAGS for a in ("PV", "SP", "OP")}
         for key, value in values.items():
             nid, vtype = self.vars[key]
-            bad = value is None or (key in process_keys and not io_ok)
+            # No I/O: BadNoCommunication. I/O fine but no value: a calculation that doesn't apply now.
+            status = BAD_COMM if key in process_keys and not io_ok else BAD_OOS if value is None else GOOD
+            bad = status != GOOD
             if value is None:
                 value = self.last.get(key, 0.0 if vtype == ua.VariantType.Double else value)
                 if value is None:
@@ -306,5 +310,5 @@ class OpcUaServer:
                 continue      # discrete/state values: only on change
             self.last[key] = value
             await self.server.write_attribute_value(nid, ua.DataValue(
-                Value=ua.Variant(value, vtype), StatusCode=BAD_COMM if bad else GOOD,
+                Value=ua.Variant(value, vtype), StatusCode=status,
                 SourceTimestamp=dt, ServerTimestamp=datetime.now(timezone.utc)))

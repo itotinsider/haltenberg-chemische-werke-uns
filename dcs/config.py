@@ -134,7 +134,9 @@ TAGS = [
         kc=0.5, ti=8, sp=40, op=57.1, mode="CAS", sp_lo=20, sp_hi=55, dec=2, suppress="MAC", modes=CAS),
     ai("TI-406", "LP sump (LOX) temperature", "°C", -200, -150, "TT-406", "DoubleColumn", dec=2, suppress="MAC"),
     ai("TI-407", "HP column top (N2) temperature", "°C", -200, -150, "TT-407", "DoubleColumn", dec=2, suppress="MAC"),
-    calc("TDI-410", "Main condenser ΔT (TI-407 − TI-406)", "K", 0, 6, "DoubleColumn", dec=2,
+    # Range below 0: after a shutdown the HP column depressurises to ~1 bar(a); its N2 then saturates
+    # at −196 °C under the −183 °C LOX in the reboiler sump, a real (negative) ΔT of about −13 K.
+    calc("TDI-410", "Main condenser ΔT (TI-407 − TI-406)", "K", -15, 10, "DoubleColumn", dec=2,
          alarms={"L": 1.0}, suppress="MAC"),
     # Boiling points from the column pressures (ISA-5.1: Y = compute). No alarms: they are references
     # for the column detail display, compared there with the measured TI-407 / TI-406.
@@ -324,6 +326,7 @@ CO2_BREAKTHROUGH_TRIP_S = 1800
 # normal GOX + LOX peaks at design (purity ~99.4 % if held there): a sustained over-demand shows as a
 # purity L alarm and backup-vaporizer send-out, not as a purity crash.
 GOX_AIR_LIMIT = 0.208
+PER_GOX_MIN_FLOW = 10.0     # kNm3/h: KPI-701 / FFI-111 only while P-501 delivers at least this (else not applicable)
 GOX_SUMP_ALLOWANCE = 0.5    # kNm3/h per % that LIC-404 stands above its SP (surplus liquid, already separated)
 
 # Design line-up: the modes the "Normal line-up" button restores (after a restart).

@@ -4,6 +4,7 @@
 #   dcs    control system: I/O scan, controllers, interlocks, sequences, built-in historian,
 #          OPC UA server, operator console
 #   nodered  Node-RED as an OPC UA *client* (IT/OT integration demo): 15-min TWA -> CSV
+#   tests  test runner (profile "test", never started by `up`): docker compose run --rm tests
 #
 # The DCS is the only system with a modelled data interface (OPC UA). The plant's Modbus
 # registers are the raw field level underneath it.
@@ -84,3 +85,14 @@ services:
       - ./exports:/data/exports
     depends_on:
       - dcs
+
+  # Test runner: contract, behaviour and end-to-end tests against the working tree (bind mount).
+  # Not part of the stack: `docker compose run --rm tests` builds and runs it on demand.
+  tests:
+    build:
+      context: .
+      dockerfile: tests/Dockerfile
+    image: hcw/asu1-tests:latest
+    profiles: ["test"]
+    volumes:
+      - .:/w

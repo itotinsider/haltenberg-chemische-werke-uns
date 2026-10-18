@@ -1,0 +1,61 @@
+tag,kind,block,description,unit,lo,hi,modes,field_in,modbus_in,field_out,modbus_out,opcua_node_prefix,opcua_variables,historian_points,alarms,suppress
+FIC-101,PID,MainAirCompressor,MAC air flow (load),kNm³/h,0,180,MAN AUTO,FT-101,IR 100,FV-101,HR 100,HCW.ASU1.FIC-101,Description PV SP OP Mode AlarmState,PV SP OP,L 120 P2; H 165 P2,MAC
+PIC-102,PID,MainAirCompressor,MAC discharge pressure (override),bar(a),0,8,MAN AUTO,PT-102,IR 102,,,HCW.ASU1.PIC-102,Description PV SP OP Mode AlarmState,PV SP OP,H 6.4 P2; HH 6.8 P1,MAC
+FI-103,AI,MainAirCompressor,MAC compressor (suction) flow,kNm³/h,0,200,,FT-103,IR 104,,,HCW.ASU1.FI-103,Description PV,PV,,MAC
+UIC-103,PID,MainAirCompressor,MAC antisurge (surge margin),%,-20,80,MAN AUTO,,,UV-103,HR 102,HCW.ASU1.UIC-103,Description PV SP OP Mode AlarmState,PV SP OP,L 5 P2,MAC
+JI-104,AI,MainAirCompressor,MAC motor power,MW,0,15,,JT-104,IR 106,,,HCW.ASU1.JI-104,Description PV AlarmState,PV,H 12.5 P2,
+VI-105,AI,MainAirCompressor,MAC bearing vibration (DE),mm/s,0,25,,VT-105,IR 108,,,HCW.ASU1.VI-105,Description PV AlarmState,PV,H 7.1 P2; HH 11.0 P1,MAC
+TI-106,AI,MainAirCompressor,MAC bearing temperature,°C,0,120,,TT-106,IR 110,,,HCW.ASU1.TI-106,Description PV AlarmState,PV,H 95 P2; HH 105 P1,
+PI-107,AI,MainAirCompressor,MAC lube-oil pressure,bar(g),0,4,,PT-107,IR 112,,,HCW.ASU1.PI-107,Description PV AlarmState,PV,L 1.5 P2; LL 1.0 P1,
+TI-108,AI,MainAirCompressor,Air temperature after DCAC,°C,0,40,,TT-108,IR 114,,,HCW.ASU1.TI-108,Description PV AlarmState,PV,H 20 P3,
+TI-109,AI,MainAirCompressor,Ambient air temperature,°C,-20,45,,TT-109,IR 116,,,HCW.ASU1.TI-109,Description PV AlarmState,PV,H 32 P3,
+FIC-111,PID,MainAirCompressor,Booster air flow (ratio to pumped LOX),kNm³/h,0,60,MAN AUTO CAS,FT-111,IR 118,FV-111,HR 104,HCW.ASU1.FIC-111,Description PV SP OP Mode AlarmState,PV SP OP,L 20 P2,BAC
+FFI-111,CALC,MainAirCompressor,Booster air / pumped LOX ratio (FIC-111 ÷ FIC-501),–,0,3,,,,,,HCW.ASU1.FFI-111,Description PV AlarmState,PV,L 1.4 P2,LOXP
+PI-112,AI,MainAirCompressor,Booster discharge pressure,bar(a),0,80,,PT-112,IR 120,,,HCW.ASU1.PI-112,Description PV AlarmState,PV,H 66 P2; HH 70 P1,BAC
+JI-113,AI,MainAirCompressor,Booster motor power,MW,0,6,,JT-113,IR 122,,,HCW.ASU1.JI-113,Description PV AlarmState,PV,H 5.0 P2,
+VI-114,AI,MainAirCompressor,Booster bearing vibration,mm/s,0,25,,VT-114,IR 124,,,HCW.ASU1.VI-114,Description PV AlarmState,PV,H 7.1 P2; HH 11.0 P1,BAC
+AI-202,AI,FrontEndPurification,CO2 at PPU outlet,ppm,0,20,,AT-202,IR 200,,,HCW.ASU1.AI-202,Description PV AlarmState,PV,H 1.0 P2; HH 10.0 P1,MAC
+PDI-203,AI,FrontEndPurification,PPU bed differential pressure,mbar,0,200,,PDT-203,IR 202,,,HCW.ASU1.PDI-203,Description PV AlarmState,PV,H 100 P2,MAC
+TIC-204,PID,FrontEndPurification,Regeneration gas temperature,°C,0,250,MAN AUTO,TT-204,IR 204,TV-204,HR 200,HCW.ASU1.TIC-204,Description PV SP OP Mode,PV SP OP,,
+ZI-205,AI,FrontEndPurification,Switching valve stroke time (last),s,0,60,,ZT-205,IR 206,,,HCW.ASU1.ZI-205,Description PV AlarmState,PV,H 20 P2,
+TI-301,AI,ColdBoxHeatExchange,MHE cold-end air temperature,°C,-200,40,,TT-301,IR 300,,,HCW.ASU1.TI-301,Description PV AlarmState,PV,H -170 P2,MAC
+TDI-302,AI,ColdBoxHeatExchange,MHE warm-end ΔT,K,0,15,,TDT-302,IR 302,,,HCW.ASU1.TDI-302,Description PV AlarmState,PV,H 5.0 P2; HH 7.0 P1,MAC
+FIC-303,PID,ColdBoxHeatExchange,Expander flow (refrigeration),kNm³/h,0,30,MAN AUTO,FT-303,IR 304,FV-303,HR 300,HCW.ASU1.FIC-303,Description PV SP OP Mode AlarmState,PV SP OP,L 12 P2,EXP
+SI-304,AI,ColdBoxHeatExchange,Expander speed,rpm,0,40000,,ST-304,IR 306,,,HCW.ASU1.SI-304,Description PV AlarmState,PV,H 28000 P2; HH 30000 P1,
+VI-305,AI,ColdBoxHeatExchange,Expander vibration,µm,0,100,,VT-305,IR 308,,,HCW.ASU1.VI-305,Description PV AlarmState,PV,H 40 P2; HH 60 P1,
+TI-306,AI,ColdBoxHeatExchange,Expander bearing temperature,°C,0,120,,TT-306,IR 310,,,HCW.ASU1.TI-306,Description PV AlarmState,PV,H 85 P2; HH 95 P1,
+PI-401,AI,DoubleColumn,HP column top pressure,bar(a),0,8,,PT-401,IR 400,,,HCW.ASU1.PI-401,Description PV AlarmState,PV,L 4.8 P2; H 5.8 P2,MAC
+PIC-402,PID,DoubleColumn,LP column top pressure,bar(a),0,3,MAN AUTO,PT-402,IR 402,PV-402,HR 400,HCW.ASU1.PIC-402,Description PV SP OP Mode AlarmState,PV SP OP,L 1.25 P2; H 1.45 P2,MAC
+LIC-403,PID,DoubleColumn,HP column sump level,%,0,100,MAN AUTO,LT-403,IR 404,LV-403,HR 402,HCW.ASU1.LIC-403,Description PV SP OP Mode AlarmState,PV SP OP,L 30 P2; H 70 P2; HH 85 P1,MAC
+LIC-404,PID,DoubleColumn,Reboiler / LP sump level,%,0,100,MAN AUTO,LT-404,IR 406,LV-404,HR 404,HCW.ASU1.LIC-404,Description PV SP OP Mode AlarmState,PV SP OP,L 55 P2; LL 35 P1; H 85 P2; HH 95 P1,MAC
+FIC-405,PID,DoubleColumn,LIN reflux to LP column,kNm³/h,0,60,MAN AUTO CAS,FT-405,IR 408,FV-405,HR 406,HCW.ASU1.FIC-405,Description PV SP OP Mode,PV SP OP,,MAC
+TI-406,AI,DoubleColumn,LP sump (LOX) temperature,°C,-200,-150,,TT-406,IR 410,,,HCW.ASU1.TI-406,Description PV,PV,,MAC
+TI-407,AI,DoubleColumn,HP column top (N2) temperature,°C,-200,-150,,TT-407,IR 412,,,HCW.ASU1.TI-407,Description PV,PV,,MAC
+TDI-410,CALC,DoubleColumn,Main condenser ΔT (TI-407 − TI-406),K,-15,10,,,,,,HCW.ASU1.TDI-410,Description PV AlarmState,PV,L 1.0 P2,MAC
+TY-411,CALC,DoubleColumn,N2 condensing temperature at HP pressure (PI-401),°C,-200,-150,,,,,,HCW.ASU1.TY-411,Description PV,PV,,MAC
+TY-412,CALC,DoubleColumn,O2 boiling temperature at LP pressure (PIC-402),°C,-200,-150,,,,,,HCW.ASU1.TY-412,Description PV,PV,,MAC
+TY-413,CALC,DoubleColumn,N2 boiling temperature at LP pressure (LIN after FV-405),°C,-200,-150,,,,,,HCW.ASU1.TY-413,Description PV,PV,,MAC
+FI-408,AI,DoubleColumn,LOX draw to storage,kNm³/h,0,3,,FT-408,IR 414,,,HCW.ASU1.FI-408,Description PV,PV,,
+FIC-409,PID,DoubleColumn,LIN draw to storage,kNm³/h,0,2,MAN AUTO,FT-409,IR 416,FV-409,HR 408,HCW.ASU1.FIC-409,Description PV SP OP Mode,PV SP OP,,
+AI-603,AI,DoubleColumn,Total hydrocarbons in LOX,ppm CH4,0,600,,AT-603,IR 604,,,HCW.ASU1.AI-603,Description PV AlarmState,PV,H 250 P2; HH 450 P1,
+AI-604,AI,DoubleColumn,Acetylene in LOX,ppm,0,2,,AT-604,IR 606,,,HCW.ASU1.AI-604,Description PV AlarmState,PV,H 0.3 P2; HH 1.0 P1,
+FIC-501,PID,ProductDelivery,"GOX product flow (pumped LOX, P-501)",kNm³/h,0,35,MAN AUTO CAS,FT-501,IR 500,FV-501,HR 500,HCW.ASU1.FIC-501,Description PV SP OP Mode,PV SP OP,,LOXP
+FY-501,CALC,ProductDelivery,GOX load limit (0.208 × FIC-101 − FI-408 + sump surplus allowance),kNm³/h,0,35,,,,,,HCW.ASU1.FY-501,Description PV,PV,,MAC
+LIC-415,PID,ProductDelivery,Reboiler low-level override (limits P-501),%,0,100,MAN AUTO,LT-404,IR 406,,,HCW.ASU1.LIC-415,Description PV SP OP Mode,PV SP OP,,LOXP
+PI-511,AI,ProductDelivery,LOX pump P-501 discharge pressure,bar(g),0,50,,PT-511,IR 516,,,HCW.ASU1.PI-511,Description PV AlarmState,PV,L 25 P2; LL 20 P1,LOXP
+TI-512,AI,ProductDelivery,GOX temperature leaving E-301 (to carbon-steel header),°C,-200,50,,TT-512,IR 518,,,HCW.ASU1.TI-512,Description PV AlarmState,PV,L -5 P2; LL -25 P1,LOXP
+PIC-502,PID,ProductDelivery,GOX header pressure (split range GOX / vaporizer),bar(g),0,40,MAN AUTO,PT-502,IR 502,,,HCW.ASU1.PIC-502,Description PV SP OP Mode AlarmState,PV SP OP,LL 27 P1; L 28.5 P2; H 33 P2,
+FIC-503,PID,ProductDelivery,GAN product flow (K-503 compressor),kNm³/h,0,60,MAN AUTO CAS,FT-503,IR 504,FV-503,HR 502,HCW.ASU1.FIC-503,Description PV SP OP Mode,PV SP OP,,GANC
+PIC-504,PID,ProductDelivery,GAN header pressure (split range GAN / LIN vaporizer),bar(g),0,12,MAN AUTO,PT-504,IR 506,,,HCW.ASU1.PIC-504,Description PV SP OP Mode AlarmState,PV SP OP,LL 6.5 P1; L 7.3 P2; H 9.0 P2,
+PI-513,AI,ProductDelivery,GAN compressor K-503 discharge pressure,bar(g),0,15,,PT-513,IR 520,,,HCW.ASU1.PI-513,Description PV AlarmState,PV,H 10.0 P2; HH 11.0 P1,GANC
+JI-514,AI,ProductDelivery,GAN compressor K-503 motor power,MW,0,2,,JT-514,IR 522,,,HCW.ASU1.JI-514,Description PV AlarmState,PV,H 1.3 P2,
+VI-515,AI,ProductDelivery,GAN compressor K-503 vibration,mm/s,0,25,,VT-515,IR 524,,,HCW.ASU1.VI-515,Description PV AlarmState,PV,H 7.1 P2; HH 11.0 P1,GANC
+AI-601,AI,ProductDelivery,GOX purity,% O2,95,100,,AT-601,IR 600,,,HCW.ASU1.AI-601,Description PV AlarmState,PV,L 99.5 P2; LL 99.0 P1,MAC
+AIC-602,PID,ProductDelivery,O2 in GAN (purity → reflux),ppm,0,100,MAN AUTO,AT-602,IR 602,,,HCW.ASU1.AIC-602,Description PV SP OP Mode AlarmState,PV SP OP,H 10 P2; HH 50 P1,MAC
+LI-505,AI,BackupStorage,LOX tank level,%,0,100,,LT-505,IR 508,,,HCW.ASU1.LI-505,Description PV AlarmState,PV,LL 10 P1; L 20 P2; H 90 P2,
+LI-506,AI,BackupStorage,LIN tank level,%,0,100,,LT-506,IR 510,,,HCW.ASU1.LI-506,Description PV AlarmState,PV,LL 10 P1; L 20 P2; H 90 P2,
+FIC-507,PID,BackupStorage,LOX backup vaporizer E-507 send-out (P-505),kNm³/h,0,30,MAN AUTO CAS,FT-507,IR 512,FV-507,HR 504,HCW.ASU1.FIC-507,Description PV SP OP Mode AlarmState,PV SP OP,H 0.5 P3,LOXB
+PI-516,AI,BackupStorage,LOX backup pump P-505 discharge pressure,bar(g),0,50,,PT-516,IR 526,,,HCW.ASU1.PI-516,Description PV AlarmState,PV,L 25 P2,LOXB
+FIC-508,PID,BackupStorage,LIN backup vaporizer E-508 send-out (P-506),kNm³/h,0,45,MAN AUTO CAS,FT-508,IR 514,FV-508,HR 506,HCW.ASU1.FIC-508,Description PV SP OP Mode AlarmState,PV SP OP,H 0.5 P3,LINB
+PI-517,AI,BackupStorage,LIN backup pump P-506 discharge pressure,bar(g),0,20,,PT-517,IR 528,,,HCW.ASU1.PI-517,Description PV AlarmState,PV,L 7.0 P2,LINB
+KPI-701,CALC,Energy,Specific power ((JI-104 + JI-113 + JI-514) ÷ FIC-501),kWh/Nm³,0,1,,,,,,HCW.ASU1.KPI-701,Description PV AlarmState,PV,H 0.6 P3,MAC

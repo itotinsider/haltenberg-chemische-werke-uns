@@ -1,0 +1,2 @@
+# Test runner only; the system under test brings its own pins (dcs/requirements.txt).
+pytest==8.3.5

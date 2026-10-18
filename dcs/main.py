@@ -27,7 +27,7 @@ from pymodbus.client import AsyncModbusTcpClient  # noqa: E402
 import config as C  # noqa: E402
 import iomap  # noqa: E402
 from control import DCS  # noqa: E402
-from historian import Historian  # noqa: E402
+from historian import NA, Historian  # noqa: E402
 from opcua_server import OpcUaServer  # noqa: E402
 
 PLANT_HOST = os.getenv("PLANT_HOST", "plant")
@@ -73,7 +73,8 @@ def historian_values(snap):
     out = {}
     for t in C.TAGS:
         row = snap["tags"][t["tag"]]
-        out[f"{t['tag']}.PV"] = row["pv"]
+        # No value while the I/O is fine = a calculation that doesn't apply now (not "no data").
+        out[f"{t['tag']}.PV"] = row["pv"] if row["pv"] is not None or not snap["io_ok"] else NA
         if t["kind"] == "PID":
             ok = snap["io_ok"]
             out[f"{t['tag']}.SP"] = row["sp"] if ok else None
@@ -107,19 +108,31 @@ class Runtime:
             if not client.connected:
                 return None, None
             log.info("Connected to plant I/O at %s:%d", PLANT_HOST, PLANT_PORT)
-        rr = await client.read_input_registers(0, count=iomap.AI_REGISTERS)
-        dr = await client.read_discrete_inputs(0, count=len(iomap.DISCRETE_INPUTS))
-        if rr.isError() or dr.isError():
-            raise IOError(f"Modbus read error: {rr} / {dr}")
-        ai = iomap.unpack_floats(iomap.ANALOG_INPUTS, rr.registers)
+        # One request per process area (iomap.AI_BLOCKS): the map has gaps between the areas,
+        # and a single Modbus read may not exceed 125 registers.
+        regs = [0] * iomap.AI_REGISTERS
+        for start, count in iomap.AI_BLOCKS:
+            rr = await client.read_input_registers(start, count=count)
+            if rr.isError():
+                raise IOError(f"Modbus read error at input register {start}: {rr}")
+            regs[start:start + count] = rr.registers[:count]
+        dr = await client.read_discrete_inputs(0, count=iomap.DI_COUNT)
+        if dr.isError():
+            raise IOError(f"Modbus read error: {dr}")
+        ai = iomap.unpack_floats(iomap.ANALOG_INPUTS, regs)
         di = {name: bool(dr.bits[addr]) for name, addr in iomap.DI_ADDR.items()}
         return ai, di
 
     async def write_io(self, client, ao, do):
         self.watchdog = (self.watchdog + 1) % 65536
         ao = dict(ao, **{"WD-900": float(self.watchdog)})
-        await client.write_registers(0, iomap.pack_floats(iomap.ANALOG_OUTPUTS, ao))
-        await client.write_coils(0, [bool(do.get(name, False)) for name, _ in iomap.COILS])
+        regs = iomap.pack_floats(iomap.ANALOG_OUTPUTS, ao, iomap.AO_REGISTERS)
+        for start, count in iomap.AO_BLOCKS:
+            await client.write_registers(start, regs[start:start + count])
+        bits = [False] * iomap.DO_COUNT
+        for name, addr in iomap.DO_ADDR.items():
+            bits[addr] = bool(do.get(name, False))
+        await client.write_coils(0, bits)
 
     async def scan_loop(self, stop):
         client = AsyncModbusTcpClient(PLANT_HOST, port=PLANT_PORT, timeout=2, retries=0)
@@ -166,9 +179,7 @@ class Runtime:
             await self.opcua.update(snap, now, self.scan_count, self.historian.stored)
 
             self.scan_ms = (time.monotonic() - t_start) * 1000.0
-            snap["scan"] = dict(count=self.scan_count, ms=round(self.scan_ms, 1), period_s=SCAN_SECONDS)
-            snap["io"] = dict(self.io, plant=f"{PLANT_HOST}:{PLANT_PORT}")
-            snap["historian"] = dict(samples_written=self.historian.stored)
+            snap.update(runtime_status(self))
             self.snapshot = snap
             self.snapshot_json = json.dumps(snap).encode("utf-8")
 
@@ -191,6 +202,13 @@ class Runtime:
             except asyncio.TimeoutError:
                 pass
         client.close()
+
+
+def runtime_status(rt):
+    """What the runtime adds to the control snapshot in /api/state."""
+    return dict(scan=dict(count=rt.scan_count, ms=round(rt.scan_ms, 1), period_s=SCAN_SECONDS),
+                io=dict(rt.io, plant=f"{PLANT_HOST}:{PLANT_PORT}"),
+                historian=dict(samples_written=rt.historian.stored))
 
 
 def config_payload(rt):

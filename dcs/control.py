@@ -352,13 +352,21 @@ class DCS:
         # purity edge), less what goes to storage as LOX, plus an allowance for liquid already standing
         # in an over-full sump (e.g. after a P-501 stop): that oxygen is separated, pumping it costs no purity.
         f101, f408, l404 = v.get("FIC-101"), v.get("FI-408"), v.get("LIC-404")
-        v["FY-501"] = (round(C.GOX_AIR_LIMIT * f101 - f408 + C.GOX_SUMP_ALLOWANCE * max(0.0, l404 - self.loops["LIC-404"].sp), 4)
+        # Clamped to its range: negative with the MAC stopped, and the allowance would otherwise grow
+        # past FIC-501's range when the sump floods (no effect on control: FIC-501's SP stops at 31.5).
+        fy = C.TAG_INDEX["FY-501"]
+        v["FY-501"] = (round(clamp(C.GOX_AIR_LIMIT * f101 - f408 + C.GOX_SUMP_ALLOWANCE * max(0.0, l404 - self.loops["LIC-404"].sp),
+                                   fy["lo"], fy["hi"]), 4)
                        if None not in (f101, f408, l404) else None)
+        # Per-unit-of-GOX figures only mean something while P-501 delivers real product. Outside that
+        # (trip coast-down, start-up) they are "not applicable" (None -> BadOutOfService on OPC UA),
+        # instead of dividing by a vanishing flow (it gave 5 kWh/Nm³ and ratios up to 12).
         f111, f501 = v.get("FIC-111"), v.get("FIC-501")
-        v["FFI-111"] = round(f111 / f501, 4) if f111 is not None and f501 is not None and f501 > 3.0 else None
+        producing = f501 is not None and f501 >= C.PER_GOX_MIN_FLOW and self.running("LOXP")
+        v["FFI-111"] = round(f111 / f501, 4) if producing and f111 is not None else None
         # Specific power: the ASU's compressor power (MAC + booster + GAN compressor) per unit of GOX.
-        p, pb, pg, f = v.get("JI-104"), v.get("JI-113"), v.get("JI-514"), v.get("FIC-501")
-        v["KPI-701"] = round((p + pb + pg) / f, 5) if None not in (p, pb, pg, f) and f > 3.0 else None
+        p, pb, pg = v.get("JI-104"), v.get("JI-113"), v.get("JI-514")
+        v["KPI-701"] = round((p + pb + pg) / f501, 5) if producing and None not in (p, pb, pg) else None
 
     def _drive_slaves(self, master):
         links = master.cfg["cascade"]

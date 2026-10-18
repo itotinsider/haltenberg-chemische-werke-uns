@@ -43,8 +43,7 @@ class Runtime:
     def __init__(self):
         self.lock = threading.Lock()   # guards the model against instructor HTTP threads
         self.plant = Plant(time.time(), ppu_cycle_s=PPU_CYCLE_SECONDS)
-        self.bank = RegisterBank(len(iomap.COILS), len(iomap.DISCRETE_INPUTS),
-                                 iomap.AO_REGISTERS, iomap.AI_REGISTERS)
+        self.bank = RegisterBank(iomap.DO_COUNT, iomap.DI_COUNT, iomap.AO_REGISTERS, iomap.AI_REGISTERS)
         # PPU cycle time (instructor time compression). The DCS's KS-201 sequence owns the
         # persisted value; the plant follows it, except while an instructor change is still
         # waiting to be pushed to a DCS that isn't reachable.
@@ -55,7 +54,7 @@ class Runtime:
         # Seed the holding registers / coils with the plant's design line-up, so the plant
         # holds steady state until a DCS connects and starts writing.
         with self.bank.lock:
-            self.bank.holding[:] = iomap.pack_floats(iomap.ANALOG_OUTPUTS, self.plant.ao)
+            self.bank.holding[:] = iomap.pack_floats(iomap.ANALOG_OUTPUTS, self.plant.ao, iomap.AO_REGISTERS)
             for name, addr in iomap.DO_ADDR.items():
                 self.bank.coils[addr] = bool(self.plant.do[name])
 
@@ -70,7 +69,7 @@ class Runtime:
         self.plant.ao.update(ao)
         self.plant.do.update(do)
         self.plant.heartbeat = (self.plant.heartbeat + 1) % 65536
-        regs = iomap.pack_floats(iomap.ANALOG_INPUTS, self.plant.measurements())
+        regs = iomap.pack_floats(iomap.ANALOG_INPUTS, self.plant.measurements(), iomap.AI_REGISTERS)
         di = self.plant.discretes()
         with self.bank.lock:
             self.bank.input[:] = regs
@@ -125,10 +124,10 @@ class Runtime:
                                  min=PPU_CYCLE_MIN, max=PPU_CYCLE_MAX, design=PPU_CYCLE_MAX)
         snap["dcs_watchdog_age_s"] = None if age is None else round(age, 1)
         snap["io_map"] = {
-            "input_registers": [dict(point=n, desc=d, address=iomap.AI_ADDR[n]) for n, d in iomap.ANALOG_INPUTS],
-            "holding_registers": [dict(point=n, desc=d, address=iomap.AO_ADDR[n]) for n, d in iomap.ANALOG_OUTPUTS],
-            "discrete_inputs": [dict(point=n, desc=d, address=iomap.DI_ADDR[n]) for n, d in iomap.DISCRETE_INPUTS],
-            "coils": [dict(point=n, desc=d, address=iomap.DO_ADDR[n]) for n, d in iomap.COILS],
+            "input_registers": [dict(point=n, desc=d, address=a) for n, a, d in iomap.ANALOG_INPUTS],
+            "holding_registers": [dict(point=n, desc=d, address=a) for n, a, d in iomap.ANALOG_OUTPUTS],
+            "discrete_inputs": [dict(point=n, desc=d, address=a) for n, a, d in iomap.DISCRETE_INPUTS],
+            "coils": [dict(point=n, desc=d, address=a) for n, a, d in iomap.COILS],
         }
         return snap
 
