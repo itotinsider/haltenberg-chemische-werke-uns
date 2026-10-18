@@ -74,9 +74,10 @@ The operator console uses it; scripts can too. JSON throughout.
 | Request | Returns / does |
 |---|---|
 | `GET /api/state` | every tag (PV, SP, OP, mode…), alarms, equipment, interlocks, sequences, I/O status |
-| `GET /api/config` | the engineering data: tags with units, ranges, alarm limits; equipment, interlocks |
+| `GET /api/config` | the engineering data: tags with units, ranges, alarm limits; equipment, interlocks; the inputs of calculated tags |
 | `GET /api/history?tags=FIC-101.PV,AI-601.PV&minutes=60&points=300` | trend data (min/max per bucket) |
 | `GET /api/events?limit=100` | the event journal |
+| `GET /api/datapath?tag=FIC-101` | one tag at every layer: its Modbus registers (the raw words of the last scan), the DCS tag, its historian points and OPC UA nodes. Used by the [IT/OT trainer](Trainers) |
 | `POST /api/loops/<tag>` `{"mode": "AUTO", "sp": 145}` | change a loop (also `op`, `kc`, `ti`, `sp_rate`, `ratio`…) |
 | `POST /api/equipment/<key>/start` or `/stop` | start / stop equipment |
 | `POST /api/interlocks/<key>/reset`, `/api/lineup`, `/api/esd`, `/api/alarms/ack` | operator actions |

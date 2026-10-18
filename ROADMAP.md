@@ -106,16 +106,6 @@ rules above:
 
 ## Planned
 
-### `training-links` — Step 4: training
-- **Status:** 📋 Planned · **Owner:** — · **Branch:** — · **PR:** —
-- **Goal:** link the `TRAIN` steps to their detail displays. The column step gets a boiling-point
-  table: N₂ −196 / O₂ −183 °C at 1 atm; HP-top N₂ ≈ −177 °C against LP-sump O₂ ≈ −180 °C. It also
-  shows the LP feed temperatures before and after their valves: rich liquid −174 → ≈ −189 °C,
-  LIN −177 → ≈ −193 °C.
-- **Touches:** `dcs/web/operator.html` (`TRAIN`, detail displays); possibly a calculated tag.
-- **Depends on:** `mhe-expander-tags`, because the E-301 step needs its tags.
-- **Notes:** the rich-liquid flash needs a composition estimate; TY-413 already gives the LIN value.
-
 ### `docs-refresh` — Step 5: README, CLAUDE.md and screenshots
 - **Status:** 📋 Planned · **Owner:** — · **Branch:** — · **PR:** —
 - **Goal:** README, CLAUDE.md and `docs/screenshots/` match the system after steps 3 and 4.
@@ -234,6 +224,14 @@ rules above:
     luck of the draw, so design O₂ demand −0.5 kNm³/h and the GAN handback band 9.1 (Willem). Seeds
     1–44 pass except 37 (documented).
   - **Not done (ideas):** an E-301 duty / balance calc tag in the DCS, an expander efficiency calc.
+- ✅ **Step 4: trainers** (`training-links`). [PR #11](https://github.com/itotinsider/haltenberg-chemische-werke-uns/pull/11).
+  - **Three trainers, one overlay card on the console** (Willem: one per audience; overlays, not a side page):
+    🎓 Process, ⚙️ Engineering (C-401 6 steps, E-301 4 steps, deep dives with live values), 🔌 IT/OT
+    (one tag from the Modbus words to the OPC UA node; dead time, exception reporting, Bad is not zero).
+    The switch keeps the unit. Details in `CLAUDE.md`.
+  - **Interface:** `GET /api/datapath?tag=`, `/api/config` keys `t_sat` and `calc_inputs`. No new tags or addresses.
+  - **Fixed on the way:** the console reopened in a lesson by itself (on/off was remembered).
+  - **Later (ideas):** topics on the mole sieve, compressor surge, control strategies, interlocks.
 - ✅ **docs-primer: user documentation in the GitHub wiki.** PR #6 (primer, research doc as built), PR #8 (wiki).
   - **Wiki:** 12 pages + sidebar, source in `wiki/`, screenshots from `docs/screenshots/`. README 580 → 71 lines.
   - **Publishing:** `tools/publish_wiki.py`; since PR #9 a GitHub Action runs it on every push to

@@ -138,6 +138,14 @@ def test_control_references_exist():
             assert t["suppress"] in C.EQUIPMENT, f"{t['tag']} suppress={t['suppress']}"
 
 
+def test_calc_inputs_cover_every_calculated_value():
+    # The IT/OT trainer's data path shows a calculated tag's inputs instead of a field point.
+    calculated = {t["tag"] for t in C.TAGS if t["kind"] == "CALC" or (t["kind"] == "PID" and t.get("pv"))}
+    assert set(C.CALC_INPUTS) == calculated
+    for tag, inputs in C.CALC_INPUTS.items():
+        assert inputs and set(inputs) <= set(C.TAG_INDEX), tag
+
+
 def test_interlock_references_exist():
     for key, il in C.INTERLOCKS.items():
         for tag, limit, armed in il["causes"]:

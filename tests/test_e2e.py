@@ -142,6 +142,28 @@ def test_plant_api_matches_inventory(stack, inv):
     assert post(stack["plant"] + "/api/scenarios/no_such_fault/start")[0] == 404
 
 
+def test_datapath_api(stack, inv):
+    # The IT/OT trainer's diagram: the same value at every layer.
+    shape = inv["api"]["dcs"]["datapath"]
+    p = get(stack["dcs"] + "/api/datapath?tag=FIC-101")
+    assert list(p) == shape["keys"] and list(p["field_in"]) == shape["field_in"] and list(p["dcs"]) == shape["dcs"]
+    assert list(p["historian"]) == shape["historian"] and list(p["opcua"]) == shape["opcua"]
+    assert [list(h) for h in p["historian"]["points"]] == [shape["historian.points[]"]] * 3
+    assert [list(n) for n in p["opcua"]["nodes"]] == [shape["opcua.nodes[]"]] * 3
+    fi = p["field_in"]
+    assert (fi["point"], fi["address"]) == ("FT-101", iomap.AI_ADDR["FT-101"])
+    assert abs(iomap.regs_to_float(*fi["words"]) - fi["value"]) < 1e-6
+    assert abs(fi["value"] - p["dcs"]["pv"]) < 0.05 * 180
+    assert p["field_out"]["point"] == "FV-101" and p["dcs"]["quality"] == "GOOD"
+    assert p["opcua"]["nodes"][0]["nodeid"].endswith(";s=HCW.ASU1.FIC-101.PV")
+    assert p["opcua"]["nodes"][0]["status"] == "Good"
+    assert p["historian"]["points"][0]["stored_last_hour"] >= 1
+    c = get(stack["dcs"] + "/api/datapath?tag=TY-411")
+    assert c["field_in"] is None and c["calc_from"] == ["PI-401"]
+    with pytest.raises(urllib.error.HTTPError):
+        get(stack["dcs"] + "/api/datapath?tag=NO-SUCH")
+
+
 def test_history_api(stack):
     h = get(stack["dcs"] + "/api/history?tags=FIC-101.PV,AI-601.PV&minutes=5&points=50")
     assert h["series"]["FIC-101.PV"] and h["series"]["AI-601.PV"]

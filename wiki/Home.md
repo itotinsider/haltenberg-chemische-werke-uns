@@ -37,6 +37,7 @@ effects, just like in a real plant.
 | Understand DCS, Modbus, interlocks, trips | [Plant automation in brief](Plant-automation-in-brief) |
 | Know what the plant does | [The process: air separation](The-process) |
 | See how the pieces fit | [Architecture](Architecture) |
+| Learn how the plant and its data work | [Trainers](Trainers): Process, Engineering, IT/OT |
 | Use the screens | [Operator console](Operator-console), [Instructor station](Instructor-station) |
 | Get the data out | [Data access](Data-access) |
 | Change the code | [Development](Development) |

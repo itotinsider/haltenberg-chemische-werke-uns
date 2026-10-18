@@ -9,7 +9,8 @@
       "/api/config",
       "/api/history?tags=&minutes=&points=",
       "/api/events?limit=&start=",
-      "/api/historian"
+      "/api/historian",
+      "/api/datapath?tag="
     ],
     "post": [
       "/api/loops/<tag> {mode, sp, op, sp_hi, sp_lo, kc, ti, sp_rate, ratio}",
@@ -35,7 +36,7 @@
       "historian": ["samples_written"]
     },
     "config": {
-      "keys": ["enterprise", "site", "unit", "unit_label", "blocks", "tags", "equipment", "interlocks", "lineup", "links", "scan_s", "ppu_cycle_s", "ppu_cycle_range", "opcua_namespace", "opcua_prefix"],
+      "keys": ["enterprise", "site", "unit", "unit_label", "blocks", "tags", "equipment", "interlocks", "lineup", "links", "scan_s", "ppu_cycle_s", "ppu_cycle_range", "opcua_namespace", "opcua_prefix", "t_sat", "calc_inputs"],
       "tags[]": ["sp_cap?", "ppu_time?", "ratio_of?", "ratio?", "ratio_lo?", "ratio_hi?", "xlimit?", "tag", "kind", "desc", "unit", "lo", "hi", "io?", "pv?", "out?", "cascade?", "limits?", "action?", "kc?", "ti?", "sp?", "op?", "mode?", "sp_lo?", "sp_hi?", "op_lo?", "op_hi?", "sp_rate?", "block", "dec", "alarms", "suppress", "modes?"],
       "equipment.<key>": ["label", "block", "trip"],
       "interlocks.<key>": ["label", "block"]
@@ -151,7 +152,16 @@
       "FIC-508.OP",
       "PI-517.PV",
       "KPI-701.PV"
-    ]
+    ],
+    "datapath": {
+      "keys": ["tag", "kind", "desc", "unit", "lo", "hi", "block", "block_label", "field_in", "field_out", "calc_from", "dcs", "historian", "opcua"],
+      "field_in": ["point", "address", "words", "desc", "value", "at"],
+      "dcs": ["pv", "sp", "op", "mode", "quality", "alarms", "alarm", "scan_s", "scan_count"],
+      "historian": ["points", "deadband_pct", "heartbeat_s", "scans_last_hour"],
+      "historian.points[]": ["point", "unit", "deadband", "last", "stored_last_hour"],
+      "opcua": ["endpoint", "namespace", "nodes"],
+      "opcua.nodes[]": ["attr", "nodeid", "browse", "status"]
+    }
   },
   "plant": {
     "port": 8111,

@@ -26,9 +26,9 @@ from pymodbus.client import AsyncModbusTcpClient  # noqa: E402
 
 import config as C  # noqa: E402
 import iomap  # noqa: E402
-from control import DCS  # noqa: E402
+from control import DCS, T_SAT_N2, T_SAT_O2  # noqa: E402
 from historian import NA, Historian  # noqa: E402
-from opcua_server import OpcUaServer  # noqa: E402
+from opcua_server import NAMESPACE, OpcUaServer  # noqa: E402
 
 PLANT_HOST = os.getenv("PLANT_HOST", "plant")
 PLANT_PORT = int(os.getenv("PLANT_PORT", "5020"))
@@ -94,6 +94,8 @@ class Runtime:
         self.scan_ms = 0.0
         self.io = {"connected": False, "last_heartbeat": None, "heartbeat_changed": 0.0, "errors": 0}
         self.watchdog = 0
+        # The raw field I/O of the last scan, as it was on the wire (for /api/datapath).
+        self.wire = {"ir": None, "read_at": None, "hr": None, "written_at": None}
         if os.path.exists(STATE_PATH):
             try:
                 with open(STATE_PATH) as f:
@@ -121,6 +123,7 @@ class Runtime:
             raise IOError(f"Modbus read error: {dr}")
         ai = iomap.unpack_floats(iomap.ANALOG_INPUTS, regs)
         di = {name: bool(dr.bits[addr]) for name, addr in iomap.DI_ADDR.items()}
+        self.wire.update(ir=regs, read_at=time.time())
         return ai, di
 
     async def write_io(self, client, ao, do):
@@ -129,6 +132,7 @@ class Runtime:
         regs = iomap.pack_floats(iomap.ANALOG_OUTPUTS, ao, iomap.AO_REGISTERS)
         for start, count in iomap.AO_BLOCKS:
             await client.write_registers(start, regs[start:start + count])
+        self.wire.update(hr=regs, written_at=time.time())
         bits = [False] * iomap.DO_COUNT
         for name, addr in iomap.DO_ADDR.items():
             bits[addr] = bool(do.get(name, False))
@@ -211,6 +215,61 @@ def runtime_status(rt):
                 historian=dict(samples_written=rt.historian.stored))
 
 
+FIELD_DESC = {name: desc for name, _, desc in iomap.ANALOG_INPUTS + iomap.ANALOG_OUTPUTS}
+OPC_STATUS = {"GOOD": "Good", "BAD": "BadNoCommunication", "NOT_APPLICABLE": "BadOutOfService"}
+
+
+def _wire_point(name, addr, regs, ts):
+    words = regs[addr:addr + 2] if regs else None
+    return dict(point=name, address=addr, words=words, desc=FIELD_DESC.get(name, ""),
+                value=iomap.regs_to_float(*words) if words else None, at=ts)
+
+
+def datapath(rt, tag):
+    """One tag's journey through the layers, as the IT/OT trainer draws it: the Modbus registers it
+    came in on (or the tags it is calculated from), the DCS tag, its historian points and OPC UA nodes.
+    Read-only, built from what the runtime already holds; it never touches the plant's ground truth."""
+    t = C.TAG_INDEX.get(tag)
+    if t is None:
+        return None
+    snap, now = rt.snapshot, time.time()
+    row = snap.get("tags", {}).get(tag, {})
+    io_ok = snap.get("io_ok", False)
+    quality = "BAD" if not io_ok else "NOT_APPLICABLE" if row.get("pv") is None else "GOOD"
+    w = rt.wire
+    field_in = (_wire_point(t["io"], iomap.AI_ADDR[t["io"]], w["ir"], w["read_at"])
+                if t.get("io") in iomap.AI_ADDR else None)
+    field_out = (_wire_point(t["out"], iomap.AO_ADDR[t["out"]], w["hr"], w["written_at"])
+                 if t.get("out") in iomap.AO_ADDR else None)
+    alarm = next((a for a in snap.get("alarms", []) if a["tag"] == tag and a["active"]), None)
+    attrs = ["PV", "SP", "OP"] if t["kind"] == "PID" else ["PV"]
+    hist, points = [], historian_points()
+    for a in attrs:
+        name = f"{tag}.{a}"
+        unit, _, span = points[name]
+        last = rt.historian.last.get(name)
+        hist.append(dict(point=name, unit=unit, deadband=span * HISTORIAN_DEADBAND_PCT / 100.0,
+                         last=dict(ts=last[0], value=last[1], quality=last[2]) if last else None,
+                         stored_last_hour=rt.historian.count(name, now - 3600, now)))
+    block = dict(C.BLOCKS)[t["block"]]
+    ns = getattr(rt.opcua, "idx", 2)
+    nodes = [dict(attr=a, nodeid=f"ns={ns};s={C.ENTERPRISE}.{C.UNIT}.{tag}.{a}",
+                  browse=f"Objects/{C.ENTERPRISE}/{C.SITE}/{C.UNIT}/{t['block']}/{tag}/{a}",
+                  status=OPC_STATUS[quality] if a == "PV" else "Good" if io_ok else "BadNoCommunication")
+             for a in attrs]
+    return dict(
+        tag=tag, kind=t["kind"], desc=t["desc"], unit=t["unit"], lo=t["lo"], hi=t["hi"],
+        block=t["block"], block_label=block, field_in=field_in, field_out=field_out,
+        calc_from=C.CALC_INPUTS.get(tag),
+        dcs=dict(pv=row.get("pv"), sp=row.get("sp"), op=row.get("op"), mode=row.get("mode"), quality=quality,
+                 alarms=t["alarms"], alarm=alarm and dict(limit=alarm["limit"], priority=alarm["priority"]),
+                 scan_s=SCAN_SECONDS, scan_count=rt.scan_count),
+        historian=dict(points=hist, deadband_pct=HISTORIAN_DEADBAND_PCT, heartbeat_s=HISTORIAN_MAX_INTERVAL,
+                       scans_last_hour=round(3600 / SCAN_SECONDS)),
+        opcua=dict(endpoint=PUBLIC_LINKS["opcua"], namespace=NAMESPACE, nodes=nodes),
+    )
+
+
 def config_payload(rt):
     return dict(
         enterprise=C.ENTERPRISE, site=C.SITE, unit=C.UNIT, unit_label=C.UNIT_LABEL,
@@ -220,6 +279,9 @@ def config_payload(rt):
         interlocks={k: dict(label=v["label"], block=v["block"]) for k, v in C.INTERLOCKS.items()},
         lineup=C.LINEUP, links=PUBLIC_LINKS, scan_s=SCAN_SECONDS, ppu_cycle_s=rt.dcs.ppu.cycle,
         ppu_cycle_range=[C.PPU_CYCLE_MIN, C.PPU_CYCLE_MAX], opcua_namespace="urn:haltenberg:hcw:asu1:dcs", opcua_prefix=f"{C.ENTERPRISE}.{C.UNIT}",
+        # Clausius-Clapeyron constants of the TY-411…413 calculations (normal boiling point K, J/mol),
+        # so the trainer draws its boiling-point curves with the DCS's own formula.
+        t_sat=dict(N2=list(T_SAT_N2), O2=list(T_SAT_O2)), calc_inputs=C.CALC_INPUTS,
     )
 
 
@@ -251,6 +313,9 @@ def make_handler(rt):
                 return self._json(200, rt.historian.events(start=start, limit=limit))
             if url.path == "/api/historian":
                 return self._json(200, dict(rt.historian.stats(), points=sorted(rt.historian.ids)))
+            if url.path == "/api/datapath":
+                path = datapath(rt, q.get("tag", [""])[0])
+                return self._json(200, path) if path else self._json(404, {"error": "unknown tag"})
             self._json(404, {"error": "not found"})
 
         def do_POST(self):
