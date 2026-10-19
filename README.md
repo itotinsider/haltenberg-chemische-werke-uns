@@ -14,7 +14,7 @@ It explains the **classic process-industry stack**, and produces realistic plant
 field I/O over raw Modbus TCP, a DCS that turns it into modelled controller tags, a historian, and
 OPC UA as the interface IT-side clients (here Node-RED) consume.
 
-![Operator console overview](docs/screenshots/operator-overview.png)
+![Operator console overview](wiki/images/operator-overview.png)
 
 **📖 Documentation: [the wiki](https://github.com/itotinsider/haltenberg-chemische-werke-uns/wiki).**
 Never been on a production site? Start with

@@ -108,7 +108,7 @@ rules above:
 
 ### `docs-refresh` — Step 5: README, CLAUDE.md and screenshots
 - **Status:** 📋 Planned · **Owner:** — · **Branch:** — · **PR:** —
-- **Goal:** README, CLAUDE.md and `docs/screenshots/` match the system after steps 3 and 4.
+- **Goal:** README, CLAUDE.md and `wiki/images/` match the system after steps 3 and 4.
 - **Depends on:** `mhe-expander-tags`, `training-links`.
 
 ## Ideas

@@ -16,7 +16,7 @@ Keep this file current. It is the main knowledge carrier between sessions.
 **Other docs to keep current:**
 - **Research doc:** keeps the original research, plus §0 "ASU1 as built" and *As built* notes per section (loops §5.1, interlocks §5.2, tag table with normal values §5.4). Update them when equipment, loops, interlocks or tags change; the §5.4 table is a snapshot, `inventory/tags.csv` is authoritative.
 - **The wiki (`wiki/*.md`):** the user documentation, for humans: getting started, the primer "Plant automation in brief" (glossary, tag naming, a trip walkthrough), the first tour (K-503 trip), process, architecture, displays, scenarios, data access, configuration, development. Update the page whose topic you change (new tag on a display, new scenario, new env var, changed restart procedure), and keep its examples working.
-  - **Source in the repo, published by script:** `python tools/publish_wiki.py [--dry-run]` copies `wiki/*.md` and `docs/screenshots/*.png` (as `images/`) to `<repo>.wiki.git`, removes pages that no longer exist, commits and pushes. Edits made on GitHub are overwritten. **Automatic:** `.github/workflows/wiki.yml` runs it on every push to `main` that touches `wiki/**` or `docs/screenshots/**` (and by hand from the Actions tab), with the workflow's `GITHUB_TOKEN`. So a merged PR updates the wiki; never run the script from a feature branch.
+  - **Source in the repo, published by script:** `python tools/publish_wiki.py [--dry-run]` copies `wiki/*.md` and `wiki/images/*.png` to `<repo>.wiki.git`, removes pages that no longer exist, commits and pushes. Edits made on GitHub are overwritten. **Automatic:** `.github/workflows/wiki.yml` runs it on every push to `main` that touches `wiki/**` (and by hand from the Actions tab), with the workflow's `GITHUB_TOKEN`. So a merged PR updates the wiki; never run the script from a feature branch.
   - **Links:** between pages by page name (`[Architecture](Architecture)`, `Process-behaviour#restart-after-a-trip`), to repo files by full GitHub URL, images as `images/<file>.png`. `test_wiki_links_resolve` checks pages and images.
   - **README** is kept short: pitch, quick start, architecture sketch, links. Detail goes to the wiki.
 
@@ -45,11 +45,11 @@ dcs/main.py              asyncio scan loop (pymodbus client), checkpointing, HTT
 dcs/web/index.html       hub (the only page that isn't a persona HMI)
 dcs/web/operator.html    operator console (overview mimic + L3 detail displays, tag list, interlocks, alarms/events, trends, the three trainers)
 tools/offline_sim.py     plant model + control layer coupled directly, faster than real time (Sim class = test harness)
-tools/publish_wiki.py    copies wiki/ + docs/screenshots/ to the GitHub wiki repo and pushes (by hand, after an OK)
+tools/publish_wiki.py    copies wiki/ (pages + images/) to the GitHub wiki repo and pushes (by hand, after an OK)
 tools/inventory.py       generates inventory/ from every layer's source of truth (needs asyncua: run in the tests image)
 inventory/               GENERATED interface inventory: field/dcs/opcua/api/plant .json + tags.csv (README.md is hand-written)
 wiki/                    the GitHub wiki's source: user documentation (Home.md, _Sidebar.md, one file per page)
-docs/screenshots/        screenshots, shown in the wiki (as images/) and the README
+wiki/images/             screenshots, shown in the wiki and the README (one folder, so links work in the repo too)
 tests/                   pytest: test_inventory, test_contracts, test_behaviour, test_e2e (+ Dockerfile for the runner)
 nodered/Dockerfile       official Node-RED image + node-red-contrib-opcua (baked in, /data is a bind mount)
 nodered_data/flows.json  the only tracked file in nodered_data/ (runtime state is git-ignored)
@@ -93,7 +93,7 @@ docker run --rm --network <repo-folder>_default -v /path/to/script:/s --entrypoi
 # connect to opc.tcp://dcs:4840/hcw/asu1/, namespace "urn:haltenberg:hcw:asu1:dcs"
 ```
 
-**Screenshots** (headless Chrome; Playwright is not installed). `?tag=<TAG>` opens a faceplate, `?trend=A.PV,B.PV&range=<min>` preselects trend points and window (a RANGES value), `#overview|tags|ilk|alarms|trends` selects a tab and `#detail/<id>` (e.g. `#detail/C-401`) a detail display, so every view can be captured without clicking. Screenshots live in `docs/screenshots/` (the wiki shows them as `images/`); for a lively trend, compress the PPU cycle to 300 s for ~15 min first, then restore 14400:
+**Screenshots** (headless Chrome; Playwright is not installed). `?tag=<TAG>` opens a faceplate, `?trend=A.PV,B.PV&range=<min>` preselects trend points and window (a RANGES value), `#overview|tags|ilk|alarms|trends` selects a tab and `#detail/<id>` (e.g. `#detail/C-401`) a detail display, so every view can be captured without clicking. Screenshots live in `wiki/images/` (pages link them as `images/<file>.png`); for a lively trend, compress the PPU cycle to 300 s for ~15 min first, then restore 14400:
 ```bash
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --disable-gpu --hide-scrollbars \
   --window-size=1600,1000 --virtual-time-budget=6000 --screenshot=out.png "http://localhost:8110/operator?tag=PIC-502#tags"

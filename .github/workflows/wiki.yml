@@ -1,10 +1,10 @@
-# Publishes wiki/ and docs/screenshots/ to the GitHub wiki whenever they change on main.
+# Publishes wiki/ (pages and images/) to the GitHub wiki whenever they change on main.
 name: Publish wiki
 
 on:
   push:
     branches: [main]
-    paths: ["wiki/**", "docs/screenshots/**", "tools/publish_wiki.py"]
+    paths: ["wiki/**", "tools/publish_wiki.py"]
   workflow_dispatch:
 
 permissions:
