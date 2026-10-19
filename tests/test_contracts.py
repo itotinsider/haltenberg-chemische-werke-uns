@@ -272,10 +272,10 @@ def test_documented_counts(page):
 
 
 def test_wiki_links_resolve():
-    """Wiki pages link to each other by page name and to images/ (published from docs/screenshots/)."""
+    """Wiki pages link to each other by page name and to images/ (wiki/images/)."""
     assert "wiki/Home.md" in WIKI_PAGES and "wiki/_Sidebar.md" in WIKI_PAGES
     pages = {pathlib.Path(p).stem for p in WIKI_PAGES}
-    shots = {p.name for p in (ROOT / "docs" / "screenshots").glob("*.png")}
+    shots = {p.name for p in (ROOT / "wiki" / "images").glob("*.png")}
     broken = []
     for page in WIKI_PAGES:
         for target in re.findall(r"\]\(([^)\s]+)\)", read(page)):

@@ -1,4 +1,4 @@
-"""Publish wiki/ (and docs/screenshots/ as images/) to the GitHub wiki.
+"""Publish wiki/ (pages and images/) to the GitHub wiki.
 
 The wiki's source of truth is the wiki/ folder in this repo; the GitHub wiki is a copy.
 Pages edited on GitHub are overwritten, and pages that no longer exist in wiki/ are removed.
@@ -18,7 +18,7 @@ import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 WIKI_SRC = ROOT / "wiki"
-IMAGES_SRC = ROOT / "docs" / "screenshots"
+IMAGES_SRC = WIKI_SRC / "images"
 
 
 def git(*args, cwd, capture=False):
