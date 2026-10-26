@@ -105,7 +105,7 @@ rules above:
 ## In progress
 
 ### `global-sites` — Two more sites (US, India) and a standard data model for a DataOps demo
-- **Status:** 🚧 In progress · **Owner:** Claude (session global-sites) for Willem · **Branch:** `global-sites` · **PR:** —
+- **Status:** 🚧 In progress · **Owner:** Claude (session global-sites) for Willem · **Branch:** `global-sites` · **PR:** [#13](https://github.com/itotinsider/haltenberg-chemische-werke-uns/pull/13)
 - **Goal:** two more ASUs, at Port Arden (Texas) and Vadhana (Gujarat), that differ in size, equipment,
   customers and above all in how their DCS presents data over OPC UA; plus one ISA-95 standard model
   and a tested mapping of all three onto it, to build the global DataOps demo on.
