@@ -288,6 +288,22 @@ def test_not_applicable_is_bad_out_of_service_live_and_in_history(stack):
     assert hist[-1].StatusCode.value == ua.StatusCodes.BadOutOfService, "history says the same as the live value"
 
 
+def test_mapping_api_serves_the_committed_mapping_with_live_values(stack):
+    """/api/mapping (the Site mapping explorer): the committed mapping, and this site's live values converted
+    with the mapping's own formulas: the air flow in Nm3/h equals the DCS's FIC-101 x 1000."""
+    import csv
+    m = get(stack["dcs"] + "/api/mapping")
+    committed = list(csv.DictReader(open(os.path.join(ROOT, "inventory/uns/mapping.csv"), encoding="utf-8")))
+    assert m["rows"] == committed and set(m["sites"]) == {"haltenberg", "port-arden", "vadhana"}
+    flow = m["live"]["s=HCW.ASU1.FIC-101.SP"]
+    assert flow["quality"] == "GOOD" and flow["standard"] == pytest.approx(get(stack["dcs"] + "/api/state")["tags"]["FIC-101"]["sp"] * 1000)
+    assert len(m["live"]) == sum(1 for r in committed if r["haltenberg.nodeid"])
+    with urllib.request.urlopen(stack["dcs"] + "/api/mapping", timeout=5) as r:
+        assert r.headers["Access-Control-Allow-Origin"] == "*"
+    with urllib.request.urlopen(stack["dcs"] + "/mapping", timeout=5) as r:
+        assert r.status == 200
+
+
 # ---------------------------------------------------------------- last: take the plant away
 def test_plant_loss_gives_bad_quality(stack):
     from asyncua import ua
@@ -370,3 +386,4 @@ def test_dcs_refuses_another_sites_plant(tmp_path):
         assert "wrong I/O rack" in open(tmp_path / "dcs.log").read()
     finally:
         stop(s)
+

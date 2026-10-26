@@ -186,7 +186,8 @@ def api_layer():
         "dcs": {
             "port": 8110,
             "get": list(dmain.PAGES) + ["/api/state", "/api/config", "/api/history?tags=&minutes=&points=",
-                                        "/api/events?limit=&start=", "/api/historian", "/api/datapath?tag="],
+                                        "/api/events?limit=&start=", "/api/historian", "/api/datapath?tag=",
+                                        "/api/mapping", "/api/mapping.csv"],
             "post": ["/api/loops/<tag> {mode, sp, op, sp_hi, sp_lo, kc, ti, sp_rate, ratio}",
                      "/api/equipment/<key>/start|stop", "/api/interlocks/<key>/reset", "/api/esd", "/api/lineup",
                      "/api/sequences/KS-201/cycle {seconds, source}", "/api/sequences/KS-201/switch",

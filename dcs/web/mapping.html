@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HCW Standard Data Mapping</title>
+<style>
+  :root {
+    --bg: #eef0f2; --card: #fff; --line: #d3d7db; --text: #1c2024; --muted: #5f666d; --soft: #f5f6f7;
+    --brand: #1d4f91; --gap: #8a8f94; --bad: #b42318; --hl: #fff6d6;
+    --mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+    --sans: "Inter", "Segoe UI", Roboto, system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 var(--sans); }
+  header { background: #1b2a3d; color: #fff; padding: 18px 16px 20px; }
+  .wrap { max-width: 1600px; margin: 0 auto; padding: 0 16px; }
+  header .wrap { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  header svg { width: 44px; height: 44px; flex: none; }
+  h1 { margin: 0; font-size: 22px; }
+  header p { margin: 2px 0 0; color: #b8c4d2; }
+  header a.home { margin-left: auto; color: #fff; text-decoration: none; border: 1px solid #4d5f75; padding: 4px 10px; font: 600 12px var(--mono); }
+  h2 { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 24px 0 10px; }
+  .intro { max-width: 980px; color: var(--muted); }
+  .intro b { color: var(--text); }
+  code, .mono { font-family: var(--mono); font-size: 12px; }
+  .sites { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+  .site { background: var(--card); border: 1px solid var(--line); border-top: 4px solid var(--brand); padding: 12px 14px; }
+  .site h3 { margin: 0; font-size: 16px; display: flex; gap: 8px; align-items: baseline; }
+  .site .st { margin-left: auto; font: 600 11px var(--mono); color: var(--muted); }
+  .site .st.ok::before { content: "● "; color: #2f855a; }
+  .site .st.off::before { content: "○ "; }
+  .site dl { display: grid; grid-template-columns: 110px 1fr; gap: 2px 10px; margin: 8px 0 0; font-size: 12.5px; }
+  .site dt { color: var(--muted); }
+  .site dd { margin: 0; overflow-wrap: anywhere; }
+  .site .quirk { color: var(--bad); }
+  .bar { position: sticky; top: 0; z-index: 2; background: var(--bg); padding: 10px 0; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; border-bottom: 1px solid var(--line); }
+  .bar input[type=search] { flex: 1 1 260px; min-width: 200px; padding: 7px 10px; border: 1px solid var(--line); font: 14px var(--sans); }
+  .bar select, .bar label, .bar a { font: 13px var(--sans); }
+  .bar select { padding: 6px; border: 1px solid var(--line); background: #fff; }
+  .bar label { display: flex; gap: 5px; align-items: center; color: var(--muted); white-space: nowrap; }
+  .bar a { color: var(--brand); white-space: nowrap; }
+  .count { color: var(--muted); font-size: 13px; white-space: nowrap; }
+  .tablewrap { overflow-x: auto; background: var(--card); border: 1px solid var(--line); margin-bottom: 30px; }
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+  th, td { padding: 6px 8px; border-bottom: 1px solid #e4e7ea; vertical-align: top; text-align: left; }
+  thead th { background: var(--soft); position: sticky; top: 0; font-weight: 600; white-space: nowrap; }
+  thead tr.sites-h th { font-size: 13px; border-bottom: 2px solid var(--line); }
+  th.sitecol, td.sitecol { border-left: 2px solid var(--line); }
+  td.std b { font-family: var(--mono); font-size: 12px; font-weight: 600; }
+  td.std .d { color: var(--muted); }
+  .attr { display: inline-block; font: 600 10px var(--mono); text-transform: uppercase; color: var(--brand); border: 1px solid #b9c9de; padding: 0 4px; margin-left: 4px; }
+  td.node .p { font-family: var(--mono); font-size: 11.5px; overflow-wrap: anywhere; }
+  td.node .id { color: var(--muted); font-family: var(--mono); font-size: 11px; }
+  td.node .f { font-family: var(--mono); font-size: 11.5px; margin-top: 2px; }
+  td.node .u { display: inline-block; background: var(--soft); border: 1px solid #e0e3e6; padding: 0 4px; font-size: 11px; margin-right: 4px; }
+  td.node .v { margin-top: 3px; font-family: var(--mono); font-size: 11.5px; }
+  td.node .v .arrow { color: var(--muted); }
+  td.node .v.bad { color: #c026d3; }
+  td.gap { color: var(--gap); font-style: italic; background: repeating-linear-gradient(135deg, #fafafa, #fafafa 6px, #f3f4f5 6px, #f3f4f5 12px); }
+  td.notes { color: var(--muted); white-space: nowrap; }
+  tr.grp td { background: #e8edf4; font: 600 12px var(--mono); color: var(--brand); padding: 5px 8px; }
+  mark { background: var(--hl); padding: 0; }
+  footer { color: var(--muted); font-size: 12px; padding: 0 0 30px; }
+  @media (max-width: 700px) { .site dl { grid-template-columns: 90px 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <svg viewBox="0 0 40 40" aria-hidden="true">
+      <rect x="1" y="1" width="38" height="38" rx="5" fill="#1d4f91"/>
+      <path d="M9 30V10M9 20h10M19 30V10M24 30l4-20 4 20" stroke="#fff" stroke-width="3" fill="none" stroke-linejoin="round"/>
+    </svg>
+    <div>
+      <h1>Standard data model · site mapping</h1>
+      <p>Three ASUs, three OPC UA dialects, one ISA-95 Unified Namespace</p>
+    </div>
+    <a class="home" href="/">⌂ All systems</a>
+  </div>
+</header>
+<div class="wrap">
+  <h2>What this is</h2>
+  <p class="intro">Every value the three sites publish over OPC UA, mapped onto the HCW standard model
+    (<code>hcw/&lt;site&gt;/air-separation/&lt;unit&gt;/&lt;equipment&gt;/&lt;point&gt;</code>). Per site: the native
+    browse path, its NodeId, the unit it publishes, and the conversion to the standard (<code>x</code> = the native value).
+    <b>This mapping is open reference material</b>, generated from the code and tested against the live servers: use it to
+    build the DataOps layer. Live values come from each site's DCS (<code>/api/mapping</code>) and are converted with
+    the formula shown, so you can see each conversion work.</p>
+
+  <h2>The sites</h2>
+  <div class="sites" id="sites"></div>
+
+  <h2>Mapping</h2>
+  <div class="bar">
+    <input type="search" id="q" placeholder="Search a standard point, native name, NodeId or unit… (e.g. air-flow, 71FC1001, 02MAA10, PSIG)">
+    <select id="eq"><option value="">All equipment</option></select>
+    <select id="attr">
+      <option value="">All attributes</option>
+      <option value="value">Values only</option>
+      <option value="setpoint">Setpoints</option>
+      <option value="output">Outputs</option>
+      <option value="mode">Modes</option>
+      <option value="alarm-state">Alarm states</option>
+    </select>
+    <label><input type="checkbox" id="gaps"> only gaps</label>
+    <label><input type="checkbox" id="conv"> only with a conversion</label>
+    <label><input type="checkbox" id="live" checked> live values</label>
+    <span class="count" id="count"></span>
+    <a href="/api/mapping.csv" download="mapping.csv">⬇ mapping.csv</a>
+  </div>
+  <div class="tablewrap"><table>
+    <thead id="thead"></thead>
+    <tbody id="tbody"><tr><td>Loading…</td></tr></tbody>
+  </table></div>
+  <footer>Source: <code>dataops/uns_model.py</code> (the standard), <code>dcs/native.py</code> (each site's OPC UA presentation),
+    generated by <code>tools/inventory.py</code> into <code>inventory/uns/</code>; checked by <code>tests/test_sites.py</code>
+    and <code>tests/test_e2e.py</code>. <span id="engine-note"></span></footer>
+</div>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const store = { get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+                set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
+let M = null, KEYS = [], LIVE = {}, LINKS = {}, STATUS = {};
+
+function fmtNum(v) {
+  if (typeof v !== "number") return String(v);
+  const a = Math.abs(v);
+  return a !== 0 && (a >= 1e6 || a < 1e-3) ? v.toExponential(3) : +v.toFixed(a >= 1000 ? 1 : a >= 10 ? 3 : 4) + "";
+}
+
+function renderSites() {
+  $("#sites").innerHTML = KEYS.map(k => {
+    const s = M.sites[k], o = s.opcua, st = STATUS[k];
+    const ts = o.source_timestamps === "UTC" ? "UTC" : `<span class="quirk">${esc(o.source_timestamps)}</span>`;
+    const ids = o.nodeids === "numeric" ? `<span class="quirk">numeric (browse by name)</span>` : "strings";
+    const hub = LINKS[k] ? `<a href="${esc(LINKS[k])}">${esc(LINKS[k])}</a>` : "–";
+    return `<div class="site"><h3>${esc(s.site)} · ${esc(s.unit)}<span class="st ${st ? "ok" : "off"}">${st ? "live" : "no live data"}</span></h3>
+      <dl><dt>Company</dt><dd>${esc(s.company)}, ${esc(s.country)}</dd>
+        <dt>Size</dt><dd>${esc(s.capacity)} (scale ${s.scale})</dd>
+        <dt>Customers</dt><dd>${esc(s.customers)}</dd>
+        <dt>Equipment</dt><dd>${s.dcs.tags} DCS tags · ${s.dcs.equipment.join(", ")}</dd>
+        <dt>OPC UA</dt><dd class="mono">${esc(o.endpoint_path)} · ${esc(o.namespace)}</dd>
+        <dt>NodeIds</dt><dd>${ids} · ${o.variables} data variables</dd>
+        <dt>Timestamps</dt><dd>${ts}</dd>
+        <dt>UNS root</dt><dd class="mono">${esc(s.uns_root)}</dd>
+        <dt>Hub</dt><dd>${hub}</dd></dl></div>`;
+  }).join("");
+}
+
+function header() {
+  $("#thead").innerHTML = `<tr class="sites-h"><th>Standard point</th><th>Unit</th>${KEYS.map(k => `<th class="sitecol">${esc(M.sites[k].site)}</th>`).join("")}<th>Notes</th></tr>`;
+}
+
+function hl(text, q) {
+  const t = esc(text);
+  if (!q) return t;
+  const i = t.toLowerCase().indexOf(esc(q).toLowerCase());
+  return i < 0 ? t : t.slice(0, i) + "<mark>" + t.slice(i, i + q.length) + "</mark>" + t.slice(i + q.length);
+}
+
+function siteCell(r, k, q) {
+  const node = r[k + ".node"];
+  if (!node) return `<td class="sitecol gap">not at this site</td>`;
+  const path = node.replace(/^Objects\//, "");
+  const f = r[k + ".to_uns"], u = r[k + ".native_unit"];
+  let live = "";
+  if ($("#live").checked) {
+    const v = (LIVE[k] || {})[r[k + ".nodeid"]];
+    if (v) {
+      const bad = v.quality !== "GOOD";
+      live = `<div class="v ${bad ? "bad" : ""}">${bad ? v.quality.toLowerCase().replace("_", " ") : `${esc(fmtNum(v.native))} <span class="arrow">→</span> ${esc(fmtNum(v.standard))}`}</div>`;
+    }
+  }
+  return `<td class="sitecol node"><div class="p">${hl(path, q)}</div><div class="id">${hl(r[k + ".nodeid"], q)}</div>
+    <div class="f">${u ? `<span class="u">${hl(u, q)}</span>` : ""}${f === "x" ? "<span style='color:var(--muted)'>x (as is)</span>" : hl(f, q)}</div>${live}</td>`;
+}
+
+function render() {
+  if (!M) return;
+  const q = $("#q").value.trim(), eq = $("#eq").value, attr = $("#attr").value;
+  const gaps = $("#gaps").checked, conv = $("#conv").checked;
+  store.set("hcw.map.f", { q, eq, attr, gaps, conv, live: $("#live").checked });
+  const ql = q.toLowerCase();
+  const rows = M.rows.filter(r => {
+    if (eq && r.uns_point.split("/")[0] !== eq) return false;
+    if (attr && r.attribute !== attr) return false;
+    if (gaps && !r.notes) return false;
+    if (conv && KEYS.every(k => !r[k + ".to_uns"] || r[k + ".to_uns"] === "x")) return false;
+    if (!ql) return true;
+    return [r.uns_point, r.description, r.unit, ...KEYS.flatMap(k => [r[k + ".node"], r[k + ".nodeid"], r[k + ".native_unit"], r[k + ".to_uns"]])]
+      .some(s => (s || "").toLowerCase().includes(ql));
+  });
+  let last = null, html = "";
+  for (const r of rows) {
+    const g = r.uns_point.split("/")[0];
+    if (g !== last) { html += `<tr class="grp"><td colspan="${KEYS.length + 3}">${esc(g)}</td></tr>`; last = g; }
+    html += `<tr><td class="std"><b>${hl(r.uns_point, q)}</b>${r.attribute !== "value" ? `<span class="attr">${esc(r.attribute)}</span>` : ""}
+        <div class="d">${hl(r.description, q)}</div></td><td>${esc(r.unit || r.type)}</td>
+      ${KEYS.map(k => siteCell(r, k, q)).join("")}<td class="notes">${esc(r.notes)}</td></tr>`;
+  }
+  $("#tbody").innerHTML = html || `<tr><td colspan="${KEYS.length + 3}">No rows match.</td></tr>`;
+  $("#count").textContent = `${rows.length} of ${M.rows.length} rows`;
+}
+
+async function loadLive() {
+  // This site from here; the other sites from their own hubs (their /api/mapping allows it).
+  await Promise.all(KEYS.map(async k => {
+    const url = k === M.site ? "/api/mapping" : (LINKS[k] ? LINKS[k].replace(/\/$/, "") + "/api/mapping" : null);
+    if (!url) { STATUS[k] = false; return; }
+    try {
+      const d = k === M.site && LIVE.__first ? LIVE.__first : await (await fetch(url, { cache: "no-store" })).json();
+      LIVE[k] = d.live; STATUS[k] = Object.keys(d.live || {}).length > 0;
+    } catch { STATUS[k] = false; }
+  }));
+  delete LIVE.__first;
+  renderSites(); render();
+}
+
+(async function init() {
+  const [m, cfg] = await Promise.all([(await fetch("/api/mapping")).json(), (await fetch("/api/config")).json()]);
+  M = m; KEYS = Object.keys(M.sites); LIVE.__first = m;
+  for (const s of cfg.sites) LINKS[s.key] = s.url;
+  if (!LINKS[M.site]) LINKS[M.site] = location.origin;
+  $("#engine-note").textContent = `This page is served by ${M.sites[M.site].site}'s DCS.`;
+  const groups = [...new Set(M.rows.map(r => r.uns_point.split("/")[0]))];
+  $("#eq").innerHTML += groups.map(g => `<option value="${esc(g)}">${esc(g)}</option>`).join("");
+  const f = store.get("hcw.map.f", {});
+  const qp = new URLSearchParams(location.search);
+  $("#q").value = qp.get("q") ?? f.q ?? "";
+  if (groups.includes(f.eq)) $("#eq").value = f.eq;
+  $("#attr").value = f.attr ?? "value";
+  $("#gaps").checked = !!f.gaps; $("#conv").checked = !!f.conv; $("#live").checked = f.live ?? true;
+  for (const id of ["q", "eq", "attr", "gaps", "conv", "live"]) $("#" + id).addEventListener("input", render);
+  header(); renderSites(); render();
+  await loadLive();
+  setInterval(() => { if ($("#live").checked) loadLive(); }, 5000);
+})();
+</script>
+</body>
+</html>

@@ -128,6 +128,8 @@ rules above:
     (cyclic demand, no GAN product, load limit 0.206). Found on the way: three plants on one network
     cross-wired two DCSs after a container recreate (stale address); fixed with fresh Modbus clients and
     the rack identity RID-901.
+  - 2026-10-26 Willem: the mapping is open reference, not an exercise; an interactive page for it. Added
+    the Site mapping explorer (`/mapping` on every hub, live values of all three sites).
   - **Next (ideas):** a DataOps layer (broker + UNS, the first consumer of `mapping.csv`); Node-RED
     flows for the other sites; per-site trainer texts; site-specific console drawings.
 

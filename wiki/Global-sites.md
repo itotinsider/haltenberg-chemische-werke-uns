@@ -5,6 +5,13 @@ HCW runs three air separation units on three continents. They are the starting p
 different shapes. A DataOps layer has to standardise them onto one model: the
 [Standard data model](Standard-data-model).
 
+**The mapping of all three sites onto the standard is open reference material** (not an exercise):
+the **Site mapping explorer** on every hub (http://localhost:8110/mapping, also on 8120 and 8130)
+shows every value of every site side by side: native node, NodeId, unit, the conversion to the
+standard, and the live value before and after conversion. The same data is in
+[`inventory/uns/mapping.csv`](https://github.com/itotinsider/haltenberg-chemische-werke-uns/blob/main/inventory/uns/mapping.csv)
+(a download button on the page) and `inventory/uns/sites.json`.
+
 All three run the same simulator engine (plant model + DCS). What differs per site is set in
 [`common/sites.py`](https://github.com/itotinsider/haltenberg-chemische-werke-uns/blob/main/common/sites.py):
 its size, climate, customers, some equipment, and above all **how its DCS presents the data over

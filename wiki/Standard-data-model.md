@@ -11,8 +11,9 @@ separation unit of HCW. It is the target of the global DataOps demo.
   generated from the model and the sites' own address spaces, and tested against what the live
   servers publish.
 
-Building the demo, you may want to hide the mapping from the people who have to work it out
-themselves: it is the solution.
+The mapping is **open reference material**, not an exercise: use it to build the DataOps layer.
+Browse it with live values on any hub's **Site mapping explorer**
+(http://localhost:8110/mapping), or download it there.
 
 ## Paths
 

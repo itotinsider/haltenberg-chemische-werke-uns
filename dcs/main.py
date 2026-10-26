@@ -13,6 +13,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import signal
 import sys
 import threading
@@ -30,6 +31,7 @@ import sites  # noqa: E402
 from control import DCS, T_SAT_N2, T_SAT_O2  # noqa: E402
 from historian import NA, Historian  # noqa: E402
 import native  # noqa: E402
+from opcua_server import engine_values  # noqa: E402
 
 PLANT_HOST = os.getenv("PLANT_HOST", "plant")
 PLANT_PORT = int(os.getenv("PLANT_PORT", "5020"))
@@ -56,7 +58,11 @@ SITE_LINKS = [dict(key=k, name=v["site"], company=v["company"], country=v["count
                    url=os.getenv(f"PUBLIC_HUB_{k.upper().replace('-', '_')}", ""))
               for k, v in sites.SITES.items()]
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
-PAGES = {"/": "index.html", "/operator": "operator.html"}
+PAGES = {"/": "index.html", "/operator": "operator.html", "/mapping": "mapping.html"}
+# The standard model's mapping of all three sites (generated into inventory/uns/, copied into the image).
+UNS_DIR = next(d for d in (os.path.join(os.path.dirname(os.path.abspath(__file__)), "uns"),
+                           os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "inventory", "uns"))
+               if os.path.isdir(d))
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("dcs")
@@ -287,6 +293,49 @@ def datapath(rt, tag):
     )
 
 
+def mapping_payload(rt):
+    """inventory/uns/ as JSON for the mapping page, with this site's live values: the native value its OPC UA
+    server publishes now, and that value converted to the standard by the mapping's own formula."""
+    import csv
+    with open(os.path.join(UNS_DIR, "mapping.csv"), encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    with open(os.path.join(UNS_DIR, "sites.json"), encoding="utf-8") as f:
+        overview = json.load(f)
+    key, snap = C.SITE_CFG["key"], rt.snapshot
+    live = {}
+    if snap.get("tags"):
+        values = engine_values(snap, rt.scan_count, rt.historian.stored)
+        nodes = {(f"s={v['id']}" if isinstance(v["id"], str) else f"i={v['id']}"): v for v in native.table().variables if v["src"]}
+        for r in rows:
+            v = nodes.get(r[f"{key}.nodeid"])
+            if v is None:
+                continue
+            raw = values.get(v["src"])
+            n = native.encode(v, raw)
+            live[r[f"{key}.nodeid"]] = dict(native=n, standard=to_standard(r[f"{key}.to_uns"], n),
+                                            quality="BAD" if not snap["io_ok"] else "NOT_APPLICABLE" if raw is None else "GOOD")
+    return dict(site=key, sites=overview["sites"], rows=rows, live=live, time=snap.get("time"))
+
+
+def to_standard(formula, x):
+    """Apply a mapping.csv conversion ("x * a + b", "x" or "map n→s, ...") to a native value."""
+    if x is None:
+        return None
+    if formula.startswith("map "):
+        table = dict(pair.split("→") for pair in formula[4:].split(", "))
+        k = str(int(x)) if isinstance(x, bool) and str(int(x)) in table else str(x)
+        return table.get(k, "true" if x is True else "false" if x is False else x)
+    a, b = 1.0, 0.0
+    m = re.fullmatch(r"x(?: \* ([-\d.e]+))?(?: ([+-]) ([\d.e]+))?", formula)
+    if m is None or isinstance(x, (str, bool)):
+        return x
+    if m.group(1):
+        a = float(m.group(1))
+    if m.group(2):
+        b = float(m.group(3)) * (1 if m.group(2) == "+" else -1)
+    return float(x) * a + b
+
+
 def config_payload(rt):
     s = C.SITE_CFG
     return dict(
@@ -336,6 +385,12 @@ def make_handler(rt):
                 return self._json(200, rt.historian.events(start=start, limit=limit))
             if url.path == "/api/historian":
                 return self._json(200, dict(rt.historian.stats(), points=sorted(rt.historian.ids)))
+            if url.path == "/api/mapping":
+                # Every hub reads the other sites' live values from here: allow cross-origin reads.
+                return self._json(200, mapping_payload(rt), cors=True)
+            if url.path == "/api/mapping.csv":
+                with open(os.path.join(UNS_DIR, "mapping.csv"), "rb") as f:
+                    return self._send(200, f.read(), "text/csv; charset=utf-8")
             if url.path == "/api/datapath":
                 path = datapath(rt, q.get("tag", [""])[0])
                 return self._json(200, path) if path else self._json(404, {"error": "unknown tag"})
@@ -380,12 +435,14 @@ def make_handler(rt):
                 return True, f"{n} acknowledged"
             return None
 
-        def _json(self, code, obj):
-            self._send(code, json.dumps(obj).encode("utf-8"), "application/json")
+        def _json(self, code, obj, cors=False):
+            self._send(code, json.dumps(obj).encode("utf-8"), "application/json", cors)
 
-        def _send(self, code, body, ctype):
+        def _send(self, code, body, ctype, cors=False):
             self.send_response(code)
             self.send_header("Content-Type", ctype)
+            if cors:
+                self.send_header("Access-Control-Allow-Origin", "*")
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
             self.end_headers()

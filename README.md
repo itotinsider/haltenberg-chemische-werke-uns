@@ -46,6 +46,7 @@ docker compose up -d --build
 | Node-RED (OPC UA client flows) | http://localhost:1880 |
 | Port Arden, US (hub · OPC UA) | http://localhost:8120 · `opc.tcp://localhost:4841/PortArden/ASU7100` |
 | Vadhana, IN (hub · OPC UA) | http://localhost:8130 · `opc.tcp://localhost:4842/vadhana/asu2` |
+| Site mapping explorer (all three sites → the standard, live) | http://localhost:8110/mapping |
 | The standard model and the mapping of all three | [`dataops/uns_model.py`](dataops/uns_model.py), [`inventory/uns/mapping.csv`](inventory/uns/mapping.csv) |
 
 Or open Claude Code in this folder and ask: `read the CLAUDE.md file and README.md file and set up the environment`.

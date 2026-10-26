@@ -5,12 +5,15 @@
     "get": [
       "/",
       "/operator",
+      "/mapping",
       "/api/state",
       "/api/config",
       "/api/history?tags=&minutes=&points=",
       "/api/events?limit=&start=",
       "/api/historian",
-      "/api/datapath?tag="
+      "/api/datapath?tag=",
+      "/api/mapping",
+      "/api/mapping.csv"
     ],
     "post": [
       "/api/loops/<tag> {mode, sp, op, sp_hi, sp_lo, kc, ti, sp_rate, ratio}",
