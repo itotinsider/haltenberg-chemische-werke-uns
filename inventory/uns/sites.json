@@ -1,0 +1,53 @@
+{
+  "_source": "common/sites.py, dcs/config.py, dcs/native.py (one record per site)",
+  "sites": {
+    "haltenberg": {
+      "company": "Haltenberg Chemische Werke",
+      "site": "Haltenberg",
+      "country": "Germany",
+      "timezone": "Europe/Berlin",
+      "unit": "ASU1",
+      "unit_label": "Air Separation Unit 1",
+      "capacity": "~1,000 t/d O₂",
+      "scale": 1.0,
+      "customers": "Ethylene-oxide plant, acetylene (partial oxidation), site N₂ grid",
+      "equipment": {"lox_pump_spare": false, "gan_product": true},
+      "ppu_cycle_s": 14400.0,
+      "dcs": {"tags": 72, "equipment": ["MAC", "EXP", "BAC", "LOXP", "GANC", "LOXB", "LINB"], "interlocks": ["I-100", "I-300", "I-110", "I-500", "I-503", "I-505", "I-506"]},
+      "opcua": {"profile": "hcw", "namespace": "urn:haltenberg:hcw:asu1:dcs", "endpoint_path": "/hcw/asu1/", "nodeids": "string", "source_timestamps": "UTC", "variables": 217},
+      "uns_root": "hcw/haltenberg/air-separation/asu1"
+    },
+    "port-arden": {
+      "company": "HCW Americas",
+      "site": "Port Arden",
+      "country": "United States (Texas, Gulf Coast)",
+      "timezone": "America/Chicago",
+      "unit": "ASU7100",
+      "unit_label": "Air Separation Unit, Train 71",
+      "capacity": "~1,500 t/d O₂",
+      "scale": 1.5,
+      "customers": "Refinery (FCC oxygen enrichment), partial-oxidation unit, N₂ pipeline to the chemical park",
+      "equipment": {"lox_pump_spare": true, "gan_product": true},
+      "ppu_cycle_s": 10800.0,
+      "dcs": {"tags": 72, "equipment": ["MAC", "EXP", "BAC", "LOXP", "GANC", "LOXB", "LINB", "LOXPB"], "interlocks": ["I-100", "I-300", "I-110", "I-500", "I-503", "I-505", "I-506"]},
+      "opcua": {"profile": "us", "namespace": "urn:hcw-americas:port-arden:asu7100:dcs", "endpoint_path": "/PortArden/ASU7100", "nodeids": "string", "source_timestamps": "UTC", "variables": 219},
+      "uns_root": "hcw/port-arden/air-separation/asu7100"
+    },
+    "vadhana": {
+      "company": "HCW India",
+      "site": "Vadhana",
+      "country": "India (Gujarat)",
+      "timezone": "Asia/Kolkata",
+      "unit": "ASU2",
+      "unit_label": "Air Separation Unit 2",
+      "capacity": "~600 t/d O₂",
+      "scale": 0.6,
+      "customers": "Electric-arc-furnace steel works (cyclic oxygen demand, one heat per hour)",
+      "equipment": {"lox_pump_spare": false, "gan_product": false},
+      "ppu_cycle_s": 7200.0,
+      "dcs": {"tags": 62, "equipment": ["MAC", "EXP", "BAC", "LOXP", "LOXB"], "interlocks": ["I-100", "I-300", "I-110", "I-500", "I-505"]},
+      "opcua": {"profile": "in", "namespace": "urn:hcw-india:vadhana:asu2", "endpoint_path": "/vadhana/asu2", "nodeids": "numeric", "source_timestamps": "local time as UTC (+19800 s)", "variables": 180},
+      "uns_root": "hcw/vadhana/air-separation/asu2"
+    }
+  }
+}

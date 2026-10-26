@@ -18,6 +18,10 @@ plant container                         dcs container
                                                                             TWA → exports/*.csv
 ```
 
+HCW runs this pair three times, once per site (Haltenberg, Port Arden, Vadhana): the same two
+images, with `HCW_SITE` selecting the site. Each pair has its own network names (`plant`/`dcs`,
+`plant-us`/`dcs-us`, `plant-in`/`dcs-in`), ports and data folder. See [Global sites](Global-sites).
+
 ## The containers
 
 - The **plant** knows nothing about control. It reads valve positions and run commands from its

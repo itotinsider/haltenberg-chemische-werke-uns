@@ -32,7 +32,8 @@ docker run --rm -v "$PWD":/w -w /w python:3.12-slim python tools/offline_sim.py 
   --hours 1.5 --every 300 --scenario eo_demand_step@600 --cmd sp:FIC-101=160@1800
 ```
 
-`--seed 7` makes a run repeatable.
+`--seed 7` makes a run repeatable. `--site port-arden` (or `vadhana`) runs another
+[site](Global-sites).
 
 ## Tests
 
@@ -47,14 +48,15 @@ docker compose run --rm tests python tools/inventory.py         # after an inten
 ```
 
 The test container mounts the working tree, so there is nothing to rebuild after a code change.
-It does not touch the running stack. The tests come in four parts:
+It does not touch the running stack. The tests come in five parts:
 
 | File | What it checks | Time |
 |---|---|---|
 | `tests/test_inventory.py` | The committed [interface inventory](Interface-reference) still matches the code | 5 s |
 | `tests/test_contracts.py` | Every name a layer uses exists in the layer it comes from: Modbus map ↔ plant model ↔ DCS config ↔ OPC UA ↔ operator console, instructor station, Node-RED flow and docs (including this wiki). Hidden faults never reach the DCS side | 8 s |
 | `tests/test_behaviour.py` | Plant model + DCS, faster than real time: steady state in spec with no P1/P2 alarm; a signature for every instructor scenario; the [restart procedures](Process-behaviour#restart-after-a-trip); permissives, I/O loss, checkpoint, ESD, PPU time compression | 30 s |
-| `tests/test_e2e.py` | The real plant and DCS programs over real Modbus: HTTP API, OPC UA browse / values / HistoryRead and the raw registers against the inventory; Bad quality when the plant goes away | 20 s |
+| `tests/test_sites.py` | The [other sites](Global-sites): each site's configuration and field I/O; its OPC UA address space = the table the mapping comes from; the [mapping](Standard-data-model) covers every published value and converts it correctly; steady state at Port Arden and Vadhana, the standby-pump changeover, a Vadhana restart | 10 s |
+| `tests/test_e2e.py` | The real plant and DCS programs over real Modbus: HTTP API, OPC UA browse / values / HistoryRead and the raw registers against the inventory; Bad quality when the plant goes away. For Port Arden and Vadhana: the live address space, setpoints through the mapping, Vadhana's timestamps, and a DCS refusing another site's plant | 40 s |
 
 **When a test fails:**
 
@@ -64,7 +66,10 @@ It does not touch the running stack. The tests come in four parts:
 - **A behaviour test:** cause and effect changed. Either fix the regression, or, if the new
   behaviour is right, update the test and say why in the PR.
 - **New instructor scenario:** add its expected effect to `SIGNATURES` in
-  `tests/test_behaviour.py`. A test fails until you do.
+  `tests/test_behaviour.py`. A test fails until you do. A scenario only another site has (Port
+  Arden's `lox_pump_trip`) is tested in `tests/test_sites.py`.
+- **New DCS tag:** the inventory generator fails until `dataops/uns_model.py` gives it a standard
+  point.
 
 The behaviour tests use a fixed seed. Their limits are meant to hold for any seed (seeds 1–44 pass
 except 37, see CLAUDE.md), so check another one after retuning:

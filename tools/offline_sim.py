@@ -9,11 +9,13 @@ For tuning controllers and checking scenarios before building the containers:
 `--cmd action@t` issues a DCS operator command (lineup, ack, reset:I-100, start:MAC,
 start:EXP, switch, sp:FIC-101=120, mode:FIC-111=MAN, op:FIC-111=40, ratio:FIC-111=1.6).
 `--seed n` makes a run repeatable (the model's noise and demand wander are random).
+`--site key` runs another site of the global demo (common/sites.py; default: HCW_SITE or haltenberg).
 
 The `Sim` class is also the harness of the behaviour tests (tests/test_behaviour.py).
 """
 
 import argparse
+import importlib
 import os
 import random
 import sys
@@ -25,6 +27,16 @@ sys.path[:0] = [os.path.join(ROOT, "plant"), os.path.join(ROOT, "dcs"), os.path.
 from model import Plant  # noqa: E402
 from control import DCS  # noqa: E402
 import config as C  # noqa: E402
+import sites  # noqa: E402
+
+
+def use_site(key):
+    """Switch this process to another site: the DCS config is rebuilt for it, and new Plant objects
+    follow HCW_SITE too. Returns the previous site key (tests switch back when done)."""
+    old = sites.current_key()
+    os.environ["HCW_SITE"] = key
+    importlib.reload(C)
+    return old
 
 COLUMNS = ["FIC-101", "JI-104", "UIC-103", "AI-202", "PIC-402", "LIC-403", "LIC-404", "FIC-405",
            "AIC-602", "AI-601", "FIC-501", "FIC-111", "TI-512", "PIC-502", "FIC-503", "PIC-504", "FIC-507", "FIC-508",
@@ -49,12 +61,13 @@ class Window:
 class Sim:
     """The plant model and the DCS coupled directly: one 1 s DCS scan, two 0.5 s plant steps."""
 
-    def __init__(self, seed=None, cycle=14400.0, t0=None):
+    def __init__(self, seed=None, cycle=None, t0=None):
         if seed is not None:
             random.seed(seed)
         self.t0 = time.time() if t0 is None else t0
         self.t = 0.0
-        self.plant = Plant(self.t0, ppu_cycle_s=cycle)
+        cycle = C.SITE_CFG["ppu_cycle_s"] if cycle is None else cycle
+        self.plant = Plant(self.t0, ppu_cycle_s=cycle, site=C.SITE_CFG)
         self.dcs = DCS(ppu_cycle_s=cycle)
         self.events = []         # every DCS event so far (ts relative to the start, s)
 
@@ -147,13 +160,16 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--hours", type=float, default=2.0)
     ap.add_argument("--every", type=float, default=600.0, help="print interval, s")
-    ap.add_argument("--cycle", type=float, default=14400.0)
+    ap.add_argument("--cycle", type=float, default=None, help="PPU bed cycle, s (default: the site's)")
+    ap.add_argument("--site", default=None, choices=list(sites.SITES))
     ap.add_argument("--seed", type=int, default=None)
     ap.add_argument("--scenario", action="append", default=[])
     ap.add_argument("--cmd", action="append", default=[])
     ap.add_argument("--cols", default=",".join(COLUMNS))
     args = ap.parse_args()
-    cols = args.cols.split(",")
+    if args.site:
+        use_site(args.site)
+    cols = [c for c in args.cols.split(",") if c in C.TAG_INDEX]
 
     sim = Sim(seed=args.seed, cycle=args.cycle)
     sched = []

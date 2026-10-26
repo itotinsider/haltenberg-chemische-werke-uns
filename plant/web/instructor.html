@@ -66,7 +66,7 @@
 </head>
 <body>
 <header>
-  <div><b>ASU1 Instructor Station</b><small>Training simulator · Haltenberg Chemische Werke</small></div>
+  <div><b id="hdr-title">ASU1 Instructor Station</b><small id="hdr-sub">Training simulator · Haltenberg Chemische Werke</small></div>
   <div class="spacer"></div>
   <span class="pill" id="dcs-pill">DCS —</span>
   <span class="pill" id="mb-pill">Modbus —</span>
@@ -165,16 +165,17 @@ function render() {
     ["Main condenser ΔT", h.condenser_dT_K + " K"],
     ["Waste N₂ flow", h.waste_n2 + " kNm³/h"],
   ].map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join("");
-  const c = S.consumers;
+  const si = S.site_info;
+  $("#hdr-title").textContent = `${si.unit} Instructor Station`;
+  $("#hdr-sub").textContent = `Training simulator · ${si.company} · ${si.name}`;
+  document.title = `${si.unit} Instructor Station · ${si.name}`;
+  // Consumers differ per site (common/sites.py): one row each, as the plant reports them.
   $("#env").innerHTML = [
     ["Ambient temperature", S.environment.ambient_C + " °C"],
     ["Heatwave offset", "+" + S.environment.heatwave_offset_K + " K"],
-    ["O₂ demand · EO/EG plant", c["EO"] + " kNm³/h"],
-    ["O₂ demand · acetylene POX", c["Acetylene"] + " kNm³/h"],
-    ["O₂ demand · other", c["Other"] + " kNm³/h"],
+    ...Object.entries(S.consumers).map(([k, v]) => [`Demand · ${esc(k)}`, v + " kNm³/h"]),
     ["O₂ demand total (at header pressure)", S.o2_demand + " kNm³/h"],
-    ["N₂ grid demand", S.n2_demand + " kNm³/h"],
-    ["Active N₂ purge jobs", S.purge_jobs],
+    ...(S.n2_demand ? [["N₂ demand total", S.n2_demand + " kNm³/h"], ["Active N₂ purge jobs", S.purge_jobs]] : []),
   ].map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join("");
   const age = S.dcs_watchdog_age_s;
   $("#dcs-pill").textContent = age == null ? "DCS not connected" : age < 5 ? "DCS writing outputs" : `DCS silent ${age}s · outputs held`;
@@ -205,13 +206,13 @@ function renderIO() {
   $("#mbport").textContent = `port ${S.modbus.port}, unit 1`;
 }
 // Time-compression slider: logarithmic, 0 = design cycle (real time), 100 = fastest.
-const tcToCycle = (v, c) => Math.round(c.max * Math.pow(c.min / c.max, v / 100));
-const tcToSlider = (sec, c) => Math.log(sec / c.max) / Math.log(c.min / c.max) * 100;
+const tcToCycle = (v, c) => Math.round(c.design * Math.pow(c.min / c.design, v / 100));
+const tcToSlider = (sec, c) => Math.log(sec / c.design) / Math.log(c.min / c.design) * 100;
 let tcBusy = false;   // never move the slider from under the instructor's mouse
 function renderCycle() {
   const c = S.ppu_cycle, sl = $("#tc-slider");
   if (!$("#tc-ticks").children.length) {
-    $("#tc-ticks").innerHTML = [14400, 7200, 3600, 1800, 900, 600, 300].map(x => `<button data-s="${x}">${fmtDur(x)}</button>`).join("");
+    $("#tc-ticks").innerHTML = [c.design, ...[7200, 3600, 1800, 900, 600, 300].filter(x => x < c.design)].map(x => `<button data-s="${x}">${fmtDur(x)}</button>`).join("");
     document.querySelectorAll("#tc-ticks button").forEach(b => b.addEventListener("click", () => applyCycle(+b.dataset.s)));
     sl.addEventListener("input", () => { tcBusy = true; showCycle(tcToCycle(+sl.value, S.ppu_cycle)); });
     sl.addEventListener("change", () => applyCycle(tcToCycle(+sl.value, S.ppu_cycle)));

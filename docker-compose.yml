@@ -1,4 +1,8 @@
-# HCW Haltenberg — ASU1 simulator stack.
+# HCW global demo — three air separation units, one simulator engine.
+#
+#   plant / dcs        Haltenberg (DE), ASU1: the reference site
+#   plant-us / dcs-us  Port Arden (US, Texas), ASU7100: 1.5x size, standby LOX pump, US-style OPC UA
+#   plant-in / dcs-in  Vadhana (IN, Gujarat), ASU2: 0.6x size, O2 only for a steel works, KKS-style OPC UA
 #
 #   plant  process model + Modbus TCP I/O rack + instructor station (fault scenarios)
 #   dcs    control system: I/O scan, controllers, interlocks, sequences, built-in historian,
@@ -6,13 +10,17 @@
 #   nodered  Node-RED as an OPC UA *client* (IT/OT integration demo): 15-min TWA -> CSV
 #   tests  test runner (profile "test", never started by `up`): docker compose run --rm tests
 #
+# The sites differ only by HCW_SITE (common/sites.py): same images, other configuration.
+#
 # The DCS is the only system with a modelled data interface (OPC UA). The plant's Modbus
 # registers are the raw field level underneath it.
 #
 # Several stacks on one machine (one per git worktree / agent): put a .env file (git-ignored) in
-# the worktree that sets HCW_STACK and the five HCW_*_PORT host ports, e.g.
+# the worktree that sets HCW_STACK and the HCW_*_PORT host ports, e.g.
 #   HCW_STACK=hcw2  HCW_DCS_PORT=8210  HCW_INSTRUCTOR_PORT=8211  HCW_OPCUA_PORT=4940
 #   HCW_MODBUS_PORT=5120  HCW_NODERED_PORT=1980
+#   HCW_US_DCS_PORT=8220  HCW_US_INSTRUCTOR_PORT=8221  HCW_US_OPCUA_PORT=4941  HCW_US_MODBUS_PORT=5121
+#   HCW_IN_DCS_PORT=8230  HCW_IN_INSTRUCTOR_PORT=8231  HCW_IN_OPCUA_PORT=4942  HCW_IN_MODBUS_PORT=5122
 # Compose reads it automatically. Container names and image tags then carry the stack name, and
 # each worktree already has its own data/, exports/ and compose network. Inside the network the
 # services keep their standard ports. Without a .env everything is as before (hcw, 8110, …).
@@ -24,6 +32,24 @@ x-asu-env: &asu-env
   # changes it (300 s … 14400 s); the DCS then persists it in data/dcs_state.json, and the plant
   # follows the DCS.
   PPU_CYCLE_SECONDS: "14400"
+
+# Hub pages link to each other's site (a browser on the host).
+x-hub-links: &hub-links
+  PUBLIC_HUB_HALTENBERG: http://localhost:${HCW_DCS_PORT:-8110}
+  PUBLIC_HUB_PORT_ARDEN: http://localhost:${HCW_US_DCS_PORT:-8120}
+  PUBLIC_HUB_VADHANA: http://localhost:${HCW_IN_DCS_PORT:-8130}
+
+# The DCS settings every site shares.
+x-dcs-env: &dcs-env
+  PLANT_PORT: "5020"
+  SCAN_SECONDS: "1"
+  WEB_PORT: "8110"
+  OPCUA_PORT: "4840"
+  DATA_DIR: /app/data
+  HISTORIAN_DEADBAND_PCT: "0.25"
+  HISTORIAN_MAX_INTERVAL_SECONDS: "60"
+  HISTORIAN_RETENTION_DAYS: "14"
+  PUBLIC_NODERED_URL: http://localhost:${HCW_NODERED_PORT:-1880}
 
 services:
   plant:
@@ -54,27 +80,91 @@ services:
       - "${HCW_DCS_PORT:-8110}:8110"     # Hub + operator console: http://localhost:8110
       - "${HCW_OPCUA_PORT:-4840}:4840"   # OPC UA: opc.tcp://localhost:4840/hcw/asu1/
     environment:
-      <<: *asu-env
+      <<: [*asu-env, *dcs-env, *hub-links]
       # The plant's compose service name — "localhost" inside a container is the container.
       PLANT_HOST: plant
-      PLANT_PORT: "5020"
-      SCAN_SECONDS: "1"
-      WEB_PORT: "8110"
-      OPCUA_PORT: "4840"
-      DATA_DIR: /app/data
-      HISTORIAN_DEADBAND_PCT: "0.25"
-      HISTORIAN_MAX_INTERVAL_SECONDS: "60"
-      HISTORIAN_RETENTION_DAYS: "14"
       # Links on the hub page: how a browser on the host reaches the other endpoints.
       PUBLIC_INSTRUCTOR_URL: http://localhost:${HCW_INSTRUCTOR_PORT:-8111}
       PUBLIC_OPCUA_ENDPOINT: opc.tcp://localhost:${HCW_OPCUA_PORT:-4840}/hcw/asu1/
       PUBLIC_MODBUS_ENDPOINT: localhost:${HCW_MODBUS_PORT:-5020}
-      PUBLIC_NODERED_URL: http://localhost:${HCW_NODERED_PORT:-1880}
     volumes:
       # Historian database + controller/sequence checkpoint: survive rebuilds, visible on host.
       - ./data:/app/data
     depends_on:
       - plant
+
+  # ---- Port Arden, Texas (HCW Americas): ASU7100 ----
+  # Same images; HCW_SITE selects the site. Its PPU cycle comes from common/sites.py (3 h).
+  plant-us:
+    image: ${HCW_STACK:-hcw}/asu1-plant:latest
+    container_name: ${HCW_STACK:-hcw}-us-plant
+    restart: unless-stopped
+    ports:
+      - "${HCW_US_INSTRUCTOR_PORT:-8121}:8111"
+      - "${HCW_US_MODBUS_PORT:-5021}:5020"
+    environment:
+      HCW_SITE: port-arden
+      MODBUS_PORT: "5020"
+      WEB_PORT: "8111"
+      DCS_URL: http://dcs-us:8110
+    depends_on:
+      - plant          # built by the plant service
+
+  dcs-us:
+    image: ${HCW_STACK:-hcw}/asu1-dcs:latest
+    container_name: ${HCW_STACK:-hcw}-us-dcs
+    restart: unless-stopped
+    ports:
+      - "${HCW_US_DCS_PORT:-8120}:8110"
+      - "${HCW_US_OPCUA_PORT:-4841}:4840"
+    environment:
+      <<: [*dcs-env, *hub-links]
+      HCW_SITE: port-arden
+      PLANT_HOST: plant-us
+      PUBLIC_INSTRUCTOR_URL: http://localhost:${HCW_US_INSTRUCTOR_PORT:-8121}
+      PUBLIC_OPCUA_ENDPOINT: opc.tcp://localhost:${HCW_US_OPCUA_PORT:-4841}/PortArden/ASU7100
+      PUBLIC_MODBUS_ENDPOINT: localhost:${HCW_US_MODBUS_PORT:-5021}
+    volumes:
+      - ./data/port-arden:/app/data
+    depends_on:
+      - dcs            # built by the dcs service
+      - plant-us
+
+  # ---- Vadhana, Gujarat (HCW India): ASU2 ----
+  plant-in:
+    image: ${HCW_STACK:-hcw}/asu1-plant:latest
+    container_name: ${HCW_STACK:-hcw}-in-plant
+    restart: unless-stopped
+    ports:
+      - "${HCW_IN_INSTRUCTOR_PORT:-8131}:8111"
+      - "${HCW_IN_MODBUS_PORT:-5022}:5020"
+    environment:
+      HCW_SITE: vadhana
+      MODBUS_PORT: "5020"
+      WEB_PORT: "8111"
+      DCS_URL: http://dcs-in:8110
+    depends_on:
+      - plant
+
+  dcs-in:
+    image: ${HCW_STACK:-hcw}/asu1-dcs:latest
+    container_name: ${HCW_STACK:-hcw}-in-dcs
+    restart: unless-stopped
+    ports:
+      - "${HCW_IN_DCS_PORT:-8130}:8110"
+      - "${HCW_IN_OPCUA_PORT:-4842}:4840"
+    environment:
+      <<: [*dcs-env, *hub-links]
+      HCW_SITE: vadhana
+      PLANT_HOST: plant-in
+      PUBLIC_INSTRUCTOR_URL: http://localhost:${HCW_IN_INSTRUCTOR_PORT:-8131}
+      PUBLIC_OPCUA_ENDPOINT: opc.tcp://localhost:${HCW_IN_OPCUA_PORT:-4842}/vadhana/asu2
+      PUBLIC_MODBUS_ENDPOINT: localhost:${HCW_IN_MODBUS_PORT:-5022}
+    volumes:
+      - ./data/vadhana:/app/data
+    depends_on:
+      - dcs
+      - plant-in
 
   nodered:
     build:

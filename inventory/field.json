@@ -6,7 +6,7 @@
     "direction": "plant -> DCS",
     "writer": "plant/model.py measurements()",
     "reader": "dcs/config.py io=",
-    "requests": ["100+26", "200+8", "300+36", "400+18", "500+30", "600+8", "900+2"],
+    "requests": ["100+26", "200+8", "300+36", "400+18", "500+30", "600+8", "900+4"],
     "points": {
       "FT-101": {"address": 100, "desc": "MAC forward air flow, kNm3/h"},
       "PT-102": {"address": 102, "desc": "MAC discharge pressure, bar(a)"},
@@ -71,7 +71,8 @@
       "AT-602": {"address": 602, "desc": "O2 in GAN, ppm"},
       "AT-603": {"address": 604, "desc": "Total hydrocarbons in LOX, ppm CH4-eq"},
       "AT-604": {"address": 606, "desc": "Acetylene in LOX, ppm"},
-      "HB-900": {"address": 900, "desc": "Plant I/O heartbeat counter"}
+      "HB-900": {"address": 900, "desc": "Plant I/O heartbeat counter"},
+      "RID-901": {"address": 902, "desc": "I/O rack identity: the site's rack number (common/sites.py rack_id)"}
     }
   },
   "holding_registers": {
@@ -112,7 +113,8 @@
       "YS-501": {"address": 50, "desc": "LOX pump P-501 running"},
       "YS-503": {"address": 51, "desc": "GAN compressor K-503 running"},
       "YS-505": {"address": 52, "desc": "LOX backup pump P-505 running"},
-      "YS-506": {"address": 53, "desc": "LIN backup pump P-506 running"}
+      "YS-506": {"address": 53, "desc": "LIN backup pump P-506 running"},
+      "YS-501B": {"address": 54, "desc": "LOX pump P-501B running (standby pump, sites with a spare)"}
     }
   },
   "coils": {
@@ -128,7 +130,8 @@
       "HS-501": {"address": 50, "desc": "LOX pump P-501 run command"},
       "HS-503": {"address": 51, "desc": "GAN compressor K-503 run command"},
       "HS-505": {"address": 52, "desc": "LOX backup pump P-505 run command"},
-      "HS-506": {"address": 53, "desc": "LIN backup pump P-506 run command"}
+      "HS-506": {"address": 53, "desc": "LIN backup pump P-506 run command"},
+      "HS-501B": {"address": 54, "desc": "LOX pump P-501B run command (standby pump, sites with a spare)"}
     }
   }
 }

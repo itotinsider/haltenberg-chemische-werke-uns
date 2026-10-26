@@ -1,0 +1,27 @@
+{
+  "_source": "plant/model.py (instructor station only: never on Modbus, in the historian or on OPC UA)",
+  "scenarios": {
+    "eo_demand_step": {"label": "Refinery O2 demand step (+20 %)", "kind": "latched", "group": "Consumers"},
+    "acetylene_burner_trip": {"label": "POX burner trip", "kind": "timed", "group": "Consumers", "duration_s": 900},
+    "n2_purge_campaign": {"label": "N2 pipeline: customer purge campaign", "kind": "latched", "group": "Consumers"},
+    "mac_motor_trip": {"label": "MAC motor trip", "kind": "oneshot", "group": "Main air compressor"},
+    "mac_bearing_wear": {"label": "MAC bearing degradation", "kind": "latched", "group": "Main air compressor"},
+    "mac_efficiency_drift": {"label": "MAC impeller fouling (efficiency drift)", "kind": "latched", "group": "Main air compressor"},
+    "ppu_water_carryover": {"label": "DCAC water carry-over into PPU", "kind": "latched", "group": "Front-end purification"},
+    "regen_heater_fault": {"label": "Regeneration heater fault", "kind": "latched", "group": "Front-end purification"},
+    "booster_motor_trip": {"label": "Booster motor trip", "kind": "oneshot", "group": "Internal compression"},
+    "lox_pump_cavitation": {"label": "LOX pump cavitation (NPSH loss)", "kind": "latched", "group": "Internal compression"},
+    "gan_compressor_trip": {"label": "GAN compressor K-503 motor trip", "kind": "oneshot", "group": "Nitrogen & backup"},
+    "lox_backup_pump_trip": {"label": "LOX backup pump P-505 motor trip", "kind": "oneshot", "group": "Nitrogen & backup"},
+    "expander_loss_of_load": {"label": "Expander loss of loading (overspeed)", "kind": "oneshot", "group": "Cold box"},
+    "mhe_fouling": {"label": "MHE fouling / icing", "kind": "latched", "group": "Cold box"},
+    "hydrocarbon_event": {"label": "Hydrocarbon event (flare upwind)", "kind": "latched", "group": "Environment"},
+    "heatwave": {"label": "Heatwave (+12 degC)", "kind": "latched", "group": "Environment"},
+    "lox_pump_trip": {"label": "LOX pump motor trip (duty pump)", "kind": "oneshot", "group": "Internal compression"}
+  },
+  "ground_truth": {
+    "hidden": ["mac_efficiency", "mac_bearing_degradation", "mac_trip_latched", "surge_margin_pct", "ppu_loading", "coldbox_dT_K", "mhe_fouling_K", "mhe_profile_shift_K", "mhe_duty_MW", "expander_overspeed", "condenser_dT_K", "waste_n2", "booster_trip_latched", "lox_pump_cavitation", "booster_excess_air", "gan_compressor_trip_latched", "lox_backup_pump_trip_latched", "lox_pump_trip_latched"],
+    "consumers": ["Refinery FCC", "POX unit", "Other", "N2 pipeline"],
+    "environment": ["ambient_C", "heatwave_offset_K"]
+  }
+}

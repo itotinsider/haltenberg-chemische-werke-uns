@@ -13,7 +13,17 @@ Equipment / interlocks / sequences are configured further down.
 `suppress` names the equipment whose run state gates this tag's alarms (state-based alarming,
 ISA-18.2): a stopped MAC must not flood the alarm list with low-flow alarms — the same rule
 SHT applied with its "unit not running => don't evaluate limits".
+
+Every site of the global demo (common/sites.py) runs this engineering database. It is written for
+the Haltenberg reference plant; the end of this file derives a site's variant from it: tags and
+equipment the site doesn't have are removed, flows and powers are scaled to its size, and a site
+with a standby LOX pump gets P-501B with an automatic changeover.
 """
+
+import sites
+
+SITE_CFG = sites.get()
+SCALE = SITE_CFG["scale"]
 
 BLOCKS = [
     ("MainAirCompressor", "1 · Air intake, main air & booster compressors"),
@@ -25,10 +35,10 @@ BLOCKS = [
     ("Energy", "7 · Energy"),
 ]
 
-ENTERPRISE = "HCW"
-SITE = "Haltenberg"
-UNIT = "ASU1"
-UNIT_LABEL = "Air Separation Unit 1"
+ENTERPRISE = SITE_CFG["enterprise"]
+SITE = SITE_CFG["site"].replace(" ", "")
+UNIT = SITE_CFG["unit"]
+UNIT_LABEL = SITE_CFG["unit_label"]
 
 
 def ai(tag, desc, unit, lo, hi, io, block, dec=2, alarms=None, suppress=None):
@@ -261,6 +271,8 @@ CALC_INPUTS = {
     "FY-501": ["FIC-101", "FI-408", "LIC-404"],
     "KPI-701": ["JI-104", "JI-113", "JI-514", "FIC-501"],
 }
+# The motor powers KPI-701 adds up (a site without K-503 has one less).
+KPI_POWER_TAGS = ["JI-104", "JI-113", "JI-514"]
 
 # Severity per limit type (ISA-18.2-ish: 1 = urgent ... 3 = low)
 ALARM_PRIORITY = {"HH": 1, "LL": 1, "H": 2, "L": 2}
@@ -362,6 +374,14 @@ INTERLOCKS = {
     ),
 }
 CO2_BREAKTHROUGH_TRIP_S = 1800
+# Configured surge line of the MAC antisurge controller UIC-103: this flow at 5.75 bar(a).
+SURGE_FLOW = 105.0
+# Equipment groups: a key that stands for "any of these runs" (alarm suppression, armed causes,
+# permissives). Standby: when one fails, the DCS starts the other (automatic changeover). Both are
+# only used by sites with a standby LOX pump (see the end of this file).
+EQUIPMENT_GROUPS = {}
+STANDBY = {}
+STANDBY_START_TIMEOUT_S = 30
 # FY-501 GOX load limit = GOX_AIR_LIMIT x air - LOX to storage. 0.208 kNm3 O2 per kNm3 air is just above the
 # normal GOX + LOX peaks at design (purity ~99.4 % if held there): a sustained over-demand shows as a
 # purity L alarm and backup-vaporizer send-out, not as a purity crash.
@@ -384,3 +404,92 @@ PPU_DESIGN_CYCLE = 14400.0
 PPU_CYCLE_MIN, PPU_CYCLE_MAX = 300.0, 14400.0
 REGEN_SP = 180.0
 REGEN_PEAK_MIN = 160.0
+
+
+# ---- Site variant (common/sites.py) ----------------------------------------------------------
+# 1. Equipment the site doesn't have: drop every tag on its field points, then what depended on them
+#    (a split-range master without slaves, interlocks with nothing to stop, causes, forces, line-up).
+_absent = sites.absent_points(SITE_CFG)
+_drop = {t["tag"] for t in TAGS if t.get("io") in _absent or t.get("out") in _absent}
+_drop |= {t["tag"] for t in TAGS if t.get("cascade") and all(c["slave"] in _drop for c in t["cascade"])}
+TAGS = [t for t in TAGS if t["tag"] not in _drop]
+for t in TAGS:
+    if t.get("cascade"):
+        t["cascade"] = [c for c in t["cascade"] if c["slave"] not in _drop]
+_slaves = {c["slave"] for t in TAGS for c in t.get("cascade", [])}
+_orphans = {t["tag"] for t in TAGS if t["kind"] == "PID" and "CAS" in t["modes"]
+            and t["tag"] not in _slaves and not t.get("ratio_of")}
+for t in TAGS:
+    if t["tag"] in _orphans:       # its cascade master is gone (FIC-405 without AIC-602): AUTO on its own SP
+        t["modes"], t["mode"] = ["MAN", "AUTO"], "AUTO" if t["mode"] == "CAS" else t["mode"]
+EQUIPMENT = {k: v for k, v in EQUIPMENT.items() if v["fb"] not in _absent}
+INTERLOCKS = {k: v for k, v in INTERLOCKS.items() if any(eq in EQUIPMENT for eq in v["stops"])}
+for il in INTERLOCKS.values():
+    il["causes"] = [c for c in il["causes"] if c[0] not in _drop]
+    il["forces"] = {k: v for k, v in il["forces"].items() if k not in _drop}
+    il["handover"] = {m: sl for m, sl in il.get("handover", {}).items() if m not in _drop and sl not in _drop}
+    il["parents"] = [p for p in il.get("parents", []) if p in INTERLOCKS]
+LINEUP = {k: ("AUTO" if k in _orphans else v) for k, v in LINEUP.items() if k not in _drop}
+PRIORITY_OVERRIDE = {k: v for k, v in PRIORITY_OVERRIDE.items() if k[0] not in _drop}
+KPI_POWER_TAGS = [t for t in KPI_POWER_TAGS if t not in _drop]
+CALC_INPUTS = {k: [i for i in v if i not in _drop] for k, v in CALC_INPUTS.items() if k not in _drop}
+for t in TAGS:
+    if t["tag"] == "KPI-701":
+        t["desc"] = f"Specific power (({' + '.join(KPI_POWER_TAGS)}) ÷ FIC-501)"
+
+# 2. Size: every flow and power scales (geometric similarity). PID gains act on % of span, so the
+#    tuning carries over; so do the dynamics, because the plant model scales the same way.
+EXTENSIVE_UNITS = {"kNm³/h", "MW"}
+_units = {t["tag"]: t["unit"] for t in TAGS}
+if SCALE != 1.0:
+    def _sc(x):
+        return round(x * SCALE, 6) if isinstance(x, (int, float)) else x
+    for t in TAGS:
+        if t["unit"] in EXTENSIVE_UNITS:
+            for k in ("lo", "hi", "sp", "sp_lo", "sp_hi", "sp_rate"):
+                if t.get(k) is not None:
+                    t[k] = _sc(t[k])
+            t["alarms"] = {k: _sc(v) for k, v in t["alarms"].items()}
+        for c in t.get("cascade", []):
+            if _units[c["slave"]] in EXTENSIVE_UNITS:
+                c["sp"] = [_sc(x) for x in c["sp"]]
+    SURGE_FLOW = _sc(SURGE_FLOW)
+    PER_GOX_MIN_FLOW = _sc(PER_GOX_MIN_FLOW)
+    GOX_SUMP_ALLOWANCE = _sc(GOX_SUMP_ALLOWANCE)
+
+# 3. Site engineering: Vadhana's steel works blows oxygen for ~38 min of every hour. Held on the
+#    reference load limit (0.208, the purity edge) for a whole heat, GOX purity sank to its L alarm; the
+#    site set the limit lower and lets the LOX backup vaporizer cover the peaks.
+GOX_AIR_LIMIT = {"vadhana": 0.206}.get(SITE_CFG["key"], GOX_AIR_LIMIT)
+for t in TAGS:
+    if t["tag"] == "FY-501":
+        t["desc"] = t["desc"].replace("0.208", f"{GOX_AIR_LIMIT:g}")
+
+# 4. Climate: the ambient alarm is set for the site's weather (it is informational, P3).
+_ALARM_OVERRIDES = {"port-arden": {"TI-109": {"H": 38}}, "vadhana": {"TI-109": {"H": 42}}}
+for t in TAGS:
+    t["alarms"].update(_ALARM_OVERRIDES.get(SITE_CFG["key"], {}).get(t["tag"], {}))
+
+# 5. A standby LOX pump (P-501B): same suction, discharge and FV-501 as P-501A. "LOXP" now means "a
+#    LOX pump runs" (EQUIPMENT_GROUPS); when the running pump trips, the DCS starts the other one instead
+#    of tripping I-500, and raises <pump>.AUTOSTART.
+if SITE_CFG["equipment"]["lox_pump_spare"]:
+    EQUIPMENT["LOXP"]["label"] = "LOX pump P-501A"
+    EQUIPMENT["LOXPB"] = dict(label="LOX pump P-501B", cmd="HS-501B", fb="YS-501B", block="ProductDelivery",
+                              trip="I-500", bypass_s=60, standby=True)
+    EQUIPMENT_GROUPS = {"LOXP": ["LOXP", "LOXPB"]}
+    STANDBY = {"LOXP": "LOXPB", "LOXPB": "LOXP"}
+    INTERLOCKS["I-500"]["stops"] = ["LOXP", "LOXPB"]
+    INTERLOCKS["I-500"]["label"] = "LOX pumps trip (internal compression)"
+    INTERLOCKS["I-500"]["trip_message"] = "LOX pumps P-501A/B tripped"
+    INTERLOCKS["I-500"]["extra_causes"] = [
+        "I-100 ASU shutdown", "I-110 booster trip (no booster air to vaporize LOX)",
+        "Running pump stopped while commanded and the standby can't take over",
+        f"Standby pump not running {STANDBY_START_TIMEOUT_S} s after its start", "Operator stop of the last running pump"]
+    for t in TAGS:
+        if t["tag"] == "FIC-501":
+            t["desc"] = "GOX product flow (pumped LOX, P-501A/B)"
+        elif t["tag"] == "PI-511":
+            t["desc"] = "LOX pumps P-501A/B discharge pressure"
+
+TAG_INDEX = {t["tag"]: t for t in TAGS}

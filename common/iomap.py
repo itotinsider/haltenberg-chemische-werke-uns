@@ -18,7 +18,8 @@ Addresses are FIXED and grouped by process area = the first digit of the tag num
     registers  area n -> n*100 ... n*100+99   (FT-101 at 100, FT-501 at 500, HB-900 at 900)
     bits       area n -> n*10  ... n*10+9     (YS-101 at 10, YS-501 at 50)
 A new point goes at the END of its area with the next free address; an existing address never
-changes, gaps are fine (a removed point leaves its address unused). The DCS reads and writes one
+changes, gaps are fine (a removed point leaves its address unused). The map is the same at every
+site (common/sites.py): a site without some equipment simply leaves its points unused. The DCS reads and writes one
 area per request, which also keeps every request within the Modbus limits (125 registers per
 read, 123 per write). tests/test_contracts.py enforces all of this.
 """
@@ -94,6 +95,7 @@ ANALOG_INPUTS = [
     ("AT-603", 604, "Total hydrocarbons in LOX, ppm CH4-eq"),
     ("AT-604", 606, "Acetylene in LOX, ppm"),
     ("HB-900", 900, "Plant I/O heartbeat counter"),
+    ("RID-901", 902, "I/O rack identity: the site's rack number (common/sites.py rack_id)"),
 ]
 
 # (point, address, description) — final control elements driven by the DCS, all 0..100 %.
@@ -126,6 +128,7 @@ DISCRETE_INPUTS = [
     ("YS-503", 51, "GAN compressor K-503 running"),
     ("YS-505", 52, "LOX backup pump P-505 running"),
     ("YS-506", 53, "LIN backup pump P-506 running"),
+    ("YS-501B", 54, "LOX pump P-501B running (standby pump, sites with a spare)"),
 ]
 
 # Equipment commands (DCS -> plant). Level-type: 1 = run / select, 0 = stop / deselect.
@@ -138,6 +141,7 @@ COILS = [
     ("HS-503", 51, "GAN compressor K-503 run command"),
     ("HS-505", 52, "LOX backup pump P-505 run command"),
     ("HS-506", 53, "LIN backup pump P-506 run command"),
+    ("HS-501B", 54, "LOX pump P-501B run command (standby pump, sites with a spare)"),
 ]
 
 

@@ -12,7 +12,8 @@ read the CLAUDE.md file and README.md file and set up the environment
 
 - Docker Desktop (or Docker Engine + Compose v2)
 - Free host ports: **8110** (DCS console), **8111** (instructor station), **4840** (OPC UA),
-  **5020** (Modbus TCP), **1880** (Node-RED)
+  **5020** (Modbus TCP), **1880** (Node-RED); for the two other sites also **8120, 8121, 4841, 5021**
+  (Port Arden) and **8130, 8131, 4842, 5022** (Vadhana)
 
 ## Start
 
@@ -37,6 +38,10 @@ a start-up procedure.
 | Modbus TCP field I/O (raw) | `localhost:5020`, unit 1 |
 | Node-RED (OPC UA client flows) | http://localhost:1880 |
 | 15-min averages (CSV, written by Node-RED) | `exports/asu1_twa_15min.csv` |
+| Port Arden (US) hub · OPC UA | http://localhost:8120 · `opc.tcp://localhost:4841/PortArden/ASU7100` |
+| Vadhana (IN) hub · OPC UA | http://localhost:8130 · `opc.tcp://localhost:4842/vadhana/asu2` |
+
+The other two sites are described in [Global sites](Global-sites).
 
 **Hub** — one page linking every system, grouped by ISA-95 level.
 
@@ -64,7 +69,8 @@ New to plants? Read [Plant automation in brief](Plant-automation-in-brief) first
 
 ```bash
 docker compose down              # stop
-rm data/historian.db* data/dcs_state.json   # wipe history and controller state
+rm data/historian.db* data/dcs_state.json   # wipe history and controller state (Haltenberg)
+rm -r data/port-arden data/vadhana          # ... and of the other two sites
 rm exports/*.csv                            # wipe the Node-RED averages
 ```
 

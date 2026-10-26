@@ -46,6 +46,48 @@ BAD_COMM = ua.StatusCode(ua.StatusCodes.BadNoCommunication)
 BAD_OOS = ua.StatusCode(ua.StatusCodes.BadOutOfService)
 
 
+def engine_values(snap, scan_count, historian_samples):
+    """Every value the OPC UA layer publishes, keyed like the address space ("FIC-101.PV",
+    "Equipment.MAC.Running", ...), from one DCS snapshot. Also used by the site-native servers
+    (native.py), which present the same values under other names, units and encodings."""
+    alarm_state = {}
+    for a in snap["alarms"]:
+        if a["active"] and a["limit"] != "DISC":
+            cur = alarm_state.get(a["tag"])
+            if cur is None or C.ALARM_PRIORITY[a["limit"]] < C.ALARM_PRIORITY[cur]:
+                alarm_state[a["tag"]] = a["limit"]
+    values = {}
+    for t in C.TAGS:
+        row = snap["tags"][t["tag"]]
+        values[f"{t['tag']}.PV"] = row["pv"]
+        if t["kind"] == "PID":
+            values[f"{t['tag']}.SP"] = row["sp"]
+            values[f"{t['tag']}.OP"] = row["op"]
+            values[f"{t['tag']}.Mode"] = row["mode"]
+        if t["alarms"]:
+            values[f"{t['tag']}.AlarmState"] = alarm_state.get(t["tag"], "NORMAL")
+    q = snap["sequences"]["KS-201"]
+    values.update({"KS-201.State": q["display"], "KS-201.ActiveBed": q["online"], "KS-201.Step": q["step"],
+                   "KS-201.StepTime": float(q["step_time"]), "KS-201.OnlineTime": float(q["online_time"]),
+                   "KS-201.CycleTime": float(q["cycle"]), "KS-201.RegenIncomplete": q["regen_incomplete"]})
+    for key, e in snap["equipment"].items():
+        values[f"Equipment.{key}.State"] = e["state"]
+        values[f"Equipment.{key}.Running"] = e["state"] == "RUNNING"
+    for key, il in snap["interlocks"].items():
+        values[f"Interlocks.{key}.Tripped"] = il["latched"]
+        values[f"Interlocks.{key}.FirstOut"] = il["first_out"] or ""
+    values.update({"Diagnostics.FieldIOConnected": snap["io_ok"], "Diagnostics.ScanCount": scan_count,
+                   "Diagnostics.ActiveAlarms": sum(1 for a in snap["alarms"] if a["active"]),
+                   "Diagnostics.UnackedAlarms": sum(1 for a in snap["alarms"] if not a["acked"]),
+                   "Diagnostics.HistorianSamples": historian_samples})
+    return values
+
+
+def process_keys():
+    """The measured / controlled values: Bad_NoCommunication while the field I/O is down."""
+    return {f"{t['tag']}.{a}" for t in C.TAGS for a in ("PV", "SP", "OP")}
+
+
 def to_dt(ts):
     return EPOCH + timedelta(seconds=ts)
 
@@ -262,42 +304,12 @@ class OpcUaServer:
     async def update(self, snap, ts, scan_count, historian_samples):
         dt = to_dt(ts)
         io_ok = snap["io_ok"]
-        alarm_state = {}
-        for a in snap["alarms"]:
-            if a["active"] and a["limit"] != "DISC":
-                cur = alarm_state.get(a["tag"])
-                if cur is None or C.ALARM_PRIORITY[a["limit"]] < C.ALARM_PRIORITY[cur]:
-                    alarm_state[a["tag"]] = a["limit"]
-        values = {}
-        for t in C.TAGS:
-            row = snap["tags"][t["tag"]]
-            values[f"{t['tag']}.PV"] = row["pv"]
-            if t["kind"] == "PID":
-                values[f"{t['tag']}.SP"] = row["sp"]
-                values[f"{t['tag']}.OP"] = row["op"]
-                values[f"{t['tag']}.Mode"] = row["mode"]
-            if t["alarms"]:
-                values[f"{t['tag']}.AlarmState"] = alarm_state.get(t["tag"], "NORMAL")
-        q = snap["sequences"]["KS-201"]
-        values.update({"KS-201.State": q["display"], "KS-201.ActiveBed": q["online"], "KS-201.Step": q["step"],
-                       "KS-201.StepTime": float(q["step_time"]), "KS-201.OnlineTime": float(q["online_time"]),
-                       "KS-201.CycleTime": float(q["cycle"]), "KS-201.RegenIncomplete": q["regen_incomplete"]})
-        for key, e in snap["equipment"].items():
-            values[f"Equipment.{key}.State"] = e["state"]
-            values[f"Equipment.{key}.Running"] = e["state"] == "RUNNING"
-        for key, il in snap["interlocks"].items():
-            values[f"Interlocks.{key}.Tripped"] = il["latched"]
-            values[f"Interlocks.{key}.FirstOut"] = il["first_out"] or ""
-        values.update({"Diagnostics.FieldIOConnected": io_ok, "Diagnostics.ScanCount": scan_count,
-                       "Diagnostics.ActiveAlarms": sum(1 for a in snap["alarms"] if a["active"]),
-                       "Diagnostics.UnackedAlarms": sum(1 for a in snap["alarms"] if not a["acked"]),
-                       "Diagnostics.HistorianSamples": historian_samples})
-
-        process_keys = {f"{t['tag']}.{a}" for t in C.TAGS for a in ("PV", "SP", "OP")}
+        values = engine_values(snap, scan_count, historian_samples)
+        proc = process_keys()
         for key, value in values.items():
             nid, vtype = self.vars[key]
             # No I/O: BadNoCommunication. I/O fine but no value: a calculation that doesn't apply now.
-            status = BAD_COMM if key in process_keys and not io_ok else BAD_OOS if value is None else GOOD
+            status = BAD_COMM if key in proc and not io_ok else BAD_OOS if value is None else GOOD
             bad = status != GOOD
             if value is None:
                 value = self.last.get(key, 0.0 if vtype == ua.VariantType.Double else value)
@@ -306,7 +318,7 @@ class OpcUaServer:
             if vtype == ua.VariantType.Double:
                 value = float(value)
             prev = self.last.get(key)
-            if prev == value and not bad and key not in process_keys:
+            if prev == value and not bad and key not in proc:
                 continue      # discrete/state values: only on change
             self.last[key] = value
             await self.server.write_attribute_value(nid, ua.DataValue(

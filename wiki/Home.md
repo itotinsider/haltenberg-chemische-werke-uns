@@ -24,6 +24,12 @@ with:
 - a **historian** that stores every value over time;
 - **OPC UA**, the interface IT-side clients consume (here **Node-RED**).
 
+**Three sites, one standard.** HCW also runs an ASU in the US (Port Arden, Texas) and one in India
+(Vadhana, Gujarat). Same simulator engine, different size, equipment and customers, and each
+site's DCS presents its data over OPC UA in its own way: other names, units, structure and even
+timestamps. That is the starting point of a global **DataOps** demo: standardise all three onto
+one ISA-95 [Standard data model](Standard-data-model). See [Global sites](Global-sites).
+
 It is a training system for **plant data**, not a full operator training simulator. The process is
 realistic enough that the data behaves like real plant data: trips, alarms, backups taking over,
 slow purity recovery. An **instructor station** starts faults that the DCS can't see, only their
@@ -37,6 +43,7 @@ effects, just like in a real plant.
 | Understand DCS, Modbus, interlocks, trips | [Plant automation in brief](Plant-automation-in-brief) |
 | Know what the plant does | [The process: air separation](The-process) |
 | See how the pieces fit | [Architecture](Architecture) |
+| Compare the three sites, map their data | [Global sites](Global-sites), [Standard data model](Standard-data-model) |
 | Learn how the plant and its data work | [Trainers](Trainers): Process, Engineering, IT/OT |
 | Use the screens | [Operator console](Operator-console), [Instructor station](Instructor-station) |
 | Get the data out | [Data access](Data-access) |
