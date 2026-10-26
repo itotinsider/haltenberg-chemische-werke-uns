@@ -15,6 +15,7 @@ import pytest
 
 import config as C
 import iomap
+import sites
 from control import DCS
 from model import SCENARIOS, Plant
 from conftest import read
@@ -34,6 +35,9 @@ UNMAPPED_FIELD_POINTS = {
     "ZS-201A": "PPU bed A online feedback: on the Modbus map, but KS-201 doesn't check it (open)",
     "ZS-201B": "PPU bed B online feedback: on the Modbus map, but KS-201 doesn't check it (open)",
 }
+# Points of equipment the reference site (Haltenberg) doesn't have; other sites: tests/test_sites.py.
+ABSENT = sites.absent_points(sites.get(sites.DEFAULT))
+UNMAPPED_FIELD_POINTS["RID-901"] = "I/O rack identity, checked by dcs/main.py itself (never control another site's plant)"
 # Drawn on the console but deliberately without I/O.
 DRAWING_ONLY = {"HV-116": "JT valve booster air -> HP column, fixed open"}
 
@@ -71,8 +75,8 @@ def test_modbus_layout(points, width, area_size, max_request):
 
 def test_plant_writes_exactly_the_field_inputs():
     plant = Plant(0.0)
-    assert list(plant.measurements()) == AI
-    assert set(plant.discretes()) == set(DI)
+    assert list(plant.measurements()) == [n for n in AI if n not in ABSENT]
+    assert set(plant.discretes()) == set(DI) - ABSENT
 
 
 def test_plant_reads_exactly_the_field_outputs():
@@ -84,7 +88,7 @@ def test_plant_reads_exactly_the_field_outputs():
 def test_dcs_writes_only_field_outputs():
     _, _, ao, do = one_scan()
     assert set(ao) <= set(AO)
-    assert set(do) == set(DO)
+    assert set(do) == set(DO) - ABSENT
 
 
 def test_dcs_tags_point_at_existing_field_points():
@@ -101,7 +105,7 @@ def test_dcs_tags_point_at_existing_field_points():
 def test_every_field_point_is_used_or_explained():
     used = ({t["io"] for t in C.TAGS if t.get("io")} | {t["out"] for t in C.TAGS if t.get("out")}
             | {e["cmd"] for e in C.EQUIPMENT.values()} | {e["fb"] for e in C.EQUIPMENT.values()})
-    unused = set(AI + AO + DI + DO) - used
+    unused = set(AI + AO + DI + DO) - used - ABSENT
     assert unused == set(UNMAPPED_FIELD_POINTS), "map the point to a DCS tag, or explain it in UNMAPPED_FIELD_POINTS"
 
 
@@ -211,6 +215,7 @@ def test_hidden_faults_stay_hidden(code):
     """SHT rule: scenarios and ground truth live only in the plant, never on the DCS side."""
     dcs_side = " ".join(str(code[k]) for k in ("field", "dcs", "opcua")) + str(code["api"]["dcs"])
     secrets = set(SCENARIOS) | set(code["plant"]["ground_truth"]["hidden"])
+    dcs_side += str(code["api"]["dcs"]["config"])
     assert [s for s in secrets if s in dcs_side] == []
 
 

@@ -13,6 +13,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import signal
 import sys
 import threading
@@ -26,16 +27,18 @@ from pymodbus.client import AsyncModbusTcpClient  # noqa: E402
 
 import config as C  # noqa: E402
 import iomap  # noqa: E402
+import sites  # noqa: E402
 from control import DCS, T_SAT_N2, T_SAT_O2  # noqa: E402
 from historian import NA, Historian  # noqa: E402
-from opcua_server import NAMESPACE, OpcUaServer  # noqa: E402
+import native  # noqa: E402
+from opcua_server import engine_values  # noqa: E402
 
 PLANT_HOST = os.getenv("PLANT_HOST", "plant")
 PLANT_PORT = int(os.getenv("PLANT_PORT", "5020"))
 SCAN_SECONDS = float(os.getenv("SCAN_SECONDS", "1"))
 WEB_PORT = int(os.getenv("WEB_PORT", "8110"))
 OPCUA_PORT = int(os.getenv("OPCUA_PORT", "4840"))
-PPU_CYCLE_SECONDS = float(os.getenv("PPU_CYCLE_SECONDS", "14400"))
+PPU_CYCLE_SECONDS = float(os.getenv("PPU_CYCLE_SECONDS") or C.SITE_CFG["ppu_cycle_s"])
 DATA_DIR = os.getenv("DATA_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "data"))
 HISTORIAN_PATH = os.path.join(DATA_DIR, "historian.db")
 STATE_PATH = os.path.join(DATA_DIR, "dcs_state.json")
@@ -46,12 +49,20 @@ HEARTBEAT_TIMEOUT = 5.0
 # Shown on the hub page: how a browser / client on the host reaches the other endpoints.
 PUBLIC_LINKS = {
     "instructor": os.getenv("PUBLIC_INSTRUCTOR_URL", "http://localhost:8111"),
-    "opcua": os.getenv("PUBLIC_OPCUA_ENDPOINT", f"opc.tcp://localhost:{OPCUA_PORT}/hcw/asu1/"),
+    "opcua": os.getenv("PUBLIC_OPCUA_ENDPOINT", f"opc.tcp://localhost:{OPCUA_PORT}{native.META['path']}"),
     "modbus": os.getenv("PUBLIC_MODBUS_ENDPOINT", "localhost:5020"),
     "nodered": os.getenv("PUBLIC_NODERED_URL", "http://localhost:1880"),
 }
+# The hubs of all sites of the global demo, as a browser on the host reaches them (hub page cards).
+SITE_LINKS = [dict(key=k, name=v["site"], company=v["company"], country=v["country_name"], unit=v["unit"],
+                   url=os.getenv(f"PUBLIC_HUB_{k.upper().replace('-', '_')}", ""))
+              for k, v in sites.SITES.items()]
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
-PAGES = {"/": "index.html", "/operator": "operator.html"}
+PAGES = {"/": "index.html", "/operator": "operator.html", "/mapping": "mapping.html"}
+# The standard model's mapping of all three sites (generated into inventory/uns/, copied into the image).
+UNS_DIR = next(d for d in (os.path.join(os.path.dirname(os.path.abspath(__file__)), "uns"),
+                           os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "inventory", "uns"))
+               if os.path.isdir(d))
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("dcs")
@@ -87,7 +98,7 @@ class Runtime:
         self.dcs = DCS(ppu_cycle_s=PPU_CYCLE_SECONDS, scan_s=SCAN_SECONDS)
         self.historian = Historian(HISTORIAN_PATH, historian_points(), HISTORIAN_DEADBAND_PCT,
                                    HISTORIAN_MAX_INTERVAL, HISTORIAN_RETENTION_DAYS)
-        self.opcua = OpcUaServer(self.historian, port=OPCUA_PORT)
+        self.opcua = native.make_server(self.historian, port=OPCUA_PORT)
         self.snapshot = {}
         self.snapshot_json = b"{}"
         self.scan_count = 0
@@ -122,6 +133,11 @@ class Runtime:
         if dr.isError():
             raise IOError(f"Modbus read error: {dr}")
         ai = iomap.unpack_floats(iomap.ANALOG_INPUTS, regs)
+        # Never control another site's plant: with three plants on one network, a reconnect to a recycled
+        # container address once cross-wired two DCSs to one plant. The rack tells which site it is.
+        if round(ai["RID-901"]) != C.SITE_CFG["rack_id"]:
+            raise IOError(f"wrong I/O rack at {PLANT_HOST}:{PLANT_PORT}: rack {ai['RID-901']:.0f}, "
+                          f"this DCS is site {C.SITE_CFG['key']} (rack {C.SITE_CFG['rack_id']})")
         di = {name: bool(dr.bits[addr]) for name, addr in iomap.DI_ADDR.items()}
         self.wire.update(ir=regs, read_at=time.time())
         return ai, di
@@ -139,7 +155,12 @@ class Runtime:
         await client.write_coils(0, bits)
 
     async def scan_loop(self, stop):
-        client = AsyncModbusTcpClient(PLANT_HOST, port=PLANT_PORT, timeout=2, retries=0)
+        # A fresh client after every failure: it looks the plant's host name up again (a recreated
+        # container gets a new address, and the old one may already belong to another plant).
+        def new_client():
+            return AsyncModbusTcpClient(PLANT_HOST, port=PLANT_PORT, timeout=2, retries=0, reconnect_delay=0)
+        client = new_client()
+        last_error = None
         next_t = time.monotonic()
         last_checkpoint = 0.0
         while not stop.is_set():
@@ -150,9 +171,11 @@ class Runtime:
                 ai, di = await self.read_io(client)
             except Exception as e:   # link failures must never stop the DCS
                 self.io["errors"] += 1
-                if self.io["connected"]:
+                if self.io["connected"] or ("wrong I/O rack" in str(e) and str(e) != last_error):
                     log.warning("Field I/O read failed: %s", e)
+                last_error = str(e)
                 client.close()
+                client = new_client()
             io_ok = ai is not None
             if io_ok:
                 hb = ai.get("HB-900")
@@ -177,6 +200,7 @@ class Runtime:
                     self.io["errors"] += 1
                     log.warning("Field I/O write failed: %s", e)
                     client.close()
+                    client = new_client()
 
             self.historian.store(now, historian_values(snap), events)
             self.scan_count += 1
@@ -253,10 +277,9 @@ def datapath(rt, tag):
                          stored_last_hour=rt.historian.count(name, now - 3600, now)))
     block = dict(C.BLOCKS)[t["block"]]
     ns = getattr(rt.opcua, "idx", 2)
-    nodes = [dict(attr=a, nodeid=f"ns={ns};s={C.ENTERPRISE}.{C.UNIT}.{tag}.{a}",
-                  browse=f"Objects/{C.ENTERPRISE}/{C.SITE}/{C.UNIT}/{t['block']}/{tag}/{a}",
+    nodes = [dict(attr=a, nodeid=f"ns={ns};{ident}", browse=browse,
                   status=OPC_STATUS[quality] if a == "PV" else "Good" if io_ok else "BadNoCommunication")
-             for a in attrs]
+             for a, ident, browse in native.nodes_for(tag)]
     return dict(
         tag=tag, kind=t["kind"], desc=t["desc"], unit=t["unit"], lo=t["lo"], hi=t["hi"],
         block=t["block"], block_label=block, field_in=field_in, field_out=field_out,
@@ -266,19 +289,68 @@ def datapath(rt, tag):
                  scan_s=SCAN_SECONDS, scan_count=rt.scan_count),
         historian=dict(points=hist, deadband_pct=HISTORIAN_DEADBAND_PCT, heartbeat_s=HISTORIAN_MAX_INTERVAL,
                        scans_last_hour=round(3600 / SCAN_SECONDS)),
-        opcua=dict(endpoint=PUBLIC_LINKS["opcua"], namespace=NAMESPACE, nodes=nodes),
+        opcua=dict(endpoint=PUBLIC_LINKS["opcua"], namespace=native.META["namespace"], nodes=nodes),
     )
 
 
+def mapping_payload(rt):
+    """inventory/uns/ as JSON for the mapping page, with this site's live values: the native value its OPC UA
+    server publishes now, and that value converted to the standard by the mapping's own formula."""
+    import csv
+    with open(os.path.join(UNS_DIR, "mapping.csv"), encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    with open(os.path.join(UNS_DIR, "sites.json"), encoding="utf-8") as f:
+        overview = json.load(f)
+    key, snap = C.SITE_CFG["key"], rt.snapshot
+    live = {}
+    if snap.get("tags"):
+        values = engine_values(snap, rt.scan_count, rt.historian.stored)
+        nodes = {(f"s={v['id']}" if isinstance(v["id"], str) else f"i={v['id']}"): v for v in native.table().variables if v["src"]}
+        for r in rows:
+            v = nodes.get(r[f"{key}.nodeid"])
+            if v is None:
+                continue
+            raw = values.get(v["src"])
+            n = native.encode(v, raw)
+            live[r[f"{key}.nodeid"]] = dict(native=n, standard=to_standard(r[f"{key}.to_uns"], n),
+                                            quality="BAD" if not snap["io_ok"] else "NOT_APPLICABLE" if raw is None else "GOOD")
+    return dict(site=key, sites=overview["sites"], rows=rows, live=live, time=snap.get("time"))
+
+
+def to_standard(formula, x):
+    """Apply a mapping.csv conversion ("x * a + b", "x" or "map n→s, ...") to a native value."""
+    if x is None:
+        return None
+    if formula.startswith("map "):
+        table = dict(pair.split("→") for pair in formula[4:].split(", "))
+        k = str(int(x)) if isinstance(x, bool) and str(int(x)) in table else str(x)
+        return table.get(k, "true" if x is True else "false" if x is False else x)
+    a, b = 1.0, 0.0
+    m = re.fullmatch(r"x(?: \* ([-\d.e]+))?(?: ([+-]) ([\d.e]+))?", formula)
+    if m is None or isinstance(x, (str, bool)):
+        return x
+    if m.group(1):
+        a = float(m.group(1))
+    if m.group(2):
+        b = float(m.group(3)) * (1 if m.group(2) == "+" else -1)
+    return float(x) * a + b
+
+
 def config_payload(rt):
+    s = C.SITE_CFG
     return dict(
         enterprise=C.ENTERPRISE, site=C.SITE, unit=C.UNIT, unit_label=C.UNIT_LABEL,
+        site_info=dict(key=s["key"], name=s["site"], company=s["company"], country=s["country_name"],
+                       timezone=s["timezone"], capacity=s["capacity"], scale=s["scale"], customers=s["customers"],
+                       consumers=s["consumers"], mimic_labels=s["mimic_labels"],
+                       opcua_profile=native.PROFILE),
+        sites=SITE_LINKS,
         blocks=[dict(id=k, label=v) for k, v in C.BLOCKS],
         tags=[{k: v for k, v in t.items()} for t in C.TAGS],
         equipment={k: dict(label=v["label"], block=v["block"], trip=v["trip"]) for k, v in C.EQUIPMENT.items()},
         interlocks={k: dict(label=v["label"], block=v["block"]) for k, v in C.INTERLOCKS.items()},
         lineup=C.LINEUP, links=PUBLIC_LINKS, scan_s=SCAN_SECONDS, ppu_cycle_s=rt.dcs.ppu.cycle,
-        ppu_cycle_range=[C.PPU_CYCLE_MIN, C.PPU_CYCLE_MAX], opcua_namespace="urn:haltenberg:hcw:asu1:dcs", opcua_prefix=f"{C.ENTERPRISE}.{C.UNIT}",
+        ppu_cycle_range=[C.PPU_CYCLE_MIN, C.PPU_CYCLE_MAX], opcua_namespace=native.META["namespace"], opcua_prefix=f"{C.ENTERPRISE}.{C.UNIT}",
         # Clausius-Clapeyron constants of the TY-411…413 calculations (normal boiling point K, J/mol),
         # so the trainer draws its boiling-point curves with the DCS's own formula.
         t_sat=dict(N2=list(T_SAT_N2), O2=list(T_SAT_O2)), calc_inputs=C.CALC_INPUTS,
@@ -313,6 +385,12 @@ def make_handler(rt):
                 return self._json(200, rt.historian.events(start=start, limit=limit))
             if url.path == "/api/historian":
                 return self._json(200, dict(rt.historian.stats(), points=sorted(rt.historian.ids)))
+            if url.path == "/api/mapping":
+                # Every hub reads the other sites' live values from here: allow cross-origin reads.
+                return self._json(200, mapping_payload(rt), cors=True)
+            if url.path == "/api/mapping.csv":
+                with open(os.path.join(UNS_DIR, "mapping.csv"), "rb") as f:
+                    return self._send(200, f.read(), "text/csv; charset=utf-8")
             if url.path == "/api/datapath":
                 path = datapath(rt, q.get("tag", [""])[0])
                 return self._json(200, path) if path else self._json(404, {"error": "unknown tag"})
@@ -357,12 +435,14 @@ def make_handler(rt):
                 return True, f"{n} acknowledged"
             return None
 
-        def _json(self, code, obj):
-            self._send(code, json.dumps(obj).encode("utf-8"), "application/json")
+        def _json(self, code, obj, cors=False):
+            self._send(code, json.dumps(obj).encode("utf-8"), "application/json", cors)
 
-        def _send(self, code, body, ctype):
+        def _send(self, code, body, ctype, cors=False):
             self.send_response(code)
             self.send_header("Content-Type", ctype)
+            if cors:
+                self.send_header("Access-Control-Allow-Origin", "*")
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
             self.end_headers()

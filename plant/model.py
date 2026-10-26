@@ -18,11 +18,18 @@ The model knows nothing about controllers. It reads final-element positions (0-1
 run/select commands exactly as the DCS writes them to the Modbus I/O rack, and produces raw
 transmitter readings. Scenarios (instructor-station faults) live here and are never exposed on
 the field I/O: the DCS, OPC UA and any agent behind it must infer them from process values.
+
+The same model runs every site of the global demo (common/sites.py). Internally it always works at
+the Haltenberg design point; a site's `scale` multiplies every flow and power it reports (a bigger or
+smaller plant of the same design), and the site sets the climate, the customers and which equipment
+exists (a standby LOX pump P-501B, the GAN product).
 """
 
 import math
 import random
 from collections import deque
+
+import sites
 
 # ---- Nominal design point (research §1/§3) ---------------------------------------------------
 PPU_DESIGN_CYCLE = 14400.0   # s, realistic mole-sieve bed online time (instructor can compress it)
@@ -247,7 +254,31 @@ SCENARIOS = {
         label="Heatwave (+12 degC)", kind="latched", group="Environment",
         description="Ambient rises 12 K over ~30 min: less MAC capacity, more power, more water "
                     "load on the PPU."),
+    "lox_pump_trip": dict(
+        label="LOX pump motor trip (duty pump)", kind="oneshot", group="Internal compression",
+        description="Motor protection trips the running LOX pump. With a standby pump the DCS starts it "
+                    "automatically; the GOX flow dips for a few seconds."),
 }
+# Scenarios that need equipment a site may not have (common/sites.py `equipment`).
+SCENARIO_NEEDS = {"lox_pump_trip": "lox_pump_spare", "gan_compressor_trip": "gan_product",
+                  "n2_purge_campaign": "gan_product"}
+
+# Extensive measurements: scaled with the site's size. Everything else (pressures, temperatures,
+# levels, purities, speeds, vibration) is the same in a bigger plant of the same design.
+SCALED_POINTS = {"FT-101", "FT-103", "JT-104", "FT-111", "JT-113", "FT-303", "FT-405", "FT-408", "FT-409",
+                 "FT-501", "FT-503", "FT-507", "FT-508", "JT-514"}
+
+
+def scenarios_for(site):
+    """The instructor scenarios of a site, with its own labels (its customers have other names)."""
+    out = {}
+    for key, spec in SCENARIOS.items():
+        need = SCENARIO_NEEDS.get(key)
+        if need and not site["equipment"][need]:
+            continue
+        label = site["scenario_labels"].get(key)
+        out[key] = dict(spec, label=label[0], description=label[1]) if label else dict(spec)
+    return out
 
 
 class ScenarioState:
@@ -271,9 +302,15 @@ class ScenarioState:
 
 
 class Plant:
-    def __init__(self, t0, ppu_cycle_s=PPU_DESIGN_CYCLE):
+    def __init__(self, t0, ppu_cycle_s=None, site=None):
+        self.site = site or sites.get()
+        self.scale = self.site["scale"]
+        self.spare = self.site["equipment"]["lox_pump_spare"]
+        self.gan_product = self.site["equipment"]["gan_product"]
+        self.absent = sites.absent_points(self.site)
+        self.scenarios = scenarios_for(self.site)
         self.t = t0
-        self.ppu_cycle = ppu_cycle_s
+        self.ppu_cycle = self.site["ppu_cycle_s"] if ppu_cycle_s is None else ppu_cycle_s
         # Transmitter noise has its own random stream, so adding an instrument doesn't change the process
         # disturbances (demand wander, purge jobs) a seed produces.
         self.noise = random.Random(random.getrandbits(32))
@@ -288,7 +325,7 @@ class Plant:
             "FV-501": 72.5, "FV-503": 41.7, "FV-507": 0.0, "FV-508": 0.0, "WD-900": 0.0, "FV-111": 73.3,
         }
         self.do = {"HS-101": True, "HS-301": True, "HS-201": False, "HS-102": True, "HS-501": True,
-                   "HS-503": True, "HS-505": True, "HS-506": True}
+                   "HS-503": self.gan_product, "HS-505": True, "HS-506": self.gan_product, "HS-501B": False}
 
         # Disturbance generators
         self.w_amb = Walk(1.2, 3 * 3600)
@@ -297,6 +334,8 @@ class Plant:
         self.w_n2 = Walk(0.04, 1200)
         self.purges = []           # active N2 purge jobs: [end_t, kNm3/h]
         self.heatwave = 0.0
+        # Vadhana: the steel works' electric-arc furnace, one heat about every hour (o2_pattern "eaf").
+        self.eaf_t, self.eaf_len, self.eaf = 0.0, 3600.0, 27.6
 
         # Block 1 — MAC
         self.mac_run = 1.0          # 0..1 motor/rotor state (eased spin-up/coast-down)
@@ -362,15 +401,18 @@ class Plant:
         self.thc = 7.6              # ppm: low, the pumped LOX flushes the sump continuously
         self.c2h2 = 0.02
 
-        # Block 5 — LOX pump P-501 and the pumped LOX boiling in E-301
+        # Block 5 — LOX pump P-501 (P-501A) and the pumped LOX boiling in E-301. Sites with a spare
+        # have a standby pump P-501B on the same suction and discharge; motor trips latch like the MAC's.
         self.loxp_run = 1.0
+        self.loxp2_run = 0.0
+        self.loxp_trip = {"A": False, "B": False}
         self.cav_scn = 0.0          # 0..1 suction degradation (instructor scenario)
         self.cav = 0.0              # 0..1 cavitation severity
         self.p511 = 33.3
         self.t_gox = 9.5            # degC, GOX leaving the E-301 warm end
 
         # Block 5 — GAN compressor K-503
-        self.gnc_run = 1.0
+        self.gnc_run = 1.0 if self.gan_product else 0.0
         self.gnc_trip_latched = False
         self.gan_power = GAN_POWER_DESIGN
         self.gan_vib = 1.8
@@ -381,7 +423,7 @@ class Plant:
         self.p_gan = 8.0
         self.p505_run = 1.0
         self.p505_trip_latched = False
-        self.p506_run = 1.0
+        self.p506_run = 1.0 if self.gan_product else 0.0
         self.vap = 0.0
         self.vap_n = 0.0
         self.p516 = 35.5
@@ -433,12 +475,15 @@ class Plant:
             self.p505_trip_latched = True
         if "expander_loss_of_load" in self.pending_oneshots:
             self.exp_overspeed = 1.0
+        if "lox_pump_trip" in self.pending_oneshots:      # the duty pump: whichever runs (A first)
+            self.loxp_trip["A" if self.loxp_run > 0.5 or self.loxp2_run <= 0.5 else "B"] = True
         self.pending_oneshots.clear()
 
         # ---- environment ----
         hour = (t % 86400) / 3600.0
         self.heatwave = lag(self.heatwave, 12.0 if sc.on("heatwave") else 0.0, 600, dt)
-        t_amb = 15.0 + 5.0 * math.sin(2 * math.pi * (hour - 9.0) / 24.0) + self.w_amb.step(dt) + self.heatwave
+        mean, swing = self.site["ambient"]
+        t_amb = mean + swing * math.sin(2 * math.pi * (hour - 9.0) / 24.0) + self.w_amb.step(dt) + self.heatwave
         self.t_amb = t_amb
 
         # ---- block 1: MAC ----
@@ -480,7 +525,9 @@ class Plant:
             self.bearing = min(1.0, self.bearing + dt / 2400.0)
         self.vib = r * (2.4 + 9.5 * self.bearing ** 2 + 6.0 * self.surge_kick) + (1 - r) * 0.3
         self.t106 = lag(self.t106, r * (75.0 + 0.25 * (t_amb - 15.0) + 36.0 * self.bearing) + (1 - r) * 45.0, 300.0, dt)
-        self.t108 = lag(self.t108, 6.0 + 0.4 * t_amb, 300.0, dt)
+        # DCAC + chiller: the air leaves at ~12 degC at the site's design ambient (a hotter site has a bigger chiller).
+        dcac_base, dcac_gain = self.site["dcac"]
+        self.t108 = lag(self.t108, dcac_base + dcac_gain * t_amb, 300.0, dt)
 
         # ---- block 2: PPU ----
         if do["HS-201"] != self.bed_b_online:
@@ -575,14 +622,24 @@ class Plant:
         # cavitation scenario starve the suction: flow and discharge pressure fall.
         # Cavitation scenario: the suction degrades while the pump runs; once stopped, the suction
         # line re-cools over ~5 min and a restart works again (until the fault builds up again).
-        if self.loxp_run < 0.5:
+        if max(self.loxp_run, self.loxp2_run) < 0.5:
             self.cav_scn = max(0.0, self.cav_scn - dt / 300.0)
         elif sc.on("lox_pump_cavitation"):
             self.cav_scn = min(1.0, self.cav_scn + dt / 600.0)
         self.cav = clamp(max((25.0 - self.l404) / 15.0, self.cav_scn), 0.0, 1.0)
-        loxp_cmd = do["HS-501"]
+        # Motor trips (instructor) latch until the DCS drops the run command, like the MAC's.
+        if not do["HS-501"]:
+            self.loxp_trip["A"] = False
+        if not do.get("HS-501B"):
+            self.loxp_trip["B"] = False
+        loxp_cmd = do["HS-501"] and not self.loxp_trip["A"]
         self.loxp_run = lag(self.loxp_run, 1.0 if loxp_cmd else 0.0, 5.0 if loxp_cmd else 3.0, dt)
-        rp = self.loxp_run if self.loxp_run > 0.02 else 0.0
+        if self.spare:
+            loxp2_cmd = bool(do.get("HS-501B")) and not self.loxp_trip["B"]
+            self.loxp2_run = lag(self.loxp2_run, 1.0 if loxp2_cmd else 0.0, 5.0 if loxp2_cmd else 3.0, dt)
+        # Both pumps share suction, discharge and FV-501: one pump's worth of flow whichever runs.
+        r_any = min(1.0, self.loxp_run + self.loxp2_run)
+        rp = r_any if r_any > 0.02 else 0.0
         gox_ss = rp * clamp(ao["FV-501"], 0, 100) / 100.0 * 40.0 * (1.0 - 0.8 * self.cav) if self.l404 > 2 else 0.0
         self.gox = lag(self.gox, gox_ss, 10.0 if gox_ss > self.gox else 3.0, dt)   # a stopped pump stops fast
         # GAN compressor K-503 draws the HP-column GAN (warmed in E-301). No column pressure, no suction:
@@ -590,7 +647,7 @@ class Plant:
         # draw; the column then vents that nitrogen with the waste N2 (PIC-402 opens).
         if not do["HS-503"]:
             self.gnc_trip_latched = False
-        gnc_cmd = do["HS-503"] and not self.gnc_trip_latched and self.p_hp > 2.5
+        gnc_cmd = self.gan_product and do["HS-503"] and not self.gnc_trip_latched and self.p_hp > 2.5
         self.gnc_run = lag(self.gnc_run, 1.0 if gnc_cmd else 0.0, 10.0 if gnc_cmd else 4.0, dt)
         rg = self.gnc_run if self.gnc_run > 0.02 else 0.0
         gan_ss = rg * min(clamp(ao["FV-503"], 0, 100) / 100.0 * 60.0, 0.30 * self.f_air)
@@ -641,20 +698,40 @@ class Plant:
             self.c2h2 = lag(self.c2h2, c2h2_ss, 1200.0, dt)
 
         # ---- blocks 5/6: headers, consumers, tanks, vaporizer ----
-        eo = 14.6 * (1.0 + self.w_eo.step(dt)) * (1.2 if sc.on("eo_demand_step") else 1.0)
-        ace = 11.7 * (2.0 / 3.0 if sc.on("acetylene_burner_trip") else 1.0)
-        # 2.2 (was 2.7): average demand ~28.7 kNm3/h leaves ~0.7 below the load limit FY-501 (29.4 at design),
-        # which sits at the purity edge. At 2.7 normal wander held GOX on the limit and purity dipped to 99.46 %.
-        misc = max(0.0, 2.2 * (1.0 + self.w_misc.step(dt)))
-        self.o2_demand = (eo + ace + misc) * math.sqrt(max(self.p_gox, 0.0) / 30.0)
-        self.consumers = {"EO": eo, "Acetylene": ace, "Other": misc}
+        names = self.site["consumers"]["o2"]
+        if self.site["o2_pattern"] == "eaf":
+            # Steel works: one electric-arc-furnace heat about every hour. The oxygen lances blow for
+            # ~38 min of it (melting, refining); charging and tapping take less. The ASU's sump and the
+            # GOX header buffer the swing; the peaks are a little above the site's GOX load limit (FY-501,
+            # set lower than at Haltenberg for this cyclic customer), so the LOX backup vaporizer tops them up.
+            self.eaf_t += dt
+            if self.eaf_t >= self.eaf_len:
+                self.eaf_t, self.eaf_len = 0.0, random.uniform(3300.0, 3900.0)
+            blowing = 480.0 < self.eaf_t < 480.0 + 2280.0
+            eaf_ss = (27.6 if blowing else 24.0) * (1.0 + self.w_eo.step(dt)) * (1.2 if sc.on("eo_demand_step") else 1.0)
+            eaf_ss *= 2.0 / 3.0 if sc.on("acetylene_burner_trip") else 1.0
+            self.eaf = lag(self.eaf, eaf_ss, 90.0, dt)
+            misc = max(0.0, 1.6 * (1.0 + self.w_misc.step(dt)))
+            self.o2_demand = (self.eaf + misc) * math.sqrt(max(self.p_gox, 0.0) / 30.0)
+            self.consumers = {names[0]: self.eaf, names[1]: misc}
+        else:
+            eo = 14.6 * (1.0 + self.w_eo.step(dt)) * (1.2 if sc.on("eo_demand_step") else 1.0)
+            ace = 11.7 * (2.0 / 3.0 if sc.on("acetylene_burner_trip") else 1.0)
+            # 2.2 (was 2.7): average demand ~28.7 kNm3/h leaves ~0.7 below the load limit FY-501 (29.4 at design),
+            # which sits at the purity edge. At 2.7 normal wander held GOX on the limit and purity dipped to 99.46 %.
+            misc = max(0.0, 2.2 * (1.0 + self.w_misc.step(dt)))
+            self.o2_demand = (eo + ace + misc) * math.sqrt(max(self.p_gox, 0.0) / 30.0)
+            self.consumers = dict(zip(names, (eo, ace, misc)))
 
-        if random.random() < dt / 2400.0:        # a purge job every ~40 min on average
-            self.purges.append([t + random.uniform(300, 1200), random.uniform(2.0, 6.0)])
-        self.purges = [p for p in self.purges if p[0] > t]
-        n2 = 24.0 * (1.0 + self.w_n2.step(dt)) + sum(p[1] for p in self.purges) + (10.0 if sc.on("n2_purge_campaign") else 0.0)
-        self.n2_demand = n2 * math.sqrt(max(self.p_gan, 0.0) / 8.0)
-        self.consumers["N2 grid"] = n2
+        if self.gan_product:
+            if random.random() < dt / 2400.0:        # a purge job every ~40 min on average
+                self.purges.append([t + random.uniform(300, 1200), random.uniform(2.0, 6.0)])
+            self.purges = [p for p in self.purges if p[0] > t]
+            n2 = 24.0 * (1.0 + self.w_n2.step(dt)) + sum(p[1] for p in self.purges) + (10.0 if sc.on("n2_purge_campaign") else 0.0)
+            self.n2_demand = n2 * math.sqrt(max(self.p_gan, 0.0) / 8.0)
+            self.consumers[self.site["consumers"]["n2"]] = n2
+        else:
+            self.n2_demand = 0.0       # no GAN product, no GAN header
 
         # The pumped LOX boils in E-301 only if enough booster air condenses against it. Short of
         # ~95 % of the design ratio the exchanger pinches and cold (eventually liquid) oxygen leaves
@@ -675,7 +752,7 @@ class Plant:
         if not do["HS-505"]:
             self.p505_trip_latched = False
         self.p505_run = lag(self.p505_run, 1.0 if do["HS-505"] and not self.p505_trip_latched else 0.0, 3.0, dt)
-        self.p506_run = lag(self.p506_run, 1.0 if do["HS-506"] else 0.0, 3.0, dt)
+        self.p506_run = lag(self.p506_run, 1.0 if do["HS-506"] and self.gan_product else 0.0, 3.0, dt)
         r5 = self.p505_run if self.p505_run > 0.02 else 0.0
         r6 = self.p506_run if self.p506_run > 0.02 else 0.0
         vap_ss = r5 * 30.0 * clamp(ao["FV-507"], 0, 100) / 100.0 if self.l505 > 2.0 else 0.0
@@ -775,6 +852,16 @@ class Plant:
 
     # ---- outputs ----
     def measurements(self):
+        m = self._measurements()
+        for name in self.absent:
+            m.pop(name, None)
+        if self.scale != 1.0:
+            for name in SCALED_POINTS & m.keys():
+                m[name] *= self.scale
+        m["RID-901"] = float(self.site["rack_id"])
+        return m
+
+    def _measurements(self):
         g = self.noise.gauss
         return {
             "FT-101": max(0.0, self.f_air + g(0, 0.25)),
@@ -845,7 +932,7 @@ class Plant:
         }
 
     def discretes(self):
-        return {
+        d = {
             "YS-101": self.mac_run > 0.9,
             "YS-301": self.exp_run > 0.9,
             "YS-102": self.bac_run > 0.9,
@@ -855,40 +942,51 @@ class Plant:
             "YS-506": self.p506_run > 0.9,
             "ZS-201A": not self.bed_b_online,
             "ZS-201B": self.bed_b_online,
+            "YS-501B": self.loxp2_run > 0.9,
         }
+        for name in self.absent:
+            d.pop(name, None)
+        return d
 
     def snapshot(self):
         """Ground truth for the instructor station — includes hidden states the DCS cannot see."""
         r1 = lambda v, n=2: round(v, n)
+        s = self.scale
+        hidden = {
+            "mac_efficiency": r1(self.mac_eff, 4),
+            "mac_bearing_degradation": r1(self.bearing, 3),
+            "mac_trip_latched": self.mac_trip_latched,
+            "surge_margin_pct": r1(self.surge_margin, 1),
+            "ppu_loading": {k: r1(v, 3) for k, v in self.loading.items()},
+            "coldbox_dT_K": r1(self.dt_coldbox, 3),
+            "mhe_fouling_K": r1(self.fouling, 2),
+            "mhe_profile_shift_K": r1(self.mhe_shift, 2),
+            "mhe_duty_MW": r1(self.mhe_duty, 2),
+            "expander_overspeed": r1(self.exp_overspeed, 2),
+            "condenser_dT_K": r1(self.dT_cond, 2),
+            "waste_n2": r1(self.waste, 1),
+            "booster_trip_latched": self.bac_trip_latched,
+            "lox_pump_cavitation": r1(self.cav, 2),
+            "booster_excess_air": r1(self.bst_excess, 1),
+            "gan_compressor_trip_latched": self.gnc_trip_latched,
+            "lox_backup_pump_trip_latched": self.p505_trip_latched,
+        }
+        if self.spare:
+            hidden["lox_pump_trip_latched"] = dict(self.loxp_trip)
+        if not self.gan_product:
+            hidden.pop("gan_compressor_trip_latched")
         return {
             "sim_time": self.t,
+            "site": self.site["key"],
             "environment": {"ambient_C": r1(self.t_amb), "heatwave_offset_K": r1(self.heatwave)},
-            "consumers": {k: r1(v) for k, v in self.consumers.items()},
-            "o2_demand": r1(self.o2_demand), "n2_demand": r1(self.n2_demand),
+            "consumers": {k: r1(v * s) for k, v in self.consumers.items()},
+            "o2_demand": r1(self.o2_demand * s), "n2_demand": r1(self.n2_demand * s),
             "purge_jobs": len(self.purges),
-            "hidden": {
-                "mac_efficiency": r1(self.mac_eff, 4),
-                "mac_bearing_degradation": r1(self.bearing, 3),
-                "mac_trip_latched": self.mac_trip_latched,
-                "surge_margin_pct": r1(self.surge_margin, 1),
-                "ppu_loading": {k: r1(v, 3) for k, v in self.loading.items()},
-                "coldbox_dT_K": r1(self.dt_coldbox, 3),
-                "mhe_fouling_K": r1(self.fouling, 2),
-                "mhe_profile_shift_K": r1(self.mhe_shift, 2),
-                "mhe_duty_MW": r1(self.mhe_duty, 2),
-                "expander_overspeed": r1(self.exp_overspeed, 2),
-                "condenser_dT_K": r1(self.dT_cond, 2),
-                "waste_n2": r1(self.waste, 1),
-                "booster_trip_latched": self.bac_trip_latched,
-                "lox_pump_cavitation": r1(self.cav, 2),
-                "booster_excess_air": r1(self.bst_excess, 1),
-                "gan_compressor_trip_latched": self.gnc_trip_latched,
-                "lox_backup_pump_trip_latched": self.p505_trip_latched,
-            },
+            "hidden": hidden,
             "commands": {"ao": {k: r1(v, 1) for k, v in self.ao.items()}, "do": dict(self.do)},
             "scenarios": {
                 k: {**{f: v for f, v in spec.items()}, "active": self.sc.active[k],
                     "started": self.sc.started[k]}
-                for k, spec in SCENARIOS.items()
+                for k, spec in self.scenarios.items()
             },
         }

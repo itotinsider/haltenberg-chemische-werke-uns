@@ -130,8 +130,8 @@ class Equipment:
     def __init__(self, key, cfg):
         self.key = key
         self.cfg = cfg
-        self.cmd = True
-        self.fb = True
+        self.cmd = not cfg.get("standby")       # a standby pump starts out stopped
+        self.fb = self.cmd
         self.running_since = 0.0
         self.cmd_since = 0.0
 
@@ -212,6 +212,7 @@ class DCS:
             ("KS-201.SWITCH_DELAYED", "PPU switch-over delayed — offline bed not ready", 2),
             ("KS-201.REGEN_INCOMPLETE", "PPU regeneration incomplete — heat peak not reached", 2),
             ("IO.COMM", "Field I/O communication failure", 1),
+            *[(f"{k}.AUTOSTART", f"{C.EQUIPMENT[k]['label']} auto-started — no standby pump", 2) for k in C.STANDBY],
         ]:
             self.alarms[key] = Alarm(key, key.split(".")[0], "DISC", None, prio, msg)
         # Scan order: cascade masters, then override controllers, then everything else.
@@ -221,6 +222,7 @@ class DCS:
         self.limiters = {p.cfg["limits"]: p for p in loops if p.cfg["limits"]}
         # Trip handover pairs, reversed: slave -> split-range master (see _handback).
         self.handback = {s: m for il in C.INTERLOCKS.values() for m, s in il.get("handover", {}).items()}
+        self.autostarted = set()    # standby equipment the DCS started after its partner tripped
         self._seq_entered = None
 
     # ---------------------------------------------------------------- helpers
@@ -228,12 +230,20 @@ class DCS:
         self.events.append(dict(ts=self.now, kind=kind, source=source, message=message, priority=priority))
 
     def running(self, eq):
-        return self.equipment[eq].fb and self.equipment[eq].cmd
+        """`eq` runs; for an equipment group (C.EQUIPMENT_GROUPS, e.g. LOX pumps A/B): any member runs."""
+        return any(self.equipment[m].fb and self.equipment[m].cmd for m in C.EQUIPMENT_GROUPS.get(eq, [eq]))
+
+    def runs(self, key):
+        """This one piece of equipment runs (no group meaning, unlike running())."""
+        return self.equipment[key].fb and self.equipment[key].cmd
 
     def armed(self, eq):
-        """True once `eq` has run longer than its start-up bypass (interlock causes armed on it)."""
-        e = self.equipment[eq]
-        return self.running(eq) and self.now - e.running_since > e.cfg.get("bypass_s", 0)
+        """True once `eq` (or a member of the group) has run longer than its start-up bypass."""
+        for m in C.EQUIPMENT_GROUPS.get(eq, [eq]):
+            e = self.equipment[m]
+            if e.fb and e.cmd and self.now - e.running_since > e.cfg.get("bypass_s", 0):
+                return True
+        return False
 
     def mac_armed(self):
         return self.armed("MAC")
@@ -260,8 +270,17 @@ class DCS:
             elif eq.fb and not fb:
                 self.event("equipment", eq.key, f"{eq.cfg['label']} stopped", 2 if eq.cmd else 0)
                 if eq.cmd:   # stopped by itself while commanded on: motor protection / trip
-                    self._trip(eq.cfg["trip"], f"{eq.cfg['fb']} {eq.cfg['label']} stopped (motor protection)")
+                    if not self._changeover(eq):
+                        self._trip(eq.cfg["trip"], f"{eq.cfg['fb']} {eq.cfg['label']} stopped (motor protection)")
             eq.fb = fb
+            # A standby that doesn't run within its start time can't take over: trip (no pump left).
+            if (eq.key in C.STANDBY and io_ok and eq.cmd and not eq.fb
+                    and now - eq.cmd_since > C.STANDBY_START_TIMEOUT_S and not self.runs(C.STANDBY[eq.key])):
+                self._trip(eq.cfg["trip"], f"{eq.cfg['label']} not running {C.STANDBY_START_TIMEOUT_S} s after its start")
+        for key in list(self.autostarted):
+            # Redundancy restored (the tripped pump runs again), or the auto-started pump was stopped.
+            if not self.equipment[key].cmd or self.runs(C.STANDBY[key]):
+                self.autostarted.discard(key)
 
         # 2. PVs (bad quality = None when the I/O link is down)
         for t in C.TAGS:
@@ -336,6 +355,22 @@ class DCS:
         do["HS-201"] = self.ppu.online == "B"
         return dict(self.ao), do
 
+    def _changeover(self, eq):
+        """Automatic changeover to the standby (C.STANDBY) when a running duty pump trips. Returns False
+        when there is no standby to take over, and the caller trips the interlock as usual."""
+        key = C.STANDBY.get(eq.key)
+        if key is None or self.interlocks[eq.cfg["trip"]].latched:
+            return False
+        sb = self.equipment[key]
+        eq.cmd = False            # resets the tripped pump's motor relay
+        if sb.cmd:
+            self.event("equipment", key, f"{eq.cfg['label']} tripped; {sb.cfg['label']} carries on", 2)
+            return True
+        sb.cmd, sb.cmd_since = True, self.now
+        self.autostarted.add(key)
+        self.event("equipment", key, f"Auto-changeover: {eq.cfg['label']} tripped → {sb.cfg['label']} started", 2)
+        return True
+
     def calc(self):
         v = self.values
         ft103, pt102 = v.get("FI-103"), v.get("PIC-102")
@@ -343,7 +378,7 @@ class DCS:
             v["surge_margin"] = None
         elif self.running("MAC"):
             # Configured surge line of the antisurge controller: 105 kNm3/h at 5.75 bar(a).
-            v["surge_margin"] = round((ft103 / (105.0 * pt102 / 5.75) - 1.0) * 100.0, 3)
+            v["surge_margin"] = round((ft103 / (C.SURGE_FLOW * pt102 / 5.75) - 1.0) * 100.0, 3)
         else:
             v["surge_margin"] = 50.0
         v["UIC-103"] = v["surge_margin"]
@@ -370,8 +405,8 @@ class DCS:
         producing = f501 is not None and f501 >= C.PER_GOX_MIN_FLOW and self.running("LOXP")
         v["FFI-111"] = round(f111 / f501, 4) if producing and f111 is not None else None
         # Specific power: the ASU's compressor power (MAC + booster + GAN compressor) per unit of GOX.
-        p, pb, pg = v.get("JI-104"), v.get("JI-113"), v.get("JI-514")
-        v["KPI-701"] = round((p + pb + pg) / f501, 5) if producing and None not in (p, pb, pg) else None
+        powers = [v.get(t) for t in C.KPI_POWER_TAGS]
+        v["KPI-701"] = round(sum(powers) / f501, 5) if producing and None not in powers else None
 
     def _drive_slaves(self, master):
         links = master.cfg["cascade"]
@@ -604,6 +639,8 @@ class DCS:
         self._set_alarm(self.alarms["KS-201.SWITCH_DELAYED"],
                         self.running("MAC") and q.online_time >= q.cycle and q.step_name != "STANDBY", None)
         self._set_alarm(self.alarms["KS-201.REGEN_INCOMPLETE"], q.regen_incomplete, None)
+        for key in C.STANDBY:
+            self._set_alarm(self.alarms[f"{key}.AUTOSTART"], key in self.autostarted, None)
 
     def _set_alarm(self, a, on, value):
         if value is not None:
@@ -703,14 +740,15 @@ class DCS:
                 return False, "permissive: MAC not running (no air for the booster)"
             fic = self.loops["FIC-111"]
             fic.mode, fic.op = "MAN", 30.0      # start above minimum flow (surge)
-        if key == "LOXP":
+        if key in ("LOXP", "LOXPB"):
             if not self.running("BAC"):
                 return False, "permissive: booster K-102 not running (pumped LOX could not vaporize)"
             lvl = self.pv("LIC-404")
             if lvl is None or lvl < 40.0:
                 return False, "permissive: reboiler level LIC-404 < 40 % (pump suction / NPSH)"
-            fic = self.loops["FIC-501"]
-            fic.mode, fic.op = "MAN", 20.0      # start on part flow; Normal line-up returns it to CAS
+            if not self.running("LOXP"):    # the first pump: start on part flow; Normal line-up returns it to CAS
+                fic = self.loops["FIC-501"]
+                fic.mode, fic.op = "MAN", 20.0
         if key == "GANC":
             if not self.running("MAC"):
                 return False, "permissive: MAC not running (no GAN from the HP column)"
@@ -736,6 +774,10 @@ class DCS:
         if not eq.cmd:
             return False, "already stopped"
         self.event("operator", key, f"{eq.cfg['label']} stop")
+        partner = C.STANDBY.get(key)
+        if partner and self.runs(partner):
+            eq.cmd = False          # duty swap: the other pump carries on, nothing trips
+            return True, "ok"
         self._trip(eq.cfg["trip"], f"Operator stop ({eq.cfg['cmd']})")
         return True, "ok"
 

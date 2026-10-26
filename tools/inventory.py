@@ -10,11 +10,18 @@ Modbus address, OPC UA nodes, historian points). Nobody edits inventory/ by hand
 tests/test_inventory.py fails while the committed inventory differs from the code, so any added,
 renamed or removed tag, register, node, scenario or API field shows up as a diff in the PR.
 Needs asyncua (the OPC UA address space is built in-process, exactly as the DCS builds it).
+
+The top-level files describe the reference site, Haltenberg. The other sites of the global demo
+(common/sites.py) get their own dcs/opcua/plant files under inventory/sites/<site>/, and
+inventory/uns/ joins all of them with the standard model (dataops/uns_model.py): sites.json (what
+exists where) and mapping.csv (which native node maps onto which standard point, and how).
 """
 
 import asyncio
+import contextlib
 import csv
 import difflib
+import importlib
 import importlib.util
 import io
 import json
@@ -22,7 +29,7 @@ import os
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-for sub in ("common", "dcs", "plant", "tools"):
+for sub in ("common", "dcs", "plant", "tools", "dataops"):
     p = os.path.join(ROOT, sub)
     if p not in sys.path:
         sys.path.insert(0, p)
@@ -30,7 +37,9 @@ for sub in ("common", "dcs", "plant", "tools"):
 import config as C  # noqa: E402
 import iomap  # noqa: E402
 from control import DCS  # noqa: E402
-from model import SCENARIOS  # noqa: E402
+from model import scenarios_for  # noqa: E402
+import sites  # noqa: E402
+import uns_model as U  # noqa: E402
 
 OUT_DIR = os.path.join(ROOT, "inventory")
 
@@ -131,7 +140,7 @@ def plant_layer():
         "_source": "plant/model.py (instructor station only: never on Modbus, in the historian or on OPC UA)",
         "scenarios": {k: dict(label=v["label"], kind=v["kind"], group=v["group"],
                               **({"duration_s": v["duration"]} if "duration" in v else {}))
-                      for k, v in SCENARIOS.items()},
+                      for k, v in scenarios_for(C.SITE_CFG).items()},
         "ground_truth": {"hidden": list(snap["hidden"]), "consumers": list(snap["consumers"]),
                          "environment": list(snap["environment"])},
     }
@@ -177,7 +186,8 @@ def api_layer():
         "dcs": {
             "port": 8110,
             "get": list(dmain.PAGES) + ["/api/state", "/api/config", "/api/history?tags=&minutes=&points=",
-                                        "/api/events?limit=&start=", "/api/historian", "/api/datapath?tag="],
+                                        "/api/events?limit=&start=", "/api/historian", "/api/datapath?tag=",
+                                        "/api/mapping", "/api/mapping.csv"],
             "post": ["/api/loops/<tag> {mode, sp, op, sp_hi, sp_lo, kc, ti, sp_rate, ratio}",
                      "/api/equipment/<key>/start|stop", "/api/interlocks/<key>/reset", "/api/esd", "/api/lineup",
                      "/api/sequences/KS-201/cycle {seconds, source}", "/api/sequences/KS-201/switch",
@@ -226,6 +236,8 @@ async def walk(node, path=""):
     nid = node.nodeid
     if nid.NodeIdType == ua.NodeIdType.String:
         info["id"] = nid.Identifier
+    elif nid.NamespaceIndex != 0:
+        info["id"] = int(nid.Identifier)          # numeric NodeIds (Vadhana): ids are not names
     if cls == ua.NodeClass.Variable:
         dt = await node.read_data_type()
         info["type"] = ua.ObjectIdNames.get(dt.Identifier, str(dt.Identifier)) if dt.NamespaceIndex == 0 else str(dt)
@@ -247,24 +259,47 @@ async def walk(node, path=""):
 
 
 async def _opcua_nodes():
+    """Build the current site's address space in-process, exactly as its DCS does, and walk it."""
     from asyncua import ua
-    osrv = load_module("opcua_server", "dcs/opcua_server.py")
-    srv = osrv.OpcUaServer(historian=None)
+    import native
+    srv = native.make_server(None)
     await srv.server.init()
-    srv.idx = await srv.server.register_namespace(osrv.NAMESPACE)
+    srv.idx = await srv.server.register_namespace(native.META["namespace"])
     await srv._build()
-    root = srv.server.get_node(ua.NodeId(C.ENTERPRISE, srv.idx))
-    return osrv.NAMESPACE, await walk(root)
+    root = srv.server.get_node(ua.NodeId(native.table().objects[0]["id"], srv.idx))
+    return native.META["namespace"], await walk(root)
 
 
 def opcua_layer():
+    import native
     namespace, nodes = asyncio.run(_opcua_nodes())
-    return {
-        "_source": "dcs/opcua_server.py (address space generated from dcs/config.py)",
-        "endpoint": "opc.tcp://<host>:4840/hcw/asu1/",
+    out = {
+        "_source": ("dcs/opcua_server.py (address space generated from dcs/config.py)" if native.PROFILE == "hcw" else
+                    f"dcs/native.py, profile {native.PROFILE!r} (address space generated from dcs/config.py)"),
+        "endpoint": f"opc.tcp://<host>:4840{native.META['path']}",
         "namespace": namespace,
-        "nodes": nodes,
     }
+    if native.META["ts_offset_s"]:
+        out["source_timestamps"] = f"local time labelled as UTC (+{native.META['ts_offset_s']} s)"
+    out["nodes"] = nodes
+    return out
+
+
+@contextlib.contextmanager
+def site(key):
+    """Generate for another site: rebuild the DCS config (and what is derived from it) for that site."""
+    from offline_sim import use_site
+    import native
+    import opcua_server
+    old = use_site(key)
+    importlib.reload(opcua_server)
+    importlib.reload(native)
+    try:
+        yield
+    finally:
+        use_site(old)
+        importlib.reload(opcua_server)
+        importlib.reload(native)
 
 
 # ---------------------------------------------------------------- tags.csv (one tag across all layers)
@@ -300,9 +335,104 @@ def tags_csv(opcua, api):
     return buf.getvalue()
 
 
+# ---------------------------------------------------------------- the global demo: sites and the standard model
+def _num(x):
+    return float(f"{x:.10g}")
+
+
+def _formula(a, b):
+    """x -> a*x + b, readably."""
+    if abs(a - 1.0) < 1e-12 and abs(b) < 1e-12:
+        return "x"
+    s = "x" if abs(a - 1.0) < 1e-12 else f"x * {_num(a):.10g}"
+    return s if abs(b) < 1e-12 else f"{s} {'+' if b > 0 else '-'} {abs(_num(b)):.10g}"
+
+
+def site_mapping():
+    """One record per native variable of the current site: its standard point and conversion."""
+    import native
+    rows = []
+    unit = U.unit_path(C.SITE_CFG["key"], C.UNIT)
+    for v in native.table().variables:
+        if not v["src"]:
+            continue
+        tag = v["src"].rsplit(".", 1)[0]
+        std = U.standard_point(v["src"], C.TAG_INDEX.get(tag))
+        if std is None:
+            raise ValueError(f"{v['src']}: no standard point for it in dataops/uns_model.py")
+        ident = f"s={v['id']}" if isinstance(v["id"], str) else f"i={v['id']}"
+        if std["enum"] is not None or v["enc"] is not None:
+            # The engine value is the join key: native code -> engine value -> standard code.
+            engine = list(std["enum"]) if std["enum"] else list(v["enc"])
+            pairs = []
+            for e in engine:
+                n = v["enc"].get(e, e) if v["enc"] else e
+                s_ = std["enum"].get(e, e) if std["enum"] else ("true" if e is True else "false" if e is False else e)
+                pairs.append(f"{n}→{s_}")
+            to_std = "map " + ", ".join(pairs)
+        elif std["factor"] is not None and v["conv"] is not None:
+            f, o = v["conv"]
+            to_std = _formula(std["factor"] / f, std["offset"] - o * std["factor"] / f)
+        else:
+            to_std = "x"
+        rows.append(dict(point=std["path"], attribute=std["attribute"], type=std["type"], unit=std["unit"] or "",
+                         desc=std["desc"], uns=f"{unit}/{std['path']}", engine=v["src"],
+                         node="Objects/" + "/".join(v["path"]), nodeid=ident, native_type=v["type"],
+                         native_unit=v["unit"] or "", to_uns=to_std))
+    return rows
+
+
+def sites_overview(per_site):
+    """inventory/uns/sites.json: what each site is, has and publishes."""
+    out = {"_source": "common/sites.py, dcs/config.py, dcs/native.py (one record per site)", "sites": {}}
+    for key, (cfg, eq, il, tags, meta, nvars) in per_site.items():
+        out["sites"][key] = dict(
+            company=cfg["company"], site=cfg["site"], country=cfg["country_name"], timezone=cfg["timezone"],
+            unit=cfg["unit"], unit_label=cfg["unit_label"], capacity=cfg["capacity"], scale=cfg["scale"],
+            customers=cfg["customers"], equipment=cfg["equipment"], ppu_cycle_s=cfg["ppu_cycle_s"],
+            dcs=dict(tags=tags, equipment=eq, interlocks=il),
+            opcua=dict(profile=cfg["profile"], namespace=meta["namespace"], endpoint_path=meta["path"],
+                       nodeids=meta["nodeids"], source_timestamps=("UTC" if not meta["ts_offset_s"] else
+                                                                   f"local time as UTC (+{meta['ts_offset_s']} s)"),
+                       variables=nvars),
+            uns_root=U.unit_path(key, cfg["unit"]))
+    return out
+
+
+MAP_SITE_COLS = ["node", "nodeid", "native_unit", "to_uns"]
+
+
+def mapping_csv(maps):
+    """inventory/uns/mapping.csv: one row per standard point (and attribute), one column group per site."""
+    keys = list(maps)
+    rows = {}
+    for key in keys:
+        for r in maps[key]:
+            k = (r["point"], r["attribute"])
+            row = rows.setdefault(k, dict(point=r["point"], attribute=r["attribute"], type=r["type"], unit=r["unit"],
+                                          desc=r["desc"], engine=r["engine"], sites={}))
+            row["sites"][key] = r
+    buf = io.StringIO()
+    w = csv.writer(buf, lineterminator="\n")
+    w.writerow(["uns_point", "attribute", "type", "unit", "description"]
+               + [f"{k}.{c}" for k in keys for c in MAP_SITE_COLS] + ["engine_key", "notes"])
+    for row in rows.values():
+        missing = [k for k in keys if k not in row["sites"]]
+        note = ""
+        if missing:
+            note = "not at " + ", ".join(missing)
+            if len(missing) == len(keys) - 1:
+                note = "only at " + next(k for k in keys if k in row["sites"])
+        w.writerow([row["point"], row["attribute"], row["type"], row["unit"], row["desc"]]
+                   + [row["sites"].get(k, {}).get(c, "") for k in keys for c in MAP_SITE_COLS]
+                   + [row["engine"], note])
+    return buf.getvalue()
+
+
 # ---------------------------------------------------------------- main
 def build():
     """{file name: content} for everything in inventory/ except the hand-written README.md."""
+    import native
     opcua, api = opcua_layer(), api_layer()
     files = {   # name: (content, depth of the one-line records)
         "field.json": (field_layer(), 3),
@@ -313,6 +443,21 @@ def build():
     }
     out = {name: dumps(obj, flat_at) + "\n" for name, (obj, flat_at) in files.items()}
     out["tags.csv"] = tags_csv(opcua, api)
+
+    def summary():
+        return (C.SITE_CFG, list(C.EQUIPMENT), list(C.INTERLOCKS), len(C.TAGS), native.META,
+                sum(1 for v in native.table().variables if v["src"]))
+    per_site, maps = {C.SITE_CFG["key"]: summary()}, {C.SITE_CFG["key"]: site_mapping()}
+    for key in sites.SITES:
+        if key == C.SITE_CFG["key"]:
+            continue
+        with site(key):
+            out[f"sites/{key}/dcs.json"] = dumps(dcs_layer(), 2) + "\n"
+            out[f"sites/{key}/opcua.json"] = dumps(opcua_layer(), 2) + "\n"
+            out[f"sites/{key}/plant.json"] = dumps(plant_layer(), 2) + "\n"
+            per_site[key], maps[key] = summary(), site_mapping()
+    out["uns/sites.json"] = dumps(sites_overview(per_site), 3) + "\n"
+    out["uns/mapping.csv"] = mapping_csv(maps)
     return out
 
 
@@ -341,6 +486,7 @@ def main():
         path = os.path.join(OUT_DIR, name)
         old = open(path, encoding="utf-8").read() if os.path.exists(path) else None
         if old != content:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, "w", encoding="utf-8", newline="\n") as f:
                 f.write(content)
             changed.append(name)

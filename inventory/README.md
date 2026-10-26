@@ -22,6 +22,11 @@ docker compose run --rm tests python tools/inventory.py --check   # only compare
 | Historian points, HTTP API | `dcs/main.py` | DCS → operator console, hub, scripts | `api.json` (`dcs`) |
 | Instructor scenarios, ground truth | `plant/model.py` | plant → instructor station only | `plant.json`, `api.json` (`plant`) |
 | One tag across all layers | (joined from the above) | for people looking up a tag | `tags.csv` |
+| The other sites | `common/sites.py` + the sources above, `dcs/native.py` (OPC UA presentation) | per site | `sites/<site>/dcs.json`, `opcua.json`, `plant.json` |
+| Standard model and mapping | `dataops/uns_model.py` + every site's `dcs/native.py` table | the DataOps side | `uns/sites.json`, `uns/mapping.csv` |
+
+The top-level files describe Haltenberg, the reference site. Port Arden and Vadhana run the same engine
+with their own configuration (`HCW_SITE`); `tests/test_sites.py` checks their files and the mapping.
 
 A layer only uses names that exist in the layer it reads from, for example:
 
@@ -63,6 +68,13 @@ A layer only uses names that exist in the layer it reads from, for example:
   - historizing, the EURange and the engineering unit.
 - `api.json`: the HTTP routes and response shapes (field names, not values) of the DCS and plant APIs, and the historian points.
 - `plant.json`: instructor scenarios and the ground-truth fields.
+- `sites/<site>/`: `dcs.json`, `opcua.json` (every native node, with numeric NodeIds at Vadhana) and
+  `plant.json` of Port Arden and Vadhana.
+- `uns/sites.json`: per site its identity, size, equipment, DCS tag / equipment / interlock counts and
+  OPC UA presentation (namespace, endpoint path, NodeId style, timestamp habit).
+- `uns/mapping.csv`: one row per standard point (and controller attribute); per site the native browse
+  path, NodeId, unit and the conversion to the standard (`x * a + b` or `map n→s, ...`); a note where a
+  site doesn't have the point.
 - `tags.csv`: one row per DCS tag:
   - description, unit and range;
   - field point and Modbus address (IR = input register, HR = holding register);

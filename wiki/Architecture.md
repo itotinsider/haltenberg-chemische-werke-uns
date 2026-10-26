@@ -18,6 +18,10 @@ plant container                         dcs container
                                                                             TWA → exports/*.csv
 ```
 
+HCW runs this pair three times, once per site (Haltenberg, Port Arden, Vadhana): the same two
+images, with `HCW_SITE` selecting the site. Each pair has its own network names (`plant`/`dcs`,
+`plant-us`/`dcs-us`, `plant-in`/`dcs-in`), ports and data folder. See [Global sites](Global-sites).
+
 ## The containers
 
 - The **plant** knows nothing about control. It reads valve positions and run commands from its
@@ -35,6 +39,9 @@ plant container                         dcs container
 - If the DCS goes away, the plant holds the last outputs, the way an I/O rack does. It starts at
   the design steady state, before any DCS connects.
 - A plant heartbeat (HB-900) lets the DCS detect a frozen rack: every value then turns Bad quality.
+- The rack also reports which site it is (RID-901). A DCS refuses I/O from another site's plant:
+  with three plants on one network, a reconnect to a recycled container address once made two
+  DCSs control one plant.
 
 ## Modbus: the raw layer
 

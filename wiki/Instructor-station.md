@@ -32,11 +32,26 @@ effects, just like in a real plant. That is what makes the data worth analysing.
 
 After a trip, see [Restart after a trip](Process-behaviour#restart-after-a-trip).
 
+### At the other sites
+
+Port Arden (http://localhost:8121) and Vadhana (http://localhost:8131) have their own instructor
+station, with the scenarios their equipment allows and their own customer names
+([Global sites](Global-sites)):
+
+- **Port Arden:** the consumer scenarios are a refinery O₂ demand step, a POX burner trip and a
+  customer purge campaign on the N₂ pipeline. One extra scenario: **LOX pump motor trip (duty
+  pump)**. The DCS starts the standby pump; GOX dips for a few seconds, no trip, alarm
+  `LOXPB.AUTOSTART` (or `LOXP.AUTOSTART`). Swap back by starting the tripped pump and stopping the
+  other.
+- **Vadhana:** no N₂ purge campaign and no GAN compressor trip (no GAN product). The demand step
+  and the burner trip become an extra furnace load and an oxygen lance trip at the steel works.
+
 ## Time compression
 
 Most of the plant runs in real time on purpose: a load change takes ~40 min, purity recovery after
 a restart ~1 h. Only the **PPU bed cycle** can be sped up, with the slider, from *real time*
-(4 h per bed) to *really fast* (5 min per bed). Ticks are provided for 2 h, 1 h, 30, 15 and 10 min.
+(4 h per bed at Haltenberg, 3 h at Port Arden, 2 h at Vadhana) to *really fast* (5 min per bed).
+Ticks are provided for the shorter cycles down to 5 min.
 
 - **What scales:** bed loading, the regeneration heater and the DCS's KS-201 sequence timer all
   scale together. The rest of the ASU stays in real time.

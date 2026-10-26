@@ -22,13 +22,15 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "common"))
 
 import iomap  # noqa: E402
-from model import SCENARIOS, Plant  # noqa: E402
+import sites  # noqa: E402
+from model import Plant  # noqa: E402
 from modbus_server import RegisterBank, serve  # noqa: E402
 
 MODBUS_PORT = int(os.getenv("MODBUS_PORT", "5020"))
 WEB_PORT = int(os.getenv("WEB_PORT", "8111"))
 STEP_SECONDS = float(os.getenv("PLANT_STEP_SECONDS", "0.5"))
-PPU_CYCLE_SECONDS = float(os.getenv("PPU_CYCLE_SECONDS", "14400"))
+SITE = sites.get()
+PPU_CYCLE_SECONDS = float(os.getenv("PPU_CYCLE_SECONDS") or SITE["ppu_cycle_s"])
 PPU_CYCLE_MIN, PPU_CYCLE_MAX = 300.0, 14400.0   # must match dcs/config.py
 DCS_URL = os.getenv("DCS_URL", "http://dcs:8110")
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
@@ -42,7 +44,7 @@ class Runtime:
 
     def __init__(self):
         self.lock = threading.Lock()   # guards the model against instructor HTTP threads
-        self.plant = Plant(time.time(), ppu_cycle_s=PPU_CYCLE_SECONDS)
+        self.plant = Plant(time.time(), ppu_cycle_s=PPU_CYCLE_SECONDS, site=SITE)
         self.bank = RegisterBank(iomap.DO_COUNT, iomap.DI_COUNT, iomap.AO_REGISTERS, iomap.AI_REGISTERS)
         # PPU cycle time (instructor time compression). The DCS's KS-201 sequence owns the
         # persisted value; the plant follows it, except while an instructor change is still
@@ -74,7 +76,7 @@ class Runtime:
         with self.bank.lock:
             self.bank.input[:] = regs
             for name, addr in iomap.DI_ADDR.items():
-                self.bank.discrete[addr] = bool(di[name])
+                self.bank.discrete[addr] = bool(di.get(name))     # a point the site doesn't use reads 0
 
     def set_cycle(self, seconds):
         seconds = max(PPU_CYCLE_MIN, min(PPU_CYCLE_MAX, float(seconds)))
@@ -121,7 +123,9 @@ class Runtime:
             snap["modbus"] = {"requests": self.bank.requests, "port": MODBUS_PORT}
         age = time.time() - self.watchdog_changed if self.last_watchdog is not None else None
         snap["ppu_cycle"] = dict(seconds=self.plant.ppu_cycle, dcs=self.dcs_cycle, pending=self.cycle_pending,
-                                 min=PPU_CYCLE_MIN, max=PPU_CYCLE_MAX, design=PPU_CYCLE_MAX)
+                                 min=PPU_CYCLE_MIN, max=PPU_CYCLE_MAX, design=SITE["ppu_cycle_s"])
+        snap["site_info"] = dict(key=SITE["key"], name=SITE["site"], company=SITE["company"], unit=SITE["unit"],
+                                 country=SITE["country_name"], scale=SITE["scale"])
         snap["dcs_watchdog_age_s"] = None if age is None else round(age, 1)
         snap["io_map"] = {
             "input_registers": [dict(point=n, desc=d, address=a) for n, a, d in iomap.ANALOG_INPUTS],
@@ -148,7 +152,7 @@ def make_handler(rt):
             # /api/scenarios/<key>/start|stop
             if len(parts) == 4 and parts[:2] == ["api", "scenarios"] and parts[3] in ("start", "stop"):
                 key, action = parts[2], parts[3]
-                if key not in SCENARIOS:
+                if key not in rt.plant.scenarios:
                     return self._json(404, {"error": f"unknown scenario {key}"})
                 with rt.lock:
                     if action == "start":

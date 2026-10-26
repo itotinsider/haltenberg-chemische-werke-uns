@@ -195,8 +195,13 @@ SIGNATURES = {
 }
 
 
+# Scenarios the reference site doesn't offer (it has no equipment for them), tested at their site.
+OTHER_SITE_SIGNATURES = {"lox_pump_trip": "tests/test_sites.py::test_port_arden_standby_pump_takes_over"}
+
+
 def test_every_scenario_has_a_signature():
-    assert set(SIGNATURES) == set(SCENARIOS), "add the new scenario's expected effect to SIGNATURES"
+    assert set(SIGNATURES) | set(OTHER_SITE_SIGNATURES) == set(SCENARIOS), "add the new scenario's expected effect to SIGNATURES"
+    assert set(SIGNATURES) == set(M.scenarios_for(C.SITE_CFG)), "the reference site's scenarios run here"
 
 
 def _children(keys):

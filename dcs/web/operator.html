@@ -107,6 +107,7 @@
   .equip { fill: #eceded; stroke: var(--equip); stroke-width: 1.8; }
   .equip.run { fill: var(--equip-run); }
   .equip.trans { stroke: var(--p2); stroke-width: 2.6; fill: #eceded; }
+  .equip.absent { fill: none; stroke: #b9bdc1; stroke-dasharray: 4 3; }   /* not installed at this site */
   .equip.trip { stroke: var(--p1); stroke-width: 2.8; fill: #eceded; }
   .lbl { font: 600 10.5px var(--sans); fill: var(--muted); }
   .lbl.w { fill: #fff; }
@@ -452,7 +453,7 @@
       <rect x="1" y="1" width="38" height="38" rx="5" fill="#1d4f91"/>
       <path d="M9 30V10M9 20h10M19 30V10M24 30l4-20 4 20" stroke="#fff" stroke-width="3" fill="none" stroke-linejoin="round"/>
     </svg>
-    <div><b>Haltenberg Chemische Werke</b><small>ASU1 · Air Separation Unit · Operator Console</small></div>
+    <div><b id="brand-co">Haltenberg Chemische Werke</b><small id="brand-unit">ASU1 · Air Separation Unit · Operator Console</small></div>
   </div>
   <div class="spacer"></div>
   <div class="hstat"><span class="led" id="led-io"></span><span id="io-txt">Field I/O</span></div>
@@ -483,7 +484,7 @@
         <div class="kpis" id="kpis"></div>
       </div>
       <div class="panel">
-        <h3>ASU1 process overview <span class="r note" style="margin:0">Click a value for its faceplate · click equipment for its detail display</span></h3>
+        <h3><span id="ov-title">ASU1 process overview</span> <span class="r note" style="margin:0">Click a value for its faceplate · click equipment for its detail display</span></h3>
         <div class="dnav" id="dnav-ov"></div>
         <div id="mimic-wrap">
         <svg id="mimic" viewBox="0 0 1520 672" role="img" aria-label="ASU1 process overview">
@@ -582,10 +583,10 @@
           <text class="lbl big" x="1066" y="275">GOX header</text>
           <text class="lbl big" x="1066" y="385">GAN header</text>
           <text class="lbl" x="1052" y="444">LOX to storage</text>
-          <rect class="vessel" x="1420" y="246" width="94" height="28"/><text class="lbl big" x="1428" y="265">EO / EG plant</text>
-          <rect class="vessel" x="1420" y="290" width="94" height="28"/><text class="lbl big" x="1428" y="309">Acetylene POX</text>
+          <rect class="vessel" x="1420" y="246" width="94" height="28"/><text class="lbl big" id="cons-o2a" x="1428" y="265">EO / EG plant</text>
+          <rect class="vessel" x="1420" y="290" width="94" height="28"/><text class="lbl big" id="cons-o2b" x="1428" y="309">Acetylene POX</text>
           <path class="pipe o2" d="M1420 282H1414V260H1420M1414 282V304H1420"/>
-          <rect class="vessel" x="1420" y="378" width="94" height="28"/><text class="lbl big" x="1428" y="397">Site N₂ grid</text>
+          <rect class="vessel" x="1420" y="378" width="94" height="28"/><text class="lbl big" id="cons-n2" x="1428" y="397">Site N₂ grid</text>
 
           <!-- ===== Block 6: storage + vaporizer ===== -->
           <rect class="vessel" x="1112" y="470" width="78" height="132" rx="10"/>
@@ -1505,18 +1506,19 @@ function pv(tag) { return ST.tags[tag] ? ST.tags[tag].pv : null; }
 
 function renderKpis() {
   const load = pv("FIC-101"), pur = pv("AI-601"), kpi = pv("KPI-701"), gox = pv("FIC-501"), co2 = pv("AI-202");
-  const eq = ST.equipment, q = ST.sequences["KS-201"];
+  const eq = ST.equipment, q = ST.sequences["KS-201"], lox = loxPumps();
   const items = [
-    ["ASU load", load == null ? "####" : (load / 145 * 100).toFixed(1) + " %", `air ${fmt("FIC-101", load)} kNm³/h`, false],
+    ["ASU load", load == null ? "####" : (load / TAG["FIC-101"].sp * 100).toFixed(1) + " %", `air ${fmt("FIC-101", load)} kNm³/h`, false],
     ["GOX product", fmt("FIC-501", gox), "kNm³/h", false],
     ["GOX purity", fmt("AI-601", pur), "% O₂ · spec ≥ 99.5", pur != null && pur < 99.5],
     ["Specific power", fmt("KPI-701", kpi), "kWh/Nm³ O₂", kpi != null && kpi > TAG["KPI-701"].alarms.H],
     ["MAC K-101", eq.MAC.state, `${fmt("JI-104", pv("JI-104"))} MW`, eq.MAC.state !== "RUNNING"],
     ["Booster K-102", eq.BAC.state, `${fmt("JI-113", pv("JI-113"))} MW`, eq.BAC.state !== "RUNNING"],
-    ["LOX pump P-501", eq.LOXP.state, `${fmt("PI-511", pv("PI-511"))} bar(g)`, eq.LOXP.state !== "RUNNING"],
-    ["GAN K-503", eq.GANC.state, `${fmt("JI-514", pv("JI-514"))} MW`, eq.GANC.state !== "RUNNING"],
-    ["Backup P-505 · P-506", eq.LOXB.state === "RUNNING" && eq.LINB.state === "RUNNING" ? "READY" : `${eq.LOXB.state.slice(0, 4)} · ${eq.LINB.state.slice(0, 4)}`,
-     `send-out ${fmt("FIC-507", pv("FIC-507"))} · ${fmt("FIC-508", pv("FIC-508"))} kNm³/h`, eq.LOXB.state !== "RUNNING" || eq.LINB.state !== "RUNNING"],
+    [eq.LOXPB ? `LOX pumps P-501A/B` : "LOX pump P-501", lox.state, `${eq.LOXPB ? (lox === eq.LOXPB ? "B" : "A") + " · " : ""}${fmt("PI-511", pv("PI-511"))} bar(g)`, lox.state !== "RUNNING"],
+    ...(eq.GANC ? [["GAN K-503", eq.GANC.state, `${fmt("JI-514", pv("JI-514"))} MW`, eq.GANC.state !== "RUNNING"]] : []),
+    eq.LINB ? ["Backup P-505 · P-506", eq.LOXB.state === "RUNNING" && eq.LINB.state === "RUNNING" ? "READY" : `${eq.LOXB.state.slice(0, 4)} · ${eq.LINB.state.slice(0, 4)}`,
+     `send-out ${fmt("FIC-507", pv("FIC-507"))} · ${fmt("FIC-508", pv("FIC-508"))} kNm³/h`, eq.LOXB.state !== "RUNNING" || eq.LINB.state !== "RUNNING"]
+      : ["Backup P-505", eq.LOXB.state === "RUNNING" ? "READY" : eq.LOXB.state, `send-out ${fmt("FIC-507", pv("FIC-507"))} kNm³/h`, eq.LOXB.state !== "RUNNING"],
     ["Expander", eq.EXP.state, `${fmt("SI-304", pv("SI-304"))} rpm`, eq.EXP.state !== "RUNNING"],
     ["PPU · KS-201", q.display, `CO₂ ${fmt("AI-202", co2)} ppm`, co2 != null && co2 >= 1],
   ];
@@ -1553,7 +1555,7 @@ function renderDataBlocks(root) {
 }
 function renderValves(valves, prefix) {
   for (const [v, tag] of Object.entries(valves)) {
-    const el = $(`#${prefix}${v} polygon`); if (!el) continue;
+    const el = $(`#${prefix}${v} polygon`); if (!el || !ST.tags[tag]) continue;
     el.classList.toggle("open", ST.tags[tag].op > 2);
   }
 }
@@ -1565,12 +1567,17 @@ function renderLevels(levels) {
   }
 }
 
-function eqCls(e) { return e.state === "RUNNING" ? "equip run" : e.state === "TRIPPED" ? "equip trip" : e.state === "STOPPED" ? "equip" : "equip trans"; }
+// The LOX pump symbol: P-501, or at a site with a standby pump P-501A/B together (whichever runs).
+function loxPumps() {
+  const ps = ["LOXP", "LOXPB"].map(k => ST.equipment[k]).filter(Boolean);
+  return ps.find(e => e.state === "RUNNING") || ps.find(e => e.state !== "STOPPED") || ps[0];
+}
+function eqCls(e) { if (!e) return "equip absent"; return e.state === "RUNNING" ? "equip run" : e.state === "TRIPPED" ? "equip trip" : e.state === "STOPPED" ? "equip" : "equip trans"; }
 
 function renderDetail() {
   const d = DETAILS[DETAIL], root = $("#dmimic");
   renderDataBlocks(root); renderValves(d.valves, "dv-"); renderLevels(d.levels);
-  for (const [id, k] of Object.entries(d.equip || {})) $("#" + id, root).setAttribute("class", eqCls(ST.equipment[k]));
+  for (const [id, k] of Object.entries(d.equip || {})) $("#" + id, root).setAttribute("class", eqCls(k === "LOXP" ? loxPumps() : ST.equipment[k]));
   if (d.status) renderStatus(root, d.status);
   if (d.ladder) renderLadder(root, d.ladder);
   if (d.render) d.render(root, d);
@@ -1614,10 +1621,10 @@ function renderMimic() {
   $("#eq-MAC-motor").setAttribute("class", eqCls(ST.equipment.MAC));
   $("#eq-EXP").setAttribute("class", eqCls(ST.equipment.EXP));
   $("#eq-BAC").setAttribute("class", eqCls(ST.equipment.BAC));
-  $("#eq-LOXP").setAttribute("class", eqCls(ST.equipment.LOXP));
+  $("#eq-LOXP").setAttribute("class", eqCls(loxPumps()));
   for (const k of ["GANC", "LOXB", "LINB"]) $("#eq-" + k).setAttribute("class", eqCls(ST.equipment[k]));
-  $("#vap").setAttribute("class", "equip" + (ST.tags["FIC-507"].op > 2 ? " run" : ""));
-  $("#vapn").setAttribute("class", "equip" + (ST.tags["FIC-508"].op > 2 ? " run" : ""));
+  for (const [id, tag] of [["vap", "FIC-507"], ["vapn", "FIC-508"]])
+    $("#" + id).setAttribute("class", "equip" + (!ST.tags[tag] ? " absent" : ST.tags[tag].op > 2 ? " run" : ""));
   const q = ST.sequences["KS-201"];
   for (const b of ["A", "B"]) {
     const on = q.online === b;
@@ -2078,7 +2085,7 @@ const PPU_STEP_TEXT = {
 
 
 function u(tag, extra = 0) { const t = TAG[tag]; return `${fmt(tag, pv(tag), extra)} ${t ? esc(t.unit) : ""}`; }
-function running(k) { return ST.equipment[k].state === "RUNNING"; }
+function running(k) { return ST.equipment[k]?.state === "RUNNING"; }
 
 function trainLive(i) {
   const L = [], eq = ST.equipment, ilk = ST.interlocks;
@@ -3020,10 +3027,39 @@ async function poll() {
 }
 setInterval(() => { $("#clock").textContent = new Date().toLocaleTimeString("en-GB"); }, 250);
 
+// A site without some equipment (common/sites.py): leave out the data blocks, valves, levels, trend pens and
+// status lines of tags and equipment it doesn't have. The drawing stays the reference plant's; what isn't
+// installed is drawn dashed (eqCls).
+function pruneForSite() {
+  const has = t => !!TAG[t];
+  const keepRows = a => { for (let i = a.length - 1; i >= 0; i--) if (!has(a[i][0])) a.splice(i, 1); };
+  const keepObj = (o, f) => { for (const k of Object.keys(o || {})) if (!f(o[k])) delete o[k]; };
+  const keepMinis = a => {
+    for (let i = (a || []).length - 1; i >= 0; i--) {
+      a[i].pts = a[i].pts.filter(p => has(p.split(".")[0]));
+      if (!a[i].pts.length) a.splice(i, 1);
+    }
+  };
+  keepRows(PLACEMENTS); keepObj(VALVES, has); keepObj(LEVELS, v => has(v[0])); keepMinis(MINIS);
+  for (const d of Object.values(DETAILS)) {
+    keepRows(d.placements); keepObj(d.valves, has); keepObj(d.levels, v => has(v[0])); keepMinis(d.minis);
+    if (d.status) d.status.items = d.status.items.filter(([kind, k]) => (kind === "eq" ? CFG.equipment : CFG.interlocks)[k]);
+  }
+}
+
 (async function init() {
   CFG = await (await fetch("/api/config")).json();
   for (const t of CFG.tags) TAG[t.tag] = t;
   $("#opc-txt").textContent = CFG.links.opcua;
+  // Every site of the global demo runs this console (common/sites.py): its name in the header.
+  const si = CFG.site_info;
+  $("#brand-co").textContent = si.key === "haltenberg" ? si.company : `${si.company} · ${si.name}`;
+  $("#brand-unit").textContent = `${CFG.unit} · ${CFG.unit_label} · Operator Console`;
+  document.title = `${CFG.unit} Operator Console · ${si.name}`;
+  $("#ov-title").textContent = `${CFG.unit} process overview` + (si.key === "haltenberg" ? "" : " · dashed: not installed at this site");
+  const [o2a, o2b, n2] = si.mimic_labels;
+  $("#cons-o2a").textContent = o2a; $("#cons-o2b").textContent = o2b; $("#cons-n2").textContent = n2;
+  pruneForSite();
   trendSel = store.get("hcw.trend.sel", ["FIC-101.PV", "AI-601.PV", "KPI-701.PV"]).filter(n => TAG[n.split(".")[0]]);
   trendMin = store.get("hcw.trend.min", 60);
   // ?trend=A.PV,B.PV&range=15 preselects trend points and window (deep link for screenshots)

@@ -4,7 +4,7 @@ ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 
 # Standard library only — the plant's Modbus server is hand-written (see modbus_server.py).
-COPY common/iomap.py common/
+COPY common/iomap.py common/sites.py common/
 COPY plant/model.py plant/modbus_server.py plant/main.py ./
 COPY plant/web ./web
 

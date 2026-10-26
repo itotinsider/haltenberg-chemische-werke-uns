@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A demo plant for a fictional chemical site, **Haltenberg Chemische Werke (HCW)**. The first unit is **ASU1**, a Linde-type Air Separation Unit (~1,000 t/d GOX, 145 kNm³/h air). The process model, tag list and control strategy follow `linde air seperation research.md`; section references (§) below point into it.
 
+**Three sites (global DataOps demo).** The same engine also runs **Port Arden** (US, ASU7100) and **Vadhana** (IN, ASU2), each with its own size, equipment, customers and OPC UA presentation, plus an ISA-95 standard model and a tested mapping of all three onto it. See "Global sites" below. Haltenberg is the reference site: with `HCW_SITE` unset everything is as before.
+
 It is the sibling of the Sweet Harmony Treats waffle-line simulator (`../sht-scada/sweet-harmony-treats-main`, "SHT"). The build philosophy is the same, with one deliberate architectural difference:
 
 - **SHT**: one simulator publishes to an MQTT broker; HMIs poll its HTTP API.
@@ -32,6 +34,7 @@ See "Tests and the interface inventory" below.
 ```
 ROADMAP.md               plans, ideas, claims and progress (read before starting work)
 common/iomap.py          Modbus register map — single source of truth, copied into BOTH images
+common/sites.py          the three sites (HCW_SITE): identity, scale, climate, equipment, customers, OPC UA profile
 plant/model.py           process model (6 blocks) + instructor SCENARIOS — no I/O, no clock
 plant/modbus_server.py   hand-written Modbus TCP server (FC1-6, 15, 16)
 plant/main.py            real-time loop (0.5 s), register bank, instructor HTTP :8111
@@ -41,6 +44,8 @@ dcs/config.py            the DCS "engineering database": blocks, tags, PID confi
 dcs/control.py           PID / alarms / interlocks / equipment / KS-201 sequence — pure logic, no I/O
 dcs/historian.py         SQLite historian (exception reporting) + event journal
 dcs/opcua_server.py      asyncua server, address space generated from config, HistoryRead → historian
+dcs/native.py            per-site OPC UA presentation (Port Arden "us", Vadhana "in"): table() + NativeOpcUaServer
+dataops/uns_model.py     the ISA-95 standard model (UNS) every site should map onto
 dcs/main.py              asyncio scan loop (pymodbus client), checkpointing, HTTP :8110
 dcs/web/index.html       hub (the only page that isn't a persona HMI)
 dcs/web/operator.html    operator console (overview mimic + L3 detail displays, tag list, interlocks, alarms/events, trends, the three trainers)
@@ -48,6 +53,7 @@ tools/offline_sim.py     plant model + control layer coupled directly, faster th
 tools/publish_wiki.py    copies wiki/ (pages + images/) to the GitHub wiki repo and pushes (by hand, after an OK)
 tools/inventory.py       generates inventory/ from every layer's source of truth (needs asyncua: run in the tests image)
 inventory/               GENERATED interface inventory: field/dcs/opcua/api/plant .json + tags.csv (README.md is hand-written)
+                         sites/<site>/ (dcs/opcua/plant of Port Arden, Vadhana), uns/ (sites.json, mapping.csv)
 wiki/                    the GitHub wiki's source: user documentation (Home.md, _Sidebar.md, one file per page)
 wiki/images/             screenshots, shown in the wiki and the README (one folder, so links work in the repo too)
 tests/                   pytest: test_inventory, test_contracts, test_behaviour, test_e2e (+ Dockerfile for the runner)
@@ -63,7 +69,9 @@ exports/                 bind mount: CSVs Node-RED writes (git-ignored, .gitkeep
 docker compose up -d --build          # REQUIRED after any code/web change (files are copied into images)
 # A second stack (another worktree/agent): a git-ignored .env with HCW_STACK and HCW_*_PORT, see docker-compose.yml
 docker compose down
-docker logs -f hcw-asu1-dcs           # / hcw-asu1-plant
+docker logs -f hcw-asu1-dcs           # / hcw-asu1-plant; other sites: hcw-us-dcs, hcw-in-dcs (…-plant)
+curl -s localhost:8120/api/state | python3 -m json.tool | head    # Port Arden (8130 Vadhana)
+python3 tools/offline_sim.py --site vadhana --hours 2 --every 600 --seed 3   # another site offline
 curl -s localhost:8110/api/state | python3 -m json.tool | head -50
 curl -s -X POST localhost:8111/api/scenarios/mac_motor_trip/start       # instructor scenario
 curl -s -X POST -H 'Content-Type: application/json' -d '{"sp":145}' localhost:8110/api/loops/FIC-101
@@ -93,7 +101,7 @@ docker run --rm --network <repo-folder>_default -v /path/to/script:/s --entrypoi
 # connect to opc.tcp://dcs:4840/hcw/asu1/, namespace "urn:haltenberg:hcw:asu1:dcs"
 ```
 
-**Screenshots** (headless Chrome; Playwright is not installed). `?tag=<TAG>` opens a faceplate, `?trend=A.PV,B.PV&range=<min>` preselects trend points and window (a RANGES value), `#overview|tags|ilk|alarms|trends` selects a tab and `#detail/<id>` (e.g. `#detail/C-401`) a detail display, so every view can be captured without clicking. Screenshots live in `wiki/images/` (pages link them as `images/<file>.png`); for a lively trend, compress the PPU cycle to 300 s for ~15 min first, then restore 14400:
+**Screenshots** (headless Chrome; Playwright is not installed). `?tag=<TAG>` opens a faceplate, `?trend=A.PV,B.PV&range=<min>` preselects trend points and window (a RANGES value), `#overview|tags|ilk|alarms|trends` selects a tab and `#detail/<id>` (e.g. `#detail/C-401`) a detail display, so every view can be captured without clicking. Screenshots live in `wiki/images/` (pages link them as `images/<file>.png`; the other sites' shots: `mapping-explorer.png` = `:8110/mapping`, `operator-vadhana.png` = `:8130/operator#overview`, `operator-port-arden-interlocks.png` = `:8120/operator#ilk`; `operator-alarms.png` is taken ~1 min after the instructor's K-503 trip, then reset I-503, start GANC, line-up); for a lively trend, compress the PPU cycle to 300 s for ~15 min first, then restore 14400:
 ```bash
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --disable-gpu --hide-scrollbars \
   --window-size=1600,1000 --virtual-time-budget=6000 --screenshot=out.png "http://localhost:8110/operator?tag=PIC-502#tags"
@@ -285,6 +293,20 @@ Tuning facts that are easy to break:
 - **Routing:** the hash is the display address (`#overview`, `#tags`, …, `#detail/<id or alias>`). In-app navigation goes through `go()`, which pushes history entries marked `{app: true}`; the first entry is marked `{root: true}`. The detail Back button uses `history.back()` only when the current entry is ours, otherwise it closes to the overview. Close and Esc always go to the overview.
 - **Gotcha:** never declare a global function named `history` (or another `window` property) in the page script: it replaces `window.history`. The historian fetch is `fetchHistory()`.
 - **C-401 column display:** calc tags `TY-411` (N₂ condensing at PI-401), `TY-412` (O₂ boiling at PIC-402) and `TY-413` (N₂ boiling at PIC-402) use the DCS's own Clausius-Clapeyron `t_sat()` in `control.py`, with the same constants as the plant model. So TI-407 ≈ TY-411 (pure N₂ at saturation), and TI-406 sits below TY-412 by the LOX impurity.
+
+**Global sites (`common/sites.py`, `dcs/native.py`, `dataops/uns_model.py`).** One engine, three plants; `HCW_SITE` picks one (compose services `plant`/`dcs`, `plant-us`/`dcs-us`, `plant-in`/`dcs-in`, same images; ports 8120/8121/4841/5021 and 8130/8131/4842/5022; data in `data/port-arden/`, `data/vadhana/`).
+- **What a site sets:** identity, `scale` (Port Arden 1.5, Vadhana 0.6), ambient mean/swing and DCAC (`dcac`: a hotter site has a bigger chiller, TT-108 stays ~12 °C), PPU cycle (4/3/2 h), equipment flags (`lox_pump_spare`, `gan_product`), customers and their O₂ pattern (`steady`, `eaf`), scenario labels, OPC UA `profile`, `rack_id`.
+- **Scale = geometric similarity:** the model always runs at the Haltenberg design point; `Plant.measurements()` multiplies the extensive points (`SCALED_POINTS`: flows, powers) by the scale, and `config.py` scales every kNm³/h / MW tag (range, SP, SP limits, `sp_rate`, alarms, cascade SP ranges) plus `SURGE_FLOW`, `PER_GOX_MIN_FLOW`, `GOX_SUMP_ALLOWANCE`. PID gains act on % of span, so tuning and dynamics carry over unchanged.
+- **The site variant is derived at the end of `config.py`:** tags on absent field points (`sites.EQUIPMENT_POINTS`) are dropped, then a cascade master without slaves, an orphaned CAS slave becomes AUTO (FIC-405 without AIC-602), equipment, interlocks with nothing to stop, causes, forces, handovers, LINEUP, PRIORITY_OVERRIDE, CALC_INPUTS, `KPI_POWER_TAGS`. Write new config for Haltenberg; check the other sites still derive (`test_site_contracts`).
+- **The Modbus map is the same everywhere;** a site leaves the points of missing equipment unused (the plant pops them from `measurements()`/`discretes()`; `plant/main.py` writes 0).
+- **Port Arden's standby pump:** `LOXPB` (P-501B, `HS-501B`/`YS-501B`). `EQUIPMENT_GROUPS = {"LOXP": [LOXP, LOXPB]}`: `running("LOXP")`/`armed("LOXP")` mean *any* pump (suppression, armed causes, KPI-701); `runs(key)` is one machine. `STANDBY` pairs: a duty pump stopping while commanded → `_changeover()` starts the other (no I-500), discrete alarm `<key>.AUTOSTART` until redundancy is back; a standby not running 30 s after its start trips I-500. An operator stop of one pump while the other runs is a duty swap, not a trip. Scenario `lox_pump_trip` (Port Arden only; latched motor trip).
+- **Vadhana:** no GAN product (K-503, LIN backup, AT-602, TT-309/313 absent). EAF demand: a heat every 55–65 min, 38 min blowing (27.6 kNm³/h engine) / rest 24.0, lag 90 s. `GOX_AIR_LIMIT` 0.206 there: on the reference 0.208 the peaks held GOX on FY-501 (the purity edge) for whole heats and AI-601 hit its L alarm; now ~99.6 % and the vaporizer tops up the peaks.
+- **OPC UA presentation:** `native.table()` describes the site's address space as data (objects, variables with `src` = the engine value key of `opcua_server.engine_values()`, `conv` = native = engine × f + o, `enc` = enum map). Haltenberg uses the reference `OpcUaServer` (its table only describes it); Port Arden and Vadhana are built by `NativeOpcUaServer` from the table. US: flat points `71FC1001` with PV/SP/OP/MODE(int)/ALMSTAT(int)/EUDESC/PVEULO/PVEUHI, US customary units, tanks in GAL. India: KKS-style codes, measuring point (`XQ01`) and controller (`…DU…`, XW01/XY01/XM01) separate, **numeric NodeIds** (from 1001 in table order; auto-generated children start at 900000 so they never collide), kg/cm², kelvin for cold-box temperatures (°C tags with lo ≤ −150 in blocks 3/4), ppb acetylene, tonnes in tanks, kWh/t; **SourceTimestamps +19800 s** (IST as UTC), live and HistoryRead (the request window stays real UTC).
+- **The standard (`dataops/uns_model.py`):** `hcw/<site>/air-separation/<unit>/<equipment>/<point>[/<attribute>]`, SI-ish units (Nm³/h, kW, bar(a)/bar(g) kept, degC, K for ΔT, %, %mol, ppm(mol)), enums MANUAL/AUTO/CASCADE etc. `standard_point(src, tag)` places every engine value; the generator fails on a value without a place. `inventory/uns/mapping.csv` = per standard point the native node, NodeId, unit and `to_uns` (`x * a + b` with 10 significant digits, or `map n→s`) of each site.
+- **Cross-wiring gotcha (found here):** with three plants on one compose network, recreating plant containers recycled their addresses; pymodbus reconnected to the stale address, so the Port Arden DCS controlled the Vadhana plant (two DCSs on one rack, trips). Fixed twice: the DCS makes a **new client after every I/O failure** (fresh DNS lookup, `reconnect_delay=0`), and the plant publishes its **rack identity RID-901** (`rack_id`); a DCS refuses I/O from another site's rack ("wrong I/O rack", never writes). `test_dcs_refuses_another_sites_plant`.
+- **Console at other sites:** the drawings are Haltenberg's. `pruneForSite()` drops placements, valves, levels, trend pens and status lines of absent tags/equipment; `eqCls(undefined)` draws absent equipment dashed; headers, consumer boxes (`site_info.mimic_labels`, from `sites.py`; the ground-truth consumer keys are `consumers`) and the KPI tiles follow the site; `loxPumps()` shows P-501A/B as one symbol. Trainer texts still describe Haltenberg.
+- **Site mapping explorer (`dcs/web/mapping.html`, `/mapping` on every hub):** open reference, not an exercise (Willem). The DCS image copies `inventory/uns/` (`UNS_DIR`, falls back to the repo's `inventory/uns` outside the image). `GET /api/mapping` = mapping rows + sites.json + this site's live values (`native.encode()` of `engine_values()`, then `main.to_standard()` with the CSV's own formula); it sends `Access-Control-Allow-Origin: *` so a hub's page fetches the other sites' live values from their hubs (`PUBLIC_HUB_*`). `GET /api/mapping.csv` downloads the CSV. After regenerating the inventory, rebuild the DCS image or the page shows the old mapping.
+- **Tests:** `tests/test_sites.py` switches sites in-process with `offline_sim.use_site()` (env + `importlib.reload(config)`, then `native`/`opcua_server`): always in a context that switches back. Don't capture `C.TAGS`-derived values at import in code that must work per site.
 
 **Hidden faults.** The SHT rule carries over: scenarios live only in the plant (`SCENARIOS`, instructor HTTP), never in Modbus, the historian or OPC UA. Don't add a status point for them.
 

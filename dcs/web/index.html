@@ -27,6 +27,9 @@
   .card.nr { border-top-color: #8f1c1c; }
   .card.learn { border-top-color: #0e7490; }
   .card.learn.star { background: #f3fafb; border-color: #9fcbd6; border-top-color: #0e7490; }
+  .card.site { border-top-color: #1d4f91; }
+  .card.site.here { background: #eef4fb; border-color: #9fb0c4; }
+  .sites-note { margin: 10px 0 0; color: var(--muted); font-size: 13px; }
   .card h3 { margin: 0 0 4px; font-size: 16px; }
   .card .k { font: 600 11px var(--mono); color: var(--muted); letter-spacing: .04em; text-transform: uppercase; }
   .card p { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
@@ -46,12 +49,25 @@
       <path d="M9 30V10M9 20h10M19 30V10M24 30l4-20 4 20" stroke="#fff" stroke-width="3" fill="none" stroke-linejoin="round"/>
     </svg>
     <div>
-      <h1>Haltenberg Chemische Werke</h1>
-      <p>Site Haltenberg · ASU1 Air Separation Unit (Linde-type, ~1,000 t/d O₂) · demo environment</p>
+      <h1 id="h-co">Haltenberg Chemische Werke</h1>
+      <p id="h-sub">Site Haltenberg · ASU1 Air Separation Unit (Linde-type, ~1,000 t/d O₂) · demo environment</p>
     </div>
   </div>
 </header>
 <div class="wrap">
+  <h2>HCW global · the three sites</h2>
+  <div class="grid" id="sites"></div>
+  <p class="sites-note">Three air separation units, one simulator engine. Each site's OPC UA server speaks its own language
+    (names, units, structure, timestamps): the starting point of the global DataOps demo.</p>
+  <div class="grid" style="margin-top:14px">
+    <a class="card site" href="/mapping">
+      <span class="k">DataOps · standard data model</span>
+      <h3>Site mapping explorer</h3>
+      <p>Every value of all three sites mapped onto one ISA-95 namespace: native node, NodeId, unit and the conversion,
+        with live values from each site converted on the fly. Open reference; download as <code>mapping.csv</code>.</p>
+    </a>
+  </div>
+
   <h2>Learn · ASU1 trainers</h2>
   <div class="grid">
     <a class="card learn star" href="/operator?training=ot">
@@ -87,7 +103,7 @@
       <span class="k">DCS · OPC UA server (read-only)</span>
       <h3>OPC UA endpoint</h3>
       <p><code id="opc">opc.tcp://localhost:4840/hcw/asu1/</code><button class="copy" data-copy="opc">copy</button></p>
-      <p>Anonymous, no security. Namespace <code>urn:haltenberg:hcw:asu1:dcs</code>, browse <code>Objects/HCW/Haltenberg/ASU1</code>. NodeIds look like <code>ns=2;s=HCW.ASU1.FIC-101.PV</code>. PV/SP/OP are AnalogItems with units and range, and support HistoryRead from the DCS historian.</p>
+      <p id="opc-desc">Anonymous, no security. Namespace <code>urn:haltenberg:hcw:asu1:dcs</code>, browse <code>Objects/HCW/Haltenberg/ASU1</code>. NodeIds look like <code>ns=2;s=HCW.ASU1.FIC-101.PV</code>. PV/SP/OP are AnalogItems with units and range, and support HistoryRead from the DCS historian.</p>
     </div>
   </div>
 
@@ -160,7 +176,28 @@
 </div>
 <script>
   // The only API call on this page: the endpoints a browser on the host should use.
+  // What the other sites' OPC UA servers look like (dcs/native.py): same engine, another presentation.
+  const OPC_DESC = {
+    us: `Anonymous, no security. Namespace <code>urn:hcw-americas:port-arden:asu7100:dcs</code>, a flat point database under
+      <code>Objects/PTA_ASU7100/Points</code>: one object per point (<code>71FC1001</code>) with plain variables PV, SP, OP, MODE (0/1/2),
+      ALMSTAT, EUDESC, PVEULO/PVEUHI. US customary units (MSCFH, PSIG, DEGF, HP, GAL). NodeIds like <code>ns=2;s=71FC1001.PV</code>; HistoryRead on PV/SP/OP.`,
+    in: `Anonymous, no security. Namespace <code>urn:hcw-india:vadhana:asu2</code>, asset codes in KKS style under <code>Objects/VDH_ASU2</code>:
+      system folders (<code>02MAA10</code>), measuring points (<code>02MAA10CF001</code>, value <code>XQ01</code>) and their controllers as separate
+      objects (<code>02MAA10DU001</code>: XW01 setpoint, XY01 output, XM01 mode). <b>Numeric NodeIds</b>: browse by name. Nm³/h, kg/cm², kelvin in
+      the cold box. Source timestamps are local time (IST) labelled as UTC.`,
+  };
   fetch("/api/config").then(r => r.json()).then(c => {
+    const si = c.site_info;
+    document.title = `HCW ${si.name} Systems`;
+    document.getElementById("h-co").textContent = si.company;
+    document.getElementById("h-sub").textContent = `Site ${si.name}, ${si.country} · ${c.unit} ${c.unit_label} (Linde-type, ${si.capacity}) · demo environment`;
+    if (OPC_DESC[si.opcua_profile]) document.getElementById("opc-desc").innerHTML = OPC_DESC[si.opcua_profile];
+    document.getElementById("sites").innerHTML = c.sites.map(s => {
+      const here = s.key === si.key, tag = here || !s.url ? "div" : "a";
+      return `<${tag} class="card site${here ? " here" : ""}"${tag === "a" ? ` href="${s.url}"` : ""}>
+        <span class="k">${here ? "● this site" : s.url ? "site hub ↗" : "site (not running here)"}</span>
+        <h3>${s.name} · ${s.unit}</h3><p>${s.company}, ${s.country}</p></${tag}>`;
+    }).join("");
     document.getElementById("opc").textContent = c.links.opcua;
     document.getElementById("mb").textContent = c.links.modbus;
     document.getElementById("instr").href = c.links.instructor;

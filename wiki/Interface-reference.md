@@ -14,6 +14,13 @@ it.
 | [`api.json`](https://github.com/itotinsider/haltenberg-chemische-werke-uns/blob/main/inventory/api.json) | HTTP API routes and response shapes, historian points |
 | [`plant.json`](https://github.com/itotinsider/haltenberg-chemische-werke-uns/blob/main/inventory/plant.json) | Instructor scenarios and ground truth |
 
+The top-level files describe Haltenberg, the reference site. The other sites have their own
+`dcs.json`, `opcua.json` and `plant.json` under
+[`inventory/sites/`](https://github.com/itotinsider/haltenberg-chemische-werke-uns/tree/main/inventory/sites),
+and [`inventory/uns/`](https://github.com/itotinsider/haltenberg-chemische-werke-uns/tree/main/inventory/uns)
+joins all three with the [Standard data model](Standard-data-model): `sites.json` (what each site
+is, has and publishes) and `mapping.csv` (every native node mapped onto the standard).
+
 Who owns which name, and how a change is made, is in
 [`inventory/README.md`](https://github.com/itotinsider/haltenberg-chemische-werke-uns/blob/main/inventory/README.md).
 

@@ -14,6 +14,13 @@ It explains the **classic process-industry stack**, and produces realistic plant
 field I/O over raw Modbus TCP, a DCS that turns it into modelled controller tags, a historian, and
 OPC UA as the interface IT-side clients (here Node-RED) consume.
 
+**Three sites, one standard.** HCW also runs an ASU at Port Arden (Texas) and at Vadhana (Gujarat):
+the same simulator engine at another size, with other equipment and customers, and a DCS that presents
+its data over OPC UA in its own way (names, units, structure, timestamps). That is the starting point
+of a global DataOps demo: map all three onto one ISA-95 standard model
+([Global sites](https://github.com/itotinsider/haltenberg-chemische-werke-uns/wiki/Global-sites),
+[Standard data model](https://github.com/itotinsider/haltenberg-chemische-werke-uns/wiki/Standard-data-model)).
+
 ![Operator console overview](wiki/images/operator-overview.png)
 
 **📖 Documentation: [the wiki](https://github.com/itotinsider/haltenberg-chemische-werke-uns/wiki).**
@@ -22,7 +29,8 @@ Never been on a production site? Start with
 
 ## Quick start
 
-Needs Docker Desktop (or Docker Engine + Compose v2) and free ports 8110, 8111, 4840, 5020, 1880.
+Needs Docker Desktop (or Docker Engine + Compose v2) and free ports 8110, 8111, 4840, 5020, 1880
+(Haltenberg and Node-RED), 8120, 8121, 4841, 5021 (Port Arden), 8130, 8131, 4842, 5022 (Vadhana).
 
 ```bash
 docker compose up -d --build
@@ -36,6 +44,10 @@ docker compose up -d --build
 | OPC UA endpoint | `opc.tcp://localhost:4840/hcw/asu1/` (anonymous, no security) |
 | Modbus TCP field I/O (raw) | `localhost:5020`, unit 1 |
 | Node-RED (OPC UA client flows) | http://localhost:1880 |
+| Port Arden, US (hub · OPC UA) | http://localhost:8120 · `opc.tcp://localhost:4841/PortArden/ASU7100` |
+| Vadhana, IN (hub · OPC UA) | http://localhost:8130 · `opc.tcp://localhost:4842/vadhana/asu2` |
+| Site mapping explorer (all three sites → the standard, live) | http://localhost:8110/mapping |
+| The standard model and the mapping of all three | [`dataops/uns_model.py`](dataops/uns_model.py), [`inventory/uns/mapping.csv`](inventory/uns/mapping.csv) |
 
 Or open Claude Code in this folder and ask: `read the CLAUDE.md file and README.md file and set up the environment`.
 

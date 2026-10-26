@@ -61,12 +61,14 @@ def wait_for(cond, timeout=30.0, step=0.5):
     return False
 
 
-@pytest.fixture(scope="module")
-def stack(tmp_path_factory):
-    tmp = tmp_path_factory.mktemp("e2e")
+def launch(tmp, site="haltenberg", plant_site=None, path="/hcw/asu1/", wait_io=True):
+    """Start plant/main.py and dcs/main.py for `site` (the plant may be another site's: rack check)."""
     p = dict(modbus=free_port(), plant=free_port(), dcs=free_port(), opcua=free_port())
-    env = dict(os.environ, PYTHONPATH=os.path.join(ROOT, "common"), PPU_CYCLE_SECONDS="14400")
-    plant_env = dict(env, MODBUS_PORT=str(p["modbus"]), WEB_PORT=str(p["plant"]), DCS_URL=f"http://127.0.0.1:{p['dcs']}")
+    env = dict(os.environ, PYTHONPATH=os.path.join(ROOT, "common"), HCW_SITE=site)
+    if site == "haltenberg":
+        env["PPU_CYCLE_SECONDS"] = "14400"
+    plant_env = dict(env, HCW_SITE=plant_site or site, MODBUS_PORT=str(p["modbus"]), WEB_PORT=str(p["plant"]),
+                     DCS_URL=f"http://127.0.0.1:{p['dcs']}")
     dcs_env = dict(env, PLANT_HOST="127.0.0.1", PLANT_PORT=str(p["modbus"]), WEB_PORT=str(p["dcs"]),
                    OPCUA_PORT=str(p["opcua"]), DATA_DIR=str(tmp / "data"), SCAN_SECONDS="1")
     logs = {k: open(tmp / f"{k}.log", "w") for k in ("plant", "dcs")}
@@ -76,22 +78,32 @@ def stack(tmp_path_factory):
         "dcs": subprocess.Popen([sys.executable, "dcs/main.py"], cwd=ROOT, env=dcs_env,
                                 stdout=logs["dcs"], stderr=subprocess.STDOUT),
     }
-    s = dict(ports=p, procs=procs, dcs=f"http://127.0.0.1:{p['dcs']}", plant=f"http://127.0.0.1:{p['plant']}",
-             opcua=f"opc.tcp://127.0.0.1:{p['opcua']}/hcw/asu1/")
-    ok = wait_for(lambda: get(s["dcs"] + "/api/state").get("io_ok"), timeout=40)
+    s = dict(ports=p, procs=procs, logs=logs, tmp=tmp, dcs=f"http://127.0.0.1:{p['dcs']}",
+             plant=f"http://127.0.0.1:{p['plant']}", opcua=f"opc.tcp://127.0.0.1:{p['opcua']}{path}")
+    ok = wait_for(lambda: get(s["dcs"] + "/api/state").get("io_ok") if wait_io else get(s["dcs"] + "/api/state"),
+                  timeout=40)
     if not ok:
-        for k, proc in procs.items():
-            proc.terminate()
+        stop(s)
         pytest.fail("stack did not come up:\n" + "\n".join(
             f"--- {k}.log\n" + open(tmp / f"{k}.log").read()[-3000:] for k in logs))
     time.sleep(3)          # a few scans: historian samples, OPC UA values
-    yield s
-    for proc in procs.values():
+    return s
+
+
+def stop(s):
+    for proc in s["procs"].values():
         if proc.poll() is None:
             proc.terminate()
             proc.wait(10)
-    for f in logs.values():
+    for f in s["logs"].values():
         f.close()
+
+
+@pytest.fixture(scope="module")
+def stack(tmp_path_factory):
+    s = launch(tmp_path_factory.mktemp("e2e"))
+    yield s
+    stop(s)
 
 
 def opcua(fn):
@@ -194,9 +206,8 @@ def test_raw_modbus_registers(stack, inv):
         if "io" in t:
             span = t["range"][1] - t["range"][0]
             assert abs(raw[t["io"]] - st["tags"][tag]["pv"]) < 0.05 * span, f"{tag} vs {t['io']}"
-    for name, addr in iomap.DI_ADDR.items():
-        if name.startswith("YS-"):
-            assert di[addr] is True, f"{name} (run feedback) at DI {addr}"
+    for key, e in C.EQUIPMENT.items():
+        assert di[iomap.DI_ADDR[e["fb"]]] is True, f"{e['fb']} (run feedback) at DI {iomap.DI_ADDR[e['fb']]}"
     for key, e in C.EQUIPMENT.items():
         assert coils[iomap.DO_ADDR[e["cmd"]]] is True, f"{e['cmd']} run command at coil {iomap.DO_ADDR[e['cmd']]}"
 
@@ -277,6 +288,22 @@ def test_not_applicable_is_bad_out_of_service_live_and_in_history(stack):
     assert hist[-1].StatusCode.value == ua.StatusCodes.BadOutOfService, "history says the same as the live value"
 
 
+def test_mapping_api_serves_the_committed_mapping_with_live_values(stack):
+    """/api/mapping (the Site mapping explorer): the committed mapping, and this site's live values converted
+    with the mapping's own formulas: the air flow in Nm3/h equals the DCS's FIC-101 x 1000."""
+    import csv
+    m = get(stack["dcs"] + "/api/mapping")
+    committed = list(csv.DictReader(open(os.path.join(ROOT, "inventory/uns/mapping.csv"), encoding="utf-8")))
+    assert m["rows"] == committed and set(m["sites"]) == {"haltenberg", "port-arden", "vadhana"}
+    flow = m["live"]["s=HCW.ASU1.FIC-101.SP"]
+    assert flow["quality"] == "GOOD" and flow["standard"] == pytest.approx(get(stack["dcs"] + "/api/state")["tags"]["FIC-101"]["sp"] * 1000)
+    assert len(m["live"]) == sum(1 for r in committed if r["haltenberg.nodeid"])
+    with urllib.request.urlopen(stack["dcs"] + "/api/mapping", timeout=5) as r:
+        assert r.headers["Access-Control-Allow-Origin"] == "*"
+    with urllib.request.urlopen(stack["dcs"] + "/mapping", timeout=5) as r:
+        assert r.status == 200
+
+
 # ---------------------------------------------------------------- last: take the plant away
 def test_plant_loss_gives_bad_quality(stack):
     from asyncua import ua
@@ -296,3 +323,67 @@ def test_plant_loss_gives_bad_quality(stack):
         return pv, io
     pv, io = asyncio.run(opcua(read)(stack["opcua"]))
     assert pv.StatusCode.value == ua.StatusCodes.BadNoCommunication and io is False
+
+
+# ---------------------------------------------------------------- the other sites (common/sites.py)
+SITE_SERVERS = {"port-arden": ("/PortArden/ASU7100", "urn:hcw-americas:port-arden:asu7100:dcs", "PTA_ASU7100"),
+                "vadhana": ("/vadhana/asu2", "urn:hcw-india:vadhana:asu2", "VDH_ASU2")}
+
+
+@pytest.mark.parametrize("key", list(SITE_SERVERS))
+def test_site_opcua_matches_inventory_and_mapping(key, tmp_path):
+    """A site's live OPC UA server: the committed address space, Good values, and the mapping's conversion
+    of each controller setpoint giving the DCS's own setpoint in standard units."""
+    import csv
+    from datetime import datetime, timezone
+    from asyncua import Client, ua
+    from test_sites import to_standard
+    path, nsu, root = SITE_SERVERS[key]
+    s = launch(tmp_path, key, path=path)
+    try:
+        expected = json.load(open(os.path.join(ROOT, f"inventory/sites/{key}/opcua.json")))["nodes"]
+        rows = list(csv.DictReader(open(os.path.join(ROOT, "inventory/uns/mapping.csv"))))
+        st = get(s["dcs"] + "/api/state")
+
+        async def go():
+            async with Client(s["opcua"], timeout=10) as client:
+                ns = await client.get_namespace_index(nsu)
+                root_id = expected[root].get("id", root)
+                nodes = await walk(client.get_node(ua.NodeId(root_id, ns)))
+                checked = 0
+                for r in rows:
+                    if r["attribute"] != "setpoint" or not r[f"{key}.nodeid"]:
+                        continue
+                    if st["tags"][r["engine_key"].split(".")[0]]["mode"] != "AUTO":
+                        continue        # a cascade / ratio setpoint moves between the two reads
+                    dv = await client.get_node(f"ns={ns};{r[key + '.nodeid']}").read_data_value(raise_on_bad_status=False)
+                    assert dv.StatusCode.is_good(), r["uns_point"]
+                    tag = r["engine_key"].split(".")[0]
+                    factor = 1000.0 if r["unit"] in ("Nm3/h", "kW") else 1.0
+                    assert to_standard(r[f"{key}.to_uns"], dv.Value.Value) == pytest.approx(
+                        st["tags"][tag]["sp"] * factor, rel=1e-6), r["uns_point"]
+                    checked += 1
+                lp = next(r for r in rows if r["uns_point"] == "double-column/lp-top-pressure" and r["attribute"] == "value")
+                dv = await client.get_node(f"ns={ns};{lp[key + '.nodeid']}").read_data_value()
+                skew = (dv.SourceTimestamp.replace(tzinfo=timezone.utc) - datetime.now(timezone.utc)).total_seconds()
+                return nodes, checked, skew
+        nodes, checked, skew = asyncio.run(go())
+        assert nodes == expected
+        assert checked >= 10
+        # Vadhana's gateway stamps local time (IST) as UTC; Port Arden's is right.
+        assert abs(skew - (19800 if key == "vadhana" else 0)) < 10
+    finally:
+        stop(s)
+
+
+def test_dcs_refuses_another_sites_plant(tmp_path):
+    """RID-901: a Port Arden DCS pointed at the Vadhana plant never gets good I/O and never writes to it."""
+    s = launch(tmp_path, "port-arden", plant_site="vadhana", path="/PortArden/ASU7100", wait_io=False)
+    try:
+        time.sleep(3)
+        assert get(s["dcs"] + "/api/state")["io_ok"] is False
+        assert get(s["plant"] + "/api/plant")["dcs_watchdog_age_s"] > 4, "the DCS wrote to the wrong plant"
+        assert "wrong I/O rack" in open(tmp_path / "dcs.log").read()
+    finally:
+        stop(s)
+

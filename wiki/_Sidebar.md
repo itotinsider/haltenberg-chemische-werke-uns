@@ -9,6 +9,10 @@
 - [Architecture](Architecture)
 - [Process behaviour](Process-behaviour)
 
+**Global DataOps**
+- [Global sites](Global-sites)
+- [Standard data model](Standard-data-model)
+
 **Use**
 - [Trainers](Trainers)
 - [Operator console](Operator-console)

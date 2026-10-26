@@ -237,3 +237,14 @@ rules above:
   - **Publishing:** `tools/publish_wiki.py`; since PR #9 a GitHub Action runs it on every push to
     `main` that touches `wiki/` or `docs/screenshots/`.
   - **Tests:** wiki pages only name existing instruments; wiki links and images resolve.
+- ✅ **Global sites** (`global-sites`). [PR #13](https://github.com/itotinsider/haltenberg-chemische-werke-uns/pull/13).
+  - **Sites:** Port Arden, US (ASU7100, ×1.5, standby LOX pump with automatic changeover) and Vadhana, IN
+    (ASU2, ×0.6, O₂ only for a steel works: cyclic demand, no GAN product, load limit 0.206). Same engine,
+    `HCW_SITE` selects the site (`common/sites.py`); each has its own OPC UA presentation (`dcs/native.py`).
+  - **Standard:** ISA-95 UNS model (`dataops/uns_model.py`) and a tested mapping of all three sites onto it
+    (`inventory/uns/`), open reference; Site mapping explorer `/mapping` on every hub, with live values.
+  - **Interface (added only):** `YS-501B`, `HS-501B`, `RID-901` (rack identity), `/api/mapping`, `site_info`.
+  - **Found:** three plants on one network cross-wired a DCS to another site's plant after a container
+    recreate; fixed with fresh Modbus clients and the RID-901 check.
+  - **Later (ideas):** a DataOps layer consuming the mapping; Node-RED for the other sites; per-site trainer
+    texts and console drawings.
