@@ -104,35 +104,6 @@ rules above:
 
 ## In progress
 
-### `global-sites` — Two more sites (US, India) and a standard data model for a DataOps demo
-- **Status:** 🚧 In progress · **Owner:** Claude (session global-sites) for Willem · **Branch:** `global-sites` · **PR:** [#13](https://github.com/itotinsider/haltenberg-chemische-werke-uns/pull/13)
-- **Goal:** two more ASUs, at Port Arden (Texas) and Vadhana (Gujarat), that differ in size, equipment,
-  customers and above all in how their DCS presents data over OPC UA; plus one ISA-95 standard model
-  and a tested mapping of all three onto it, to build the global DataOps demo on.
-- **Touches:** new `common/sites.py`, `dcs/native.py`, `dataops/uns_model.py`, `tests/test_sites.py`;
-  `plant/model.py`, `plant/main.py`, `dcs/config.py` (site variant at the end), `dcs/control.py`
-  (equipment groups, standby changeover), `dcs/main.py`, `dcs/opcua_server.py` (`engine_values()`),
-  `docker-compose.yml` (four services), hub / console / instructor headers, `tools/inventory.py`
-  (`inventory/sites/`, `inventory/uns/`), wiki (Global sites, Standard data model).
-- **Reserves:** field points `YS-501B` (DI 54), `HS-501B` (coil 54), `RID-901` (IR 902); equipment
-  `LOXPB`; discrete alarms `<pump>.AUTOSTART`; scenario `lox_pump_trip`; host ports 8120/8121/4841/5021
-  and 8130/8131/4842/5022.
-- **Done when:** all three sites run from one `docker compose up`; each site's OPC UA matches its
-  committed inventory; `inventory/uns/mapping.csv` covers every published value of every site and its
-  conversions are tested (offline and against the live servers); Haltenberg's interface and behaviour
-  are unchanged (its `dcs.json` / `opcua.json` / `tags.csv` didn't change); docs updated.
-- **Notes:**
-  - 2026-10-26 Willem: running sites (not only a design); real process differences, not only data
-    differences; the standard is an ISA-95 UNS.
-  - 2026-10-26 Claude: Port Arden ×1.5 with a standby LOX pump; Vadhana ×0.6, O₂ only for a steel works
-    (cyclic demand, no GAN product, load limit 0.206). Found on the way: three plants on one network
-    cross-wired two DCSs after a container recreate (stale address); fixed with fresh Modbus clients and
-    the rack identity RID-901.
-  - 2026-10-26 Willem: the mapping is open reference, not an exercise; an interactive page for it. Added
-    the Site mapping explorer (`/mapping` on every hub, live values of all three sites).
-  - **Next (ideas):** a DataOps layer (broker + UNS, the first consumer of `mapping.csv`); Node-RED
-    flows for the other sites; per-site trainer texts; site-specific console drawings.
-
 ## Planned
 
 ### `docs-refresh` — Step 5: README, CLAUDE.md and screenshots
@@ -266,3 +237,14 @@ rules above:
   - **Publishing:** `tools/publish_wiki.py`; since PR #9 a GitHub Action runs it on every push to
     `main` that touches `wiki/` or `docs/screenshots/`.
   - **Tests:** wiki pages only name existing instruments; wiki links and images resolve.
+- ✅ **Global sites** (`global-sites`). [PR #13](https://github.com/itotinsider/haltenberg-chemische-werke-uns/pull/13).
+  - **Sites:** Port Arden, US (ASU7100, ×1.5, standby LOX pump with automatic changeover) and Vadhana, IN
+    (ASU2, ×0.6, O₂ only for a steel works: cyclic demand, no GAN product, load limit 0.206). Same engine,
+    `HCW_SITE` selects the site (`common/sites.py`); each has its own OPC UA presentation (`dcs/native.py`).
+  - **Standard:** ISA-95 UNS model (`dataops/uns_model.py`) and a tested mapping of all three sites onto it
+    (`inventory/uns/`), open reference; Site mapping explorer `/mapping` on every hub, with live values.
+  - **Interface (added only):** `YS-501B`, `HS-501B`, `RID-901` (rack identity), `/api/mapping`, `site_info`.
+  - **Found:** three plants on one network cross-wired a DCS to another site's plant after a container
+    recreate; fixed with fresh Modbus clients and the RID-901 check.
+  - **Later (ideas):** a DataOps layer consuming the mapping; Node-RED for the other sites; per-site trainer
+    texts and console drawings.
