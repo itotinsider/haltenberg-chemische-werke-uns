@@ -42,7 +42,8 @@
   .bar a { color: var(--brand); white-space: nowrap; }
   .count { color: var(--muted); font-size: 13px; white-space: nowrap; }
   .tablewrap { overflow-x: auto; background: var(--card); border: 1px solid var(--line); margin-bottom: 30px; }
-  table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+  table { border-collapse: collapse; width: 100%; min-width: 1200px; font-size: 12.5px; table-layout: fixed; }
+  col.c-std { width: 20%; } col.c-unit { width: 6%; } col.c-site { width: 23%; } col.c-notes { width: 5%; }
   th, td { padding: 6px 8px; border-bottom: 1px solid #e4e7ea; vertical-align: top; text-align: left; }
   thead th { background: var(--soft); position: sticky; top: 0; font-weight: 600; white-space: nowrap; }
   thead tr.sites-h th { font-size: 13px; border-bottom: 2px solid var(--line); }
@@ -50,7 +51,7 @@
   td.std b { font-family: var(--mono); font-size: 12px; font-weight: 600; }
   td.std .d { color: var(--muted); }
   .attr { display: inline-block; font: 600 10px var(--mono); text-transform: uppercase; color: var(--brand); border: 1px solid #b9c9de; padding: 0 4px; margin-left: 4px; }
-  td.node .p { font-family: var(--mono); font-size: 11.5px; overflow-wrap: anywhere; }
+  td.node .p { font-family: var(--mono); font-size: 11.5px; }
   td.node .id { color: var(--muted); font-family: var(--mono); font-size: 11px; }
   td.node .f { font-family: var(--mono); font-size: 11.5px; margin-top: 2px; }
   td.node .u { display: inline-block; background: var(--soft); border: 1px solid #e0e3e6; padding: 0 4px; font-size: 11px; margin-right: 4px; }
@@ -58,7 +59,7 @@
   td.node .v .arrow { color: var(--muted); }
   td.node .v.bad { color: #c026d3; }
   td.gap { color: var(--gap); font-style: italic; background: repeating-linear-gradient(135deg, #fafafa, #fafafa 6px, #f3f4f5 6px, #f3f4f5 12px); }
-  td.notes { color: var(--muted); white-space: nowrap; }
+  td.notes { color: var(--muted); font-size: 11.5px; }
   tr.grp td { background: #e8edf4; font: 600 12px var(--mono); color: var(--brand); padding: 5px 8px; }
   mark { background: var(--hl); padding: 0; }
   footer { color: var(--muted); font-size: 12px; padding: 0 0 30px; }
@@ -110,6 +111,7 @@
     <a href="/api/mapping.csv" download="mapping.csv">⬇ mapping.csv</a>
   </div>
   <div class="tablewrap"><table>
+    <colgroup><col class="c-std"><col class="c-unit"><col class="c-site"><col class="c-site"><col class="c-site"><col class="c-notes"></colgroup>
     <thead id="thead"></thead>
     <tbody id="tbody"><tr><td>Loading…</td></tr></tbody>
   </table></div>
@@ -173,7 +175,8 @@ function siteCell(r, k, q) {
       live = `<div class="v ${bad ? "bad" : ""}">${bad ? v.quality.toLowerCase().replace("_", " ") : `${esc(fmtNum(v.native))} <span class="arrow">→</span> ${esc(fmtNum(v.standard))}`}</div>`;
     }
   }
-  return `<td class="sitecol node"><div class="p">${hl(path, q)}</div><div class="id">${hl(r[k + ".nodeid"], q)}</div>
+  // Break long browse paths only after a "/" (never inside a node name).
+  return `<td class="sitecol node"><div class="p">${hl(path, q).replace(/\/(?![^<]*>)/g, "/<wbr>")}</div><div class="id">${hl(r[k + ".nodeid"], q)}</div>
     <div class="f">${u ? `<span class="u">${hl(u, q)}</span>` : ""}${f === "x" ? "<span style='color:var(--muted)'>x (as is)</span>" : hl(f, q)}</div>${live}</td>`;
 }
 

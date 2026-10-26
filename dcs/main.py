@@ -342,7 +342,7 @@ def config_payload(rt):
         enterprise=C.ENTERPRISE, site=C.SITE, unit=C.UNIT, unit_label=C.UNIT_LABEL,
         site_info=dict(key=s["key"], name=s["site"], company=s["company"], country=s["country_name"],
                        timezone=s["timezone"], capacity=s["capacity"], scale=s["scale"], customers=s["customers"],
-                       consumers=s["consumers"],
+                       consumers=s["consumers"], mimic_labels=s["mimic_labels"],
                        opcua_profile=native.PROFILE),
         sites=SITE_LINKS,
         blocks=[dict(id=k, label=v) for k, v in C.BLOCKS],

@@ -5,6 +5,11 @@ The DCS operator console is at http://localhost:8110/operator. It follows **ISA-
 2 amber, 3 violet, bad quality magenta). Process media get muted colours so you can tell lines
 apart: oxygen blue, nitrogen green.
 
+Port Arden (http://localhost:8120/operator) and Vadhana (http://localhost:8130/operator) run the
+same console. Its header names the site, the consumer boxes and KPI tiles follow it, and the
+drawings are Haltenberg's: equipment a site doesn't have is drawn dashed, and its tags are left
+out. See [Global sites](Global-sites).
+
 ## Process overview
 
 The whole unit on one display (ISA-101 level 2). Click any value to open its faceplate, or click

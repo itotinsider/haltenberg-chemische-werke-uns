@@ -3,6 +3,12 @@
 Four ways to get data out of HCW, from most to least "IT-like". The tag names and node ids are
 listed on [Interface reference](Interface-reference).
 
+This page describes Haltenberg. Port Arden (`:4841`, hub `:8120`) and Vadhana (`:4842`, hub `:8130`)
+have the same HTTP API, historian and Modbus layout, but their OPC UA servers present the data in
+their own way: see [Global sites](Global-sites). The **Site mapping explorer**
+(http://localhost:8110/mapping) shows every site's nodes side by side, mapped onto the
+[Standard data model](Standard-data-model).
+
 ## OPC UA
 
 The standard door for IT systems: `opc.tcp://localhost:4840/hcw/asu1/` (anonymous, SecurityPolicy
@@ -77,6 +83,8 @@ The operator console uses it; scripts can too. JSON throughout.
 | `GET /api/config` | the engineering data: tags with units, ranges, alarm limits; equipment, interlocks; the inputs of calculated tags |
 | `GET /api/history?tags=FIC-101.PV,AI-601.PV&minutes=60&points=300` | trend data (min/max per bucket) |
 | `GET /api/events?limit=100` | the event journal |
+| `GET /api/mapping` | the [standard mapping](Standard-data-model) of all three sites (`inventory/uns/`), with this site's live values before and after conversion. Cross-origin reads allowed |
+| `GET /api/mapping.csv` | the same mapping as a CSV download |
 | `GET /api/datapath?tag=FIC-101` | one tag at every layer: its Modbus registers (the raw words of the last scan), the DCS tag, its historian points and OPC UA nodes. Used by the [IT/OT trainer](Trainers) |
 | `POST /api/loops/<tag>` `{"mode": "AUTO", "sp": 145}` | change a loop (also `op`, `kc`, `ti`, `sp_rate`, `ratio`…) |
 | `POST /api/equipment/<key>/start` or `/stop` | start / stop equipment |

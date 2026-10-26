@@ -15,6 +15,8 @@ The mapping is **open reference material**, not an exercise: use it to build the
 Browse it with live values on any hub's **Site mapping explorer**
 (http://localhost:8110/mapping), or download it there.
 
+![Site mapping explorer](images/mapping-explorer.png)
+
 ## Paths
 
 ```

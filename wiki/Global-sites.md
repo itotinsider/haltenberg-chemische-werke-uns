@@ -12,6 +12,8 @@ standard, and the live value before and after conversion. The same data is in
 [`inventory/uns/mapping.csv`](https://github.com/itotinsider/haltenberg-chemische-werke-uns/blob/main/inventory/uns/mapping.csv)
 (a download button on the page) and `inventory/uns/sites.json`.
 
+![Site mapping explorer: the three sites side by side, with live values before and after conversion](images/mapping-explorer.png)
+
 All three run the same simulator engine (plant model + DCS). What differs per site is set in
 [`common/sites.py`](https://github.com/itotinsider/haltenberg-chemische-werke-uns/blob/main/common/sites.py):
 its size, climate, customers, some equipment, and above all **how its DCS presents the data over
@@ -62,6 +64,12 @@ OPC UA**.
     for a whole heat, purity would sink to its L alarm.
 - **Climate:** hotter sites have a bigger chiller after the DCAC (TI-108 is ~12 °C everywhere), a
   shorter bed cycle, more MAC power per Nm³ of air, and an ambient alarm set for their weather.
+
+![Vadhana's console: the reference drawing, with the nitrogen product equipment drawn dashed (not installed)](images/operator-vadhana.png)
+
+Port Arden's two LOX pumps on the interlock display (I-500 trips both; P-501B is the standby):
+
+![Port Arden: Interlocks & sequences with P-501A and P-501B](images/operator-port-arden-interlocks.png)
 
 ## How each site presents its data
 

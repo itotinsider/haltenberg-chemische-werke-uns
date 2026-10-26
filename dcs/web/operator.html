@@ -3057,8 +3057,8 @@ function pruneForSite() {
   $("#brand-unit").textContent = `${CFG.unit} · ${CFG.unit_label} · Operator Console`;
   document.title = `${CFG.unit} Operator Console · ${si.name}`;
   $("#ov-title").textContent = `${CFG.unit} process overview` + (si.key === "haltenberg" ? "" : " · dashed: not installed at this site");
-  const [o2a, o2b] = si.consumers.o2;
-  $("#cons-o2a").textContent = o2a; $("#cons-o2b").textContent = o2b; $("#cons-n2").textContent = si.consumers.n2 || "none (no GAN)";
+  const [o2a, o2b, n2] = si.mimic_labels;
+  $("#cons-o2a").textContent = o2a; $("#cons-o2b").textContent = o2b; $("#cons-n2").textContent = n2;
   pruneForSite();
   trendSel = store.get("hcw.trend.sel", ["FIC-101.PV", "AI-601.PV", "KPI-701.PV"]).filter(n => TAG[n.split(".")[0]]);
   trendMin = store.get("hcw.trend.min", 60);
