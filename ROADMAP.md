@@ -104,22 +104,6 @@ rules above:
 
 ## In progress
 
-### `opcua-alarms-conditions` — OPC UA Alarms & Conditions (read-only)
-- **Status:** 🚧 In progress · **Owner:** Claude (session hcw-opcua-ac, worktree ../hcw-opcua-ac) · **Branch:** `opcua-alarms-conditions` · **PR:** [#14](https://github.com/itotinsider/haltenberg-chemische-werke-uns/pull/14)
-- **Goal:** the console's alarms and event journal on OPC UA as Part 9 Alarms & Conditions (the open successor
-  of DCOM "OPC A&E"), next to the `AlarmState` strings and `Diagnostics` counts, on all three sites.
-- **Touches:** new `dcs/ua_alarms.py`; `dcs/opcua_server.py`, `dcs/native.py` (`table().conditions`/`sources`),
-  `dcs/control.py` (`alarm_defs()`, alarm key on journal rows), `dcs/historian.py` (`events.alarm` column,
-  `journal()`), `dcs/main.py`; `tools/inventory.py` (`events`, `conditions` in `opcua.json`), new
-  `tools/opcua_events.py`; wiki Data access / Global sites / Interface reference, hub card.
-- **Reserves:** no tags or Modbus addresses. OPC UA: EventNotifier on the area objects, ConditionIds
-  `<source id>.<ConditionName>` (`LevelAlarm`, `TRIP`, `SWITCH_DELAYED`, `REGEN_INCOMPLETE`, `COMM`, `AUTOSTART`).
-- **Done when:** a client subscribed on the Server or an area gets condition events on trips and limit
-  alarms (OfType filters included), ConditionRefresh replays active/unacked alarms, the console's ack shows
-  as AckedState, event HistoryRead = the journal; per-site contract and e2e tests; UaExpert check by hand.
-- **Notes:** 2026-11-16 (requested in the session): implement it read-only (no Acknowledge over OPC UA; that goes with
-  `opcua-writes-apc`).
-
 ## Planned
 
 ### `docs-refresh` — Step 5: README, CLAUDE.md and screenshots
@@ -261,3 +245,10 @@ rules above:
     recreate; fixed with fresh Modbus clients and the RID-901 check.
   - **Later (ideas):** a DataOps layer consuming the mapping; Node-RED for the other sites; per-site trainer
     texts and console drawings.
+- ✅ **OPC UA Alarms & Conditions, read-only** (`opcua-alarms-conditions`). [PR #14](https://github.com/itotinsider/haltenberg-chemische-werke-uns/pull/14).
+  - **What:** the console's alarms and journal on OPC UA Part 9 at all three sites (`dcs/ua_alarms.py`): a
+    LevelAlarm per tag, TRIP per interlock, KS-201 / COMM / AUTOSTART alarms; journal rows as BaseEventType;
+    notifier tree from `Server`; ConditionRefresh; event HistoryRead from the journal.
+  - **Interface (added only):** `events` / `conditions` in `opcua.json`, historian `events.alarm` column,
+    `tools/opcua_events.py` (event viewer, no UaExpert needed).
+  - **Later:** Acknowledge/Shelve over OPC UA, with `opcua-writes-apc`; a UaExpert check by hand.
