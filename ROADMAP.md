@@ -105,7 +105,7 @@ rules above:
 ## In progress
 
 ### `opcua-alarms-conditions` — OPC UA Alarms & Conditions (read-only)
-- **Status:** 🚧 In progress · **Owner:** Claude (session hcw-opcua-ac, worktree ../hcw-opcua-ac) · **Branch:** `opcua-alarms-conditions` · **PR:** —
+- **Status:** 🚧 In progress · **Owner:** Claude (session hcw-opcua-ac, worktree ../hcw-opcua-ac) · **Branch:** `opcua-alarms-conditions` · **PR:** [#14](https://github.com/itotinsider/haltenberg-chemische-werke-uns/pull/14)
 - **Goal:** the console's alarms and event journal on OPC UA as Part 9 Alarms & Conditions (the open successor
   of DCOM "OPC A&E"), next to the `AlarmState` strings and `Diagnostics` counts, on all three sites.
 - **Touches:** new `dcs/ua_alarms.py`; `dcs/opcua_server.py`, `dcs/native.py` (`table().conditions`/`sources`),
