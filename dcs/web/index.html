@@ -104,6 +104,7 @@
       <h3>OPC UA endpoint</h3>
       <p><code id="opc">opc.tcp://localhost:4840/hcw/asu1/</code><button class="copy" data-copy="opc">copy</button></p>
       <p id="opc-desc">Anonymous, no security. Namespace <code>urn:haltenberg:hcw:asu1:dcs</code>, browse <code>Objects/HCW/Haltenberg/ASU1</code>. NodeIds look like <code>ns=2;s=HCW.ASU1.FIC-101.PV</code>. PV/SP/OP are AnalogItems with units and range, and support HistoryRead from the DCS historian.</p>
+      <p>Alarms &amp; Conditions (Part 9, read-only): subscribe to events on the <code>Server</code> object or any area below it. ConditionRefresh replays the alarms that are active or unacknowledged, and HistoryRead returns the event journal.</p>
     </div>
   </div>
 

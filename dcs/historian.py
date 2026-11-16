@@ -52,6 +52,9 @@ class Historian:
                 message TEXT, priority INTEGER);
             CREATE INDEX IF NOT EXISTS events_ts ON events (ts);
         """)
+        # The alarm key of an alarm transition (added for OPC UA event history; older databases lack it).
+        if "alarm" not in [r[1] for r in db.execute("PRAGMA table_info(events)")]:
+            db.execute("ALTER TABLE events ADD COLUMN alarm TEXT")
         for name, (unit, desc, _) in points.items():
             db.execute("INSERT INTO points (name, unit, description) VALUES (?, ?, ?) "
                        "ON CONFLICT(name) DO UPDATE SET unit = excluded.unit, description = excluded.description",
@@ -99,8 +102,9 @@ class Historian:
             db.executemany("INSERT INTO samples (point_id, ts, value, quality) VALUES (?, ?, ?, ?)", rows)
             self.stored += len(rows)
         if events:
-            db.executemany("INSERT INTO events (ts, kind, source, message, priority) VALUES (?, ?, ?, ?, ?)",
-                           [(e["ts"], e["kind"], e["source"], e["message"], e["priority"]) for e in events])
+            db.executemany("INSERT INTO events (ts, kind, source, message, priority, alarm) VALUES (?, ?, ?, ?, ?, ?)",
+                           [(e["ts"], e["kind"], e["source"], e["message"], e["priority"], e.get("alarm"))
+                            for e in events])
         db.commit()
         if ts - self.last_purge > 3600:
             self.last_purge = ts
@@ -161,6 +165,13 @@ class Historian:
         rows = db.execute("SELECT ts, kind, source, message, priority FROM events WHERE ts >= ? AND ts <= ? "
                           "ORDER BY ts DESC, id DESC LIMIT ?", (start, end, limit)).fetchall()
         return [dict(ts=r[0], kind=r[1], source=r[2], message=r[3], priority=r[4]) for r in rows]
+
+    def journal(self, start, end, limit=0):
+        """Journal rows in time order, with their alarm key: the OPC UA event history (ua_alarms.py)."""
+        rows = self._db().execute("SELECT ts, kind, source, message, priority, alarm FROM events WHERE ts >= ? AND ts <= ? "
+                                  "ORDER BY ts, id" + (" LIMIT ?" if limit else ""),
+                                  (start, end, limit) if limit else (start, end)).fetchall()
+        return [dict(ts=r[0], kind=r[1], source=r[2], message=r[3], priority=r[4], alarm=r[5]) for r in rows]
 
     def stats(self):
         db = self._db()

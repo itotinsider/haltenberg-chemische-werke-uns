@@ -10,7 +10,7 @@ it.
 | [`tags.csv`](https://github.com/itotinsider/haltenberg-chemische-werke-uns/blob/main/inventory/tags.csv) | **Start here.** One row per tag, across all layers: description, unit, range, Modbus address, OPC UA node, historian points |
 | [`field.json`](https://github.com/itotinsider/haltenberg-chemische-werke-uns/blob/main/inventory/field.json) | The Modbus register map |
 | [`dcs.json`](https://github.com/itotinsider/haltenberg-chemische-werke-uns/blob/main/inventory/dcs.json) | DCS tags, alarm limits, interlocks, equipment |
-| [`opcua.json`](https://github.com/itotinsider/haltenberg-chemische-werke-uns/blob/main/inventory/opcua.json) | The OPC UA address space: every node, its NodeId, type and unit |
+| [`opcua.json`](https://github.com/itotinsider/haltenberg-chemische-werke-uns/blob/main/inventory/opcua.json) | The OPC UA address space: every node, its NodeId, type and unit, the event notifiers, and every Alarms & Conditions condition |
 | [`api.json`](https://github.com/itotinsider/haltenberg-chemische-werke-uns/blob/main/inventory/api.json) | HTTP API routes and response shapes, historian points |
 | [`plant.json`](https://github.com/itotinsider/haltenberg-chemische-werke-uns/blob/main/inventory/plant.json) | Instructor scenarios and ground truth |
 

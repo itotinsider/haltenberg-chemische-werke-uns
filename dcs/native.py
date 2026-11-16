@@ -189,6 +189,8 @@ def in_codes():
 class Table:
     def __init__(self):
         self.objects, self.variables = [], []
+        self.conditions = []    # OPC UA Alarms & Conditions, see conditions() (ua_alarms.py emits them)
+        self.sources = {}       # engine source name (tag, equipment/interlock key, "KS-201", "IO", "*") -> object
         self._next = 1000
 
     def nid(self, sid):
@@ -197,9 +199,11 @@ class Table:
         self._next += 1
         return self._next
 
-    def obj(self, path, sid, desc, kind="object", props=None):
+    def obj(self, path, sid, desc, kind="object", props=None, src=None):
         node = dict(path=tuple(path), id=self.nid(sid), kind=kind, desc=desc, props=[])
         self.objects.append(node)
+        if src:
+            self.sources[src] = node
         for name, value in (props or {}).items():
             self.var(path + [name], f"{sid}.{name}", None, "String", value=value, prop=True)
         return node
@@ -223,12 +227,12 @@ def _hcw():
     root = [E, S, U]
     tb.obj([E], E, "Haltenberg Chemische Werke", "folder")
     tb.obj([E, S], f"{E}.{S}", "", "folder")
-    tb.obj(root, pre, C.UNIT_LABEL)
+    tb.obj(root, pre, C.UNIT_LABEL, src="*")
     for key, label in C.BLOCKS:
         tb.obj(root + [key], f"{pre}.{key}", label, "folder")
     for t in C.TAGS:
         tag, p = t["tag"], root + [t["block"], t["tag"]]
-        tb.obj(p, f"{pre}.{tag}", t["desc"], props={"Description": t["desc"]})
+        tb.obj(p, f"{pre}.{tag}", t["desc"], props={"Description": t["desc"]}, src=tag)
         tb.var(p + ["PV"], f"{pre}.{tag}.PV", f"{tag}.PV", "Double", t["unit"], [t["lo"], t["hi"]], (1.0, 0.0),
                history=True, analog=True)
         if t["kind"] == "PID":
@@ -239,23 +243,24 @@ def _hcw():
         if t["alarms"]:
             tb.var(p + ["AlarmState"], f"{pre}.{tag}.AlarmState", f"{tag}.AlarmState", "String")
     ks = root + ["FrontEndPurification", "KS-201"]
-    tb.obj(ks, f"{pre}.KS-201", "PPU bed switching sequence", props={"Description": "PPU bed switching sequence"})
+    tb.obj(ks, f"{pre}.KS-201", "PPU bed switching sequence", props={"Description": "PPU bed switching sequence"},
+           src="KS-201")
     for name, vt in [("State", "String"), ("ActiveBed", "String"), ("Step", "String"), ("StepTime", "Double"),
                      ("OnlineTime", "Double"), ("CycleTime", "Double"), ("RegenIncomplete", "Boolean")]:
         tb.var(ks + [name], f"{pre}.KS-201.{name}", f"KS-201.{name}", vt)
     tb.obj(root + ["Equipment"], f"{pre}.Equipment", "Rotating equipment run states", "folder")
     for key, cfg in C.EQUIPMENT.items():
         p = root + ["Equipment", key]
-        tb.obj(p, f"{pre}.Equipment.{key}", cfg["label"], props={"Description": cfg["label"]})
+        tb.obj(p, f"{pre}.Equipment.{key}", cfg["label"], props={"Description": cfg["label"]}, src=key)
         tb.var(p + ["State"], f"{pre}.Equipment.{key}.State", f"Equipment.{key}.State", "String")
         tb.var(p + ["Running"], f"{pre}.Equipment.{key}.Running", f"Equipment.{key}.Running", "Boolean")
     tb.obj(root + ["Interlocks"], f"{pre}.Interlocks", "Safety interlocks / trips", "folder")
     for key, cfg in C.INTERLOCKS.items():
         p = root + ["Interlocks", key]
-        tb.obj(p, f"{pre}.Interlocks.{key}", cfg["label"], props={"Description": cfg["label"]})
+        tb.obj(p, f"{pre}.Interlocks.{key}", cfg["label"], props={"Description": cfg["label"]}, src=key)
         tb.var(p + ["Tripped"], f"{pre}.Interlocks.{key}.Tripped", f"Interlocks.{key}.Tripped", "Boolean")
         tb.var(p + ["FirstOut"], f"{pre}.Interlocks.{key}.FirstOut", f"Interlocks.{key}.FirstOut", "String")
-    tb.obj(root + ["Diagnostics"], f"{pre}.Diagnostics", "DCS diagnostics", "folder")
+    tb.obj(root + ["Diagnostics"], f"{pre}.Diagnostics", "DCS diagnostics", "folder", src="IO")
     for name, vt in [("FieldIOConnected", "Boolean"), ("ScanCount", "UInt32"), ("ActiveAlarms", "Int32"),
                      ("UnackedAlarms", "Int32"), ("HistorianSamples", "UInt64")]:
         tb.var(root + ["Diagnostics", name], f"{pre}.Diagnostics.{name}", f"Diagnostics.{name}", vt)
@@ -265,20 +270,20 @@ def _hcw():
 def _us():
     tb = Table()
     root = ["PTA_ASU7100"]
-    tb.obj(root, "PTA_ASU7100", "HCW Americas - Port Arden - ASU 7100 DCS", "folder")
+    tb.obj(root, "PTA_ASU7100", "HCW Americas - Port Arden - ASU 7100 DCS", "folder", src="*")
     tb.obj(root + ["Points"], "Points", "Point database", "folder")
     mode, alm = MODE_ENC["us"], ALARM_ENC["us"]
 
-    def point(name, desc):
+    def point(name, desc, src):
         p = root + ["Points", name]
-        tb.obj(p, name, desc)
+        tb.obj(p, name, desc, src=src)
         tb.var(p + ["DESC"], f"{name}.DESC", None, "String", value=desc)
         return p
 
     for t in C.TAGS:
         tag = t["tag"]
         name = us_point(tag)
-        p = point(name, us_desc(t["desc"]))
+        p = point(name, us_desc(t["desc"]), tag)
         unit, f, o = pv_unit(t)
         tb.var(p + ["EUDESC"], f"{name}.EUDESC", None, "String", value=unit)
         tb.var(p + ["PV"], f"{name}.PV", f"{tag}.PV", "Double", unit, _rng(t, f, o), (f, o), history=True)
@@ -290,22 +295,22 @@ def _us():
             tb.var(p + ["MODE"], f"{name}.MODE", f"{tag}.Mode", "Int32", enc=mode)
         if t["alarms"]:
             tb.var(p + ["ALMSTAT"], f"{name}.ALMSTAT", f"{tag}.AlarmState", "Int32", enc=alm)
-    p = point("71KS2001", "PPU BED SWITCHING SEQ")
+    p = point("71KS2001", "PPU BED SWITCHING SEQ", "KS-201")
     for name, src, vt in [("STATE", "State", "String"), ("ACTBED", "ActiveBed", "String"), ("STEP", "Step", "String"),
                           ("STEPTIME", "StepTime", "Double"), ("ONLINETIME", "OnlineTime", "Double"),
                           ("CYCLETIME", "CycleTime", "Double"), ("REGENINC", "RegenIncomplete", "Int32")]:
         tb.var(p + [name], f"71KS2001.{name}", f"KS-201.{src}", vt, enc={False: 0, True: 1} if vt == "Int32" else None)
     for key, cfg in C.EQUIPMENT.items():
         name = US_EQUIPMENT[key]
-        p = point(name, us_desc(cfg["label"]))
+        p = point(name, us_desc(cfg["label"]), key)
         tb.var(p + ["PV"], f"{name}.PV", f"Equipment.{key}.Running", "Int32", enc={False: 0, True: 1})
         tb.var(p + ["STATE"], f"{name}.STATE", f"Equipment.{key}.State", "String")
     for key, cfg in C.INTERLOCKS.items():
         name = f"71UZ{key[2]}0{key[3:]}"             # I-500 -> 71UZ5000
-        p = point(name, us_desc(cfg["label"]))
+        p = point(name, us_desc(cfg["label"]), key)
         tb.var(p + ["PV"], f"{name}.PV", f"Interlocks.{key}.Tripped", "Int32", enc={False: 0, True: 1})
         tb.var(p + ["FIRSTOUT"], f"{name}.FIRSTOUT", f"Interlocks.{key}.FirstOut", "String")
-    tb.obj(root + ["System"], "System", "DCS system status", "folder")
+    tb.obj(root + ["System"], "System", "DCS system status", "folder", src="IO")
     for name, src, vt, enc in [("IOSTATUS", "FieldIOConnected", "Int32", {False: 0, True: 1}),
                                ("SCANCNT", "ScanCount", "UInt32", None), ("ALMCNT", "ActiveAlarms", "Int32", None),
                                ("UNACKCNT", "UnackedAlarms", "Int32", None), ("HISTCNT", "HistorianSamples", "UInt64", None)]:
@@ -316,7 +321,7 @@ def _us():
 def _in():
     tb = Table()
     root = ["VDH_ASU2"]
-    tb.obj(root, "VDH_ASU2", "HCW India, Vadhana works - ASU-2", "folder")
+    tb.obj(root, "VDH_ASU2", "HCW India, Vadhana works - ASU-2", "folder", src="*")
     mode, alm = MODE_ENC["in"], ALARM_ENC["in"]
     codes = in_codes()
     for system, designation, tags in IN_SYSTEMS:
@@ -331,7 +336,7 @@ def _in():
             _, meas, ctl = codes[tag]
             unit, f, o = pv_unit(t)
             p = sp + [meas]
-            tb.obj(p, meas, t["desc"], props={"Designation": t["desc"]})
+            tb.obj(p, meas, t["desc"], props={"Designation": t["desc"]}, src=tag)
             tb.var(p + ["XQ01"], f"{meas}.XQ01", f"{tag}.PV", "Double", unit, _rng(t, f, o), (f, o),
                    history=True, analog=True)
             if t["alarms"]:
@@ -348,13 +353,14 @@ def _in():
         for key in eq:
             code = UNIT_NO + IN_EQUIPMENT[key][0] + IN_EQUIPMENT[key][1]
             p = sp + [code]
-            tb.obj(p, code, C.EQUIPMENT[key]["label"], props={"Designation": C.EQUIPMENT[key]["label"]})
+            tb.obj(p, code, C.EQUIPMENT[key]["label"], props={"Designation": C.EQUIPMENT[key]["label"]}, src=key)
             tb.var(p + ["XB01"], f"{code}.XB01", f"Equipment.{key}.Running", "Boolean")
             tb.var(p + ["XS01"], f"{code}.XS01", f"Equipment.{key}.State", "String")
         if system == "MBA10":
             code = f"{UNIT_NO}MBA10EU001"
             p = sp + [code]
-            tb.obj(p, code, "PPU bed switching sequence", props={"Designation": "PPU bed switching sequence"})
+            tb.obj(p, code, "PPU bed switching sequence", props={"Designation": "PPU bed switching sequence"},
+                   src="KS-201")
             for name, src, vt in [("XS01", "State", "String"), ("XS02", "ActiveBed", "String"), ("XS03", "Step", "String"),
                                   ("XQ01", "StepTime", "Double"), ("XQ02", "OnlineTime", "Double"),
                                   ("XQ03", "CycleTime", "Double"), ("XB01", "RegenIncomplete", "Boolean")]:
@@ -364,13 +370,13 @@ def _in():
     for i, (key, cfg) in enumerate(C.INTERLOCKS.items(), 1):
         code = f"{UNIT_NO}CJA00EZ{i:03d}"
         p = sp + [code]
-        tb.obj(p, code, cfg["label"], props={"Designation": cfg["label"]})
+        tb.obj(p, code, cfg["label"], props={"Designation": cfg["label"]}, src=key)
         tb.var(p + ["XB01"], f"{code}.XB01", f"Interlocks.{key}.Tripped", "Boolean")
         tb.var(p + ["XF01"], f"{code}.XF01", f"Interlocks.{key}.FirstOut", "String")
     sp = root + [f"{UNIT_NO}CYA00"]
     code = f"{UNIT_NO}CYA00GH001"
     tb.obj(sp, f"{UNIT_NO}CYA00", "Control system diagnostics", "folder")
-    tb.obj(sp + [code], code, "DCS gateway", props={"Designation": "DCS gateway"})
+    tb.obj(sp + [code], code, "DCS gateway", props={"Designation": "DCS gateway"}, src="IO")
     for name, src, vt in [("XB01", "FieldIOConnected", "Boolean"), ("XQ01", "ActiveAlarms", "Int32"),
                           ("XQ02", "UnackedAlarms", "Int32"), ("XQ03", "ScanCount", "UInt32"),
                           ("XQ04", "HistorianSamples", "UInt64")]:
@@ -378,8 +384,36 @@ def _in():
     return tb
 
 
+# ---------------------------------------------------------------- Alarms & Conditions
+# One condition per alarm source, the way a DCS gateway presents ISA-18.2 alarms over OPC UA (Part 9):
+# a tag's H/HH/L/LL limits are the states of one ExclusiveLevelAlarm (LimitState), each discrete DCS alarm
+# is one OffNormal-type alarm. Conditions are not browsable nodes; their ConditionId is unique per site.
+LEVEL_ALARM = "LevelAlarm"
+
+
+def _conditions(tb):
+    def add(src, name, ctype, alarms, klass="ProcessConditionClassType", tag=None):
+        obj = tb.sources[src]
+        cid = f"{obj['id']}.{name}" if META["nodeids"] == "string" else tb.nid(None)
+        tb.conditions.append(dict(id=cid, name=name, type=ctype, cls=klass, source=obj["path"], alarms=alarms,
+                                  tag=tag))
+
+    for t in C.TAGS:
+        if t["alarms"]:
+            add(t["tag"], LEVEL_ALARM, "ExclusiveLevelAlarmType", [f"{t['tag']}.{l}" for l in t["alarms"]],
+                tag=t["tag"])
+    for key in C.INTERLOCKS:
+        add(key, "TRIP", "TripAlarmType", [f"{key}.TRIP"])
+    for name in ("SWITCH_DELAYED", "REGEN_INCOMPLETE"):
+        add("KS-201", name, "OffNormalAlarmType", [f"KS-201.{name}"])
+    add("IO", "COMM", "SystemOffNormalAlarmType", ["IO.COMM"], "SystemConditionClassType")
+    for key in C.STANDBY:
+        add(key, "AUTOSTART", "OffNormalAlarmType", [f"{key}.AUTOSTART"])
+    return tb
+
+
 def table():
-    return {"hcw": _hcw, "us": _us, "in": _in}[PROFILE]()
+    return _conditions({"hcw": _hcw, "us": _us, "in": _in}[PROFILE]())
 
 
 def encode(node, value):
@@ -442,7 +476,9 @@ class NativeOpcUaServer(O.OpcUaServer):
         self.idx = await s.register_namespace(META["namespace"])
         await self._build()
         hist = {nid: n for nid, n in self.nodes.items() if n["history"] and self.historian and n["src"] in self.historian.ids}
-        s.iserver.history_manager.set_storage(NativeHistory(self.historian, hist, META["ts_offset_s"]))
+        storage = NativeHistory(self.historian, hist, META["ts_offset_s"])
+        storage.alarms = self.alarms
+        s.iserver.history_manager.set_storage(storage)
         await s.start()
         log.info("OPC UA server (%s profile) on %s (%d variables, %d historized)", PROFILE, self.endpoint,
                  len(self.nodes), len(hist))
@@ -485,6 +521,7 @@ class NativeOpcUaServer(O.OpcUaServer):
             if v["src"]:
                 self.nodes[node.nodeid] = v
                 self.by_src.setdefault(v["src"], []).append((node.nodeid, v))
+        await self._build_events()
 
     async def _analog_item(self, parent, v):
         name = v["path"][-1]
@@ -512,7 +549,7 @@ class NativeOpcUaServer(O.OpcUaServer):
             await self._access(node, ua.AccessLevel.CurrentRead)
         return node
 
-    async def update(self, snap, ts, scan_count, historian_samples):
+    async def _update_values(self, snap, ts, scan_count, historian_samples):
         dt = O.to_dt(ts + META["ts_offset_s"])
         io_ok = snap["io_ok"]
         values = O.engine_values(snap, scan_count, historian_samples)

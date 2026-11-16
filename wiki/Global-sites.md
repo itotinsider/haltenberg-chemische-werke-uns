@@ -98,6 +98,7 @@ multi-site data.
 | Temperature differences | `DEGF`, same as temperatures: a ΔT converts without the 32 °F offset | K |
 | Tank contents | **gallons** of liquid: a level needs the tank's capacity | **tonnes**: same |
 | Modes, alarms | integers: MODE 0/1/2, ALMSTAT 0–4 | strings with other words: `CASC`; `OK`/`LO`/`HI`/`LOLO`/`HIHI` |
+| Alarms & Conditions | the same condition types as Haltenberg; source names are points (`71UZ5003`, `71FC5008`), ConditionIds `71UZ5003.TRIP` | the same; sources are asset codes (`02CJA00EZ001`), **numeric** ConditionIds, event `Time` in IST like the values |
 | Booleans | Int32 0/1 | Boolean |
 | Descriptions | terse upper case, max. 32 characters (`MAC DISCH PRESS`) | full text in a `Designation` property |
 | Timestamps | UTC | **local time (IST, +05:30) labelled as UTC**: live values and history are 5.5 h "in the future" |

@@ -142,9 +142,6 @@ rules above:
 - **Goal:** writable SPs over OPC UA, with an "APC ON/OFF" handshake (research §5.3), so an
   external advanced-control or agent layer can act on the plant.
 
-### `opcua-alarms-conditions` — OPC UA Alarms & Conditions
-- **Status:** 💡 Idea · **Owner:** — · **Branch:** — · **PR:** —
-- **Goal:** expose alarms as A&C events instead of only `AlarmState` strings and `Diagnostics` counts.
 
 ### `business-systems` — LIMS, SAP-PM and ERP
 - **Status:** 💡 Idea · **Owner:** — · **Branch:** — · **PR:** —
@@ -248,3 +245,10 @@ rules above:
     recreate; fixed with fresh Modbus clients and the RID-901 check.
   - **Later (ideas):** a DataOps layer consuming the mapping; Node-RED for the other sites; per-site trainer
     texts and console drawings.
+- ✅ **OPC UA Alarms & Conditions, read-only** (`opcua-alarms-conditions`). [PR #14](https://github.com/itotinsider/haltenberg-chemische-werke-uns/pull/14).
+  - **What:** the console's alarms and journal on OPC UA Part 9 at all three sites (`dcs/ua_alarms.py`): a
+    LevelAlarm per tag, TRIP per interlock, KS-201 / COMM / AUTOSTART alarms; journal rows as BaseEventType;
+    notifier tree from `Server`; ConditionRefresh; event HistoryRead from the journal.
+  - **Interface (added only):** `events` / `conditions` in `opcua.json`, historian `events.alarm` column,
+    `tools/opcua_events.py` (event viewer, no UaExpert needed).
+  - **Later:** Acknowledge/Shelve over OPC UA, with `opcua-writes-apc`; a UaExpert check by hand.

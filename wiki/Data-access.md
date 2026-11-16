@@ -30,6 +30,49 @@ compose network use `opc.tcp://dcs:4840/hcw/asu1/`.
 - `PV`/`SP`/`OP` are `Historizing`. **HistoryRead (raw)** is answered from the DCS historian.
 - Read-only: no OPC UA client can change the process (yet).
 
+### Alarms & Conditions and events
+
+The console's alarms and event journal are also on OPC UA, as **Alarms & Conditions** (OPC UA
+Part 9, the successor of the old DCOM-based "OPC A&E").
+- **Where to subscribe:** every object from `ASU1` down to an alarm source is an event notifier
+  (`EventNotifier` = SubscribeToEvents, HistoryRead). Subscribe at the `Server` object (all),
+  `ASU1`, a block folder such as `ProductDelivery`, or a single tag.
+- **One condition per alarm source:**
+
+  | DCS alarm | Condition type | ConditionName | Source |
+  |---|---|---|---|
+  | a tag's H / HH / L / LL limits | `ExclusiveLevelAlarmType` (LimitState = the worst active limit; `HighLimit`… in the tag's units) | `LevelAlarm` | the tag, e.g. `PIC-502` |
+  | an interlock trip | `TripAlarmType` | `TRIP` | `Interlocks/I-100` |
+  | PPU sequence alarms | `OffNormalAlarmType` | `SWITCH_DELAYED`, `REGEN_INCOMPLETE` | `KS-201` |
+  | field I/O failure | `SystemOffNormalAlarmType` | `COMM` | `Diagnostics` |
+
+  ConditionIds are `ns=2;s=HCW.ASU1.<source>.<ConditionName>`, e.g. `HCW.ASU1.Interlocks.I-100.TRIP`.
+  The conditions are not browsable nodes. `inventory/opcua.json` lists them all (`conditions`).
+- **State:** `ActiveState`, `AckedState` (acknowledged on the operator console), `Retain` (active or
+  unacknowledged), `Severity` from the DCS priority (P1 900, P2 600, P3 300), and `Quality`
+  (`BadNoCommunication` on a level alarm while the field link is down). An event is sent on every
+  change.
+- **ConditionRefresh** (call it on `ConditionType` with your subscription id) replays the alarms that
+  are active or unacknowledged right now, between RefreshStart and RefreshEnd events.
+- **Other journal entries** (operator actions, equipment starts and stops, sequence steps, trip
+  handovers) arrive as `BaseEventType` events from the object they concern.
+- **Event history:** HistoryRead with `ReadEventDetails` on any notifier returns the journal, the same
+  rows as `/api/events`. Alarm rows come back as their condition's events, with `ActiveState` but
+  without `AckedState`, because the journal records acknowledgements as separate operator events.
+- **Read-only:** `Acknowledge`, `Confirm` and `Shelve` aren't offered. Acknowledge on the console.
+
+**Try it without installing anything:** `tools/opcua_events.py` is a small event viewer. It does a
+ConditionRefresh and then prints every event, or with `--history MIN` reads the event history:
+```bash
+docker run --rm -it --network haltenberg-chemische-werke-uns_default -v "$PWD/tools":/t \
+  --entrypoint python hcw/asu1-dcs:latest /t/opcua_events.py opc.tcp://dcs:4840/hcw/asu1/
+# in another terminal: curl -s -X POST localhost:8111/api/scenarios/gan_compressor_trip/start
+```
+In **UaExpert** (free, Windows and Linux, needs a Unified Automation account to download), add an
+*Event View* or *Alarms* document and drag the `Server` object or `ASU1` into it. The Port Arden and
+Vadhana servers present the same conditions under their own source names, e.g. `71UZ5003` and
+`02CJA00EZ001` (see [Global sites](Global-sites)).
+
 ## Node-RED: OPC UA → 15-minute averages → CSV
 
 The `nodered` container (http://localhost:1880) is the official Node-RED image with

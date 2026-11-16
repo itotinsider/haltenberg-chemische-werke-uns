@@ -244,8 +244,14 @@ async def walk(node, path=""):
         hist = await node.read_attribute(ua.AttributeIds.Historizing)
         if hist.Value.Value:
             info["history"] = True
+    elif cls == ua.NodeClass.Object and await node.read_event_notifier():
+        info["events"] = True                     # an event notifier (Alarms & Conditions, ua_alarms.py)
     out[path] = info
+    seen = set()
     for child in await node.get_children():
+        if child.nodeid in seen:                  # reached by Organizes and HasNotifier/HasEventSource
+            continue
+        seen.add(child.nodeid)
         qn = await child.read_browse_name()
         if qn.NamespaceIndex == 0 and qn.Name in ("EURange", "EngineeringUnits"):
             v = await child.read_value()
@@ -282,6 +288,21 @@ def opcua_layer():
     if native.META["ts_offset_s"]:
         out["source_timestamps"] = f"local time labelled as UTC (+{native.META['ts_offset_s']} s)"
     out["nodes"] = nodes
+    out["conditions"] = conditions()
+    return out
+
+
+def conditions():
+    """The OPC UA Alarms & Conditions of the current site (native.table(), emitted by dcs/ua_alarms.py):
+    {ConditionId: type, ConditionName, source object (browse path), the DCS alarms it carries, severities}."""
+    import native
+    import ua_alarms
+    import control
+    defs = {d[0]: d for d in control.alarm_defs()}
+    out = {}
+    for c in native.table().conditions:
+        out[str(c["id"])] = {"type": c["type"], "name": c["name"], "class": c["cls"], "source": "/".join(c["source"]),
+                             "alarms": {k: ua_alarms.SEVERITY[defs[k][4]] for k in c["alarms"]}}
     return out
 
 

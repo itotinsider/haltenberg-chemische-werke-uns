@@ -204,7 +204,7 @@ class Runtime:
 
             self.historian.store(now, historian_values(snap), events)
             self.scan_count += 1
-            await self.opcua.update(snap, now, self.scan_count, self.historian.stored)
+            await self.opcua.update(snap, now, self.scan_count, self.historian.stored, events)
 
             self.scan_ms = (time.monotonic() - t_start) * 1000.0
             snap.update(runtime_status(self))

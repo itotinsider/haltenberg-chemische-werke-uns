@@ -288,6 +288,80 @@ def test_not_applicable_is_bad_out_of_service_live_and_in_history(stack):
     assert hist[-1].StatusCode.value == ua.StatusCodes.BadOutOfService, "history says the same as the live value"
 
 
+def event_filter(where_type=None):
+    """Select clauses as a UA client writes them (each field on its declaring type), plus the ConditionId;
+    optionally a WhereClause OfType <where_type>."""
+    from asyncua import ua
+    fields = [("EventType", "BaseEventType"), ("SourceName", "BaseEventType"), ("Severity", "BaseEventType"),
+              ("Message", "BaseEventType"), ("Time", "BaseEventType"), ("ConditionName", "ConditionType"),
+              ("Retain", "ConditionType"), ("AckedState/Id", "AcknowledgeableConditionType"),
+              ("ActiveState/Id", "AlarmConditionType"), ("LimitState/CurrentState", "ExclusiveLimitAlarmType")]
+    sel = [ua.SimpleAttributeOperand(TypeDefinitionId=ua.NodeId(getattr(ua.ObjectIds, typ)),
+                                     BrowsePath=[ua.QualifiedName(p, 0) for p in name.split("/")],
+                                     AttributeId=ua.AttributeIds.Value) for name, typ in fields]
+    sel.append(ua.SimpleAttributeOperand(TypeDefinitionId=ua.NodeId(ua.ObjectIds.ConditionType), BrowsePath=[],
+                                         AttributeId=ua.AttributeIds.NodeId))
+    flt = ua.EventFilter(SelectClauses=sel)
+    if where_type:
+        flt.WhereClause.Elements = [ua.ContentFilterElement(
+            FilterOperator=ua.FilterOperator.OfType,
+            FilterOperands=[ua.LiteralOperand(Value=ua.Variant(ua.NodeId(getattr(ua.ObjectIds, where_type))))])]
+    return flt, [n for n, _ in fields] + ["ConditionId"]
+
+
+def test_alarms_and_conditions(stack):
+    """After the ESD (previous test) I-100's trip is a TripAlarm condition, active and unacknowledged. A client
+    subscribed on the unit with OfType ConditionType (so subtypes must match) gets it from ConditionRefresh;
+    acknowledging on the console sends AckedState; the event history is the journal, row for row."""
+    from asyncua import ua
+    from datetime import datetime, timedelta, timezone
+    flt, names = event_filter("ConditionType")
+    got = []
+
+    class H:
+        def event_notification(self, ev):
+            got.append({n: getattr(ev, n, None) for n in names[:-1]} | {"ConditionId": getattr(ev, "NodeId", None)})
+
+    async def watch(client, ns):
+        sub = await client.create_subscription(100, H())
+        await sub._subscribe(client.get_node(ua.NodeId("HCW.ASU1", ns)), ua.AttributeIds.EventNotifier, flt)
+        await client.get_node(ua.ObjectIds.ConditionType).call_method(
+            ua.NodeId(ua.ObjectIds.ConditionType_ConditionRefresh), ua.Variant(sub.subscription_id, ua.VariantType.UInt32))
+        await asyncio.sleep(1)
+        refreshed = list(got)
+        assert post(stack["dcs"] + "/api/alarms/ack", {"id": "I-100.TRIP"})[0] == 200
+        await asyncio.sleep(2.5)
+        return refreshed, got[len(refreshed):], ns
+    refreshed, after_ack, ns = asyncio.run(opcua(watch)(stack["opcua"]))
+
+    trip = [e for e in refreshed if e["SourceName"] == "I-100" and e["ConditionName"] == "TRIP"]
+    assert trip, f"I-100 TRIP not refreshed: {[(e['SourceName'], e['ConditionName']) for e in refreshed]}"
+    e = trip[0]
+    assert e["EventType"] == ua.NodeId(ua.ObjectIds.TripAlarmType) and e["Severity"] == 900
+    assert e["ActiveState/Id"] is True and e["AckedState/Id"] is False and e["Retain"] is True
+    assert e["ConditionId"] == ua.NodeId("HCW.ASU1.Interlocks.I-100.TRIP", ns)
+    retained = {a["tag"] for a in get(stack["dcs"] + "/api/state")["alarms"]}
+    assert {e["SourceName"] for e in refreshed} <= retained, "refresh = the active or unacknowledged alarms"
+    acked = [e for e in after_ack if e["SourceName"] == "I-100"]
+    assert acked and acked[-1]["AckedState/Id"] is True and acked[-1]["ActiveState/Id"] is True
+
+    async def history(client, ns):
+        end = datetime.now(timezone.utc) + timedelta(seconds=1)
+        hflt, _ = event_filter()
+        res = await client.uaclient.history_read(ua.HistoryReadParameters(
+            HistoryReadDetails=ua.ReadEventDetails(StartTime=end - timedelta(hours=1), EndTime=end,
+                                                   NumValuesPerNode=0, Filter=hflt),
+            TimestampsToReturn=ua.TimestampsToReturn.Both,
+            NodesToRead=[ua.HistoryReadValueId(NodeId=ua.NodeId("HCW.ASU1", ns))]))
+        return [dict(zip(names, [v.Value for v in ev.EventFields])) for ev in res[0].HistoryData.Events]
+    hist = asyncio.run(opcua(history)(stack["opcua"]))
+    journal = get(stack["dcs"] + f"/api/events?start={time.time() - 3600}&limit=5000")
+    conds = [h for h in hist if h["ConditionName"]]
+    assert len(hist) == len(journal), "event history = the journal, row for row"
+    assert len(conds) == sum(1 for r in journal if r["kind"] == "alarm")
+    assert any(h["SourceName"] == "I-100" and h["ActiveState/Id"] is True for h in conds)
+
+
 def test_mapping_api_serves_the_committed_mapping_with_live_values(stack):
     """/api/mapping (the Site mapping explorer): the committed mapping, and this site's live values converted
     with the mapping's own formulas: the air flow in Nm3/h equals the DCS's FIC-101 x 1000."""

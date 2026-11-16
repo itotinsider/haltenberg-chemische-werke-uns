@@ -107,6 +107,25 @@ class PID:
         self.e_prev = None
 
 
+def alarm_defs():
+    """Every DCS alarm: (key, tag, limit, setpoint, priority, message). Limit alarms per tag (H/HH/L/LL),
+    then the discrete ones (limit "DISC"). Also read by the OPC UA Alarms & Conditions layer."""
+    out = []
+    for t in C.TAGS:
+        for limit, setpoint in t["alarms"].items():
+            prio = C.PRIORITY_OVERRIDE.get((t["tag"], limit), C.ALARM_PRIORITY[limit])
+            out.append((f"{t['tag']}.{limit}", t["tag"], limit, setpoint, prio, f"{t['desc']} {limit}"))
+    for key, msg, prio in [
+        *[(f"{k}.TRIP", cfg.get("trip_message", cfg["label"]), 1) for k, cfg in C.INTERLOCKS.items()],
+        ("KS-201.SWITCH_DELAYED", "PPU switch-over delayed — offline bed not ready", 2),
+        ("KS-201.REGEN_INCOMPLETE", "PPU regeneration incomplete — heat peak not reached", 2),
+        ("IO.COMM", "Field I/O communication failure", 1),
+        *[(f"{k}.AUTOSTART", f"{C.EQUIPMENT[k]['label']} auto-started — no standby pump", 2) for k in C.STANDBY],
+    ]:
+        out.append((key, key.split(".")[0], "DISC", None, prio, msg))
+    return out
+
+
 class Alarm:
     def __init__(self, key, tag, limit, setpoint, priority, message):
         self.key = key
@@ -201,20 +220,7 @@ class DCS:
         self.ppu = PPUSequence(ppu_cycle_s)
         self.co2_high_since = None
         self.ao = {}
-        self.alarms = {}
-        for t in C.TAGS:
-            for limit, setpoint in t["alarms"].items():
-                key = f"{t['tag']}.{limit}"
-                prio = C.PRIORITY_OVERRIDE.get((t["tag"], limit), C.ALARM_PRIORITY[limit])
-                self.alarms[key] = Alarm(key, t["tag"], limit, setpoint, prio, f"{t['desc']} {limit}")
-        for key, msg, prio in [
-            *[(f"{k}.TRIP", cfg.get("trip_message", cfg["label"]), 1) for k, cfg in C.INTERLOCKS.items()],
-            ("KS-201.SWITCH_DELAYED", "PPU switch-over delayed — offline bed not ready", 2),
-            ("KS-201.REGEN_INCOMPLETE", "PPU regeneration incomplete — heat peak not reached", 2),
-            ("IO.COMM", "Field I/O communication failure", 1),
-            *[(f"{k}.AUTOSTART", f"{C.EQUIPMENT[k]['label']} auto-started — no standby pump", 2) for k in C.STANDBY],
-        ]:
-            self.alarms[key] = Alarm(key, key.split(".")[0], "DISC", None, prio, msg)
+        self.alarms = {a[0]: Alarm(*a) for a in alarm_defs()}
         # Scan order: cascade masters, then override controllers, then everything else.
         loops = list(self.loops.values())
         self.order = ([p for p in loops if p.cfg["cascade"]] + [p for p in loops if p.cfg["limits"]]
@@ -226,8 +232,13 @@ class DCS:
         self._seq_entered = None
 
     # ---------------------------------------------------------------- helpers
-    def event(self, kind, source, message, priority=0):
-        self.events.append(dict(ts=self.now, kind=kind, source=source, message=message, priority=priority))
+    def event(self, kind, source, message, priority=0, alarm=None):
+        """A journal entry. Alarm transitions carry their alarm key (`PIC-502.HH`), so the OPC UA event
+        history can show them as the condition they belong to."""
+        e = dict(ts=self.now, kind=kind, source=source, message=message, priority=priority)
+        if alarm:
+            e["alarm"] = alarm
+        self.events.append(e)
 
     def running(self, eq):
         """`eq` runs; for an equipment group (C.EQUIPMENT_GROUPS, e.g. LOX pumps A/B): any member runs."""
@@ -647,10 +658,10 @@ class DCS:
             a.value = value
         if on and not a.active:
             a.active, a.acked, a.since = True, False, self.now
-            self.event("alarm", a.tag, f"ALARM {a.message}" + (f" = {value:.{C.TAG_INDEX[a.tag]['dec']}f}" if value is not None and a.tag in C.TAG_INDEX else ""), a.priority)
+            self.event("alarm", a.tag, f"ALARM {a.message}" + (f" = {value:.{C.TAG_INDEX[a.tag]['dec']}f}" if value is not None and a.tag in C.TAG_INDEX else ""), a.priority, alarm=a.key)
         elif not on and a.active:
             a.active = False
-            self.event("alarm", a.tag, f"RTN {a.message}", 0)
+            self.event("alarm", a.tag, f"RTN {a.message}", 0, alarm=a.key)
 
     def ack(self, key=None):
         n = 0
