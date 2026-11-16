@@ -11,6 +11,7 @@ Haltenberg, the reference site, is covered by the other test files; here it only
 mapping checks.
 """
 
+import collections
 import contextlib
 import csv
 import importlib
@@ -110,6 +111,29 @@ def test_sites_differ_where_intended():
 
 
 # ---------------------------------------------------------------- presentation (OPC UA) and the standard
+@pytest.mark.parametrize("key", list(sites.SITES))
+def test_every_alarm_is_one_opcua_condition(key):
+    """OPC UA Alarms & Conditions (dcs/ua_alarms.py): every DCS alarm of the site is carried by exactly one
+    committed condition, with the severity of its priority, on a source object that is an event notifier,
+    and so is every object above it. A tag's limit alarms are one LevelAlarm on that tag."""
+    import control
+    import ua_alarms
+    inv = read_json("opcua.json" if key == sites.DEFAULT else f"sites/{key}/opcua.json")
+    with on_site(key):
+        defs = {d[0]: d for d in control.alarm_defs()}
+    carried = collections.Counter(k for c in inv["conditions"].values() for k in c["alarms"])
+    assert set(carried) == set(defs) and max(carried.values()) == 1
+    for cid, c in inv["conditions"].items():
+        parts = c["source"].split("/")
+        for i in range(1, len(parts) + 1):
+            assert inv["nodes"]["/".join(parts[:i])].get("events"), f"{cid}: {'/'.join(parts[:i])} is no notifier"
+        for k, sev in c["alarms"].items():
+            assert sev == ua_alarms.SEVERITY[defs[k][4]], k
+        if c["type"] == "ExclusiveLevelAlarmType":
+            assert len({defs[k][1] for k in c["alarms"]}) == 1, f"{cid}: one tag per LevelAlarm"
+            assert all(defs[k][2] in ua_alarms.LIMIT_STATE for k in c["alarms"])
+
+
 @pytest.mark.parametrize("key", list(sites.SITES))
 def test_native_table_is_the_address_space(key):
     """dcs/native.py's table (which the mapping is generated from) == the committed, walked address space."""

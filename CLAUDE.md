@@ -45,11 +45,13 @@ dcs/control.py           PID / alarms / interlocks / equipment / KS-201 sequence
 dcs/historian.py         SQLite historian (exception reporting) + event journal
 dcs/opcua_server.py      asyncua server, address space generated from config, HistoryRead → historian
 dcs/native.py            per-site OPC UA presentation (Port Arden "us", Vadhana "in"): table() + NativeOpcUaServer
+dcs/ua_alarms.py         OPC UA Alarms & Conditions + journal events (read-only), for every site's server
 dataops/uns_model.py     the ISA-95 standard model (UNS) every site should map onto
 dcs/main.py              asyncio scan loop (pymodbus client), checkpointing, HTTP :8110
 dcs/web/index.html       hub (the only page that isn't a persona HMI)
 dcs/web/operator.html    operator console (overview mimic + L3 detail displays, tag list, interlocks, alarms/events, trends, the three trainers)
 tools/offline_sim.py     plant model + control layer coupled directly, faster than real time (Sim class = test harness)
+tools/opcua_events.py    tiny OPC UA event viewer (ConditionRefresh + live events, or --history MIN): no UaExpert needed
 tools/publish_wiki.py    copies wiki/ (pages + images/) to the GitHub wiki repo and pushes (by hand, after an OK)
 tools/inventory.py       generates inventory/ from every layer's source of truth (needs asyncua: run in the tests image)
 inventory/               GENERATED interface inventory: field/dcs/opcua/api/plant .json + tags.csv (README.md is hand-written)
@@ -258,6 +260,16 @@ Tuning facts that are easy to break:
 - **asyncua 2.x gotcha:** the `DataValue` field is `StatusCode=`, not the 1.x `StatusCode_=`.
 - **Read-only** in v1. Writable SPs, for an external APC agent (research §5.3 "APC ON/OFF"), are the obvious next step.
 
+**OPC UA Alarms & Conditions (`dcs/ua_alarms.py`, read-only).** OPC UA Part 9, the open successor of DCOM "OPC A&E" (which can't run in our Linux containers).
+- **Conditions come from `native.table().conditions`** (`_conditions()`), so all three sites get them in their own names: per tag with alarm limits one `ExclusiveLevelAlarmType` `LevelAlarm` (H/HH/L/LL are its LimitState, the worst active one; the tag's limits as `HighLimit`… in native units, `InputNode` = the PV node), per interlock a `TripAlarmType` `TRIP`, KS-201 `SWITCH_DELAYED`/`REGEN_INCOMPLETE` (`OffNormalAlarmType`), `IO.COMM` → `SystemOffNormalAlarmType` `COMM` on Diagnostics, Port Arden's `<key>.AUTOSTART`. ConditionId = `<source id>.<ConditionName>` (numeric at Vadhana). Not browsable nodes (Part 9 allows that); `inventory/opcua.json` lists them under `conditions`.
+- **State from the DCS snapshot, diffed per scan** (`Conditions.update()`): Active = any of its alarms active, Acked = all acked, Retain = active or unacked, Severity = P1 900 / P2 600 / P3 300 (`SEVERITY`), Quality BadNoCommunication on level alarms while the I/O is down. An event on every change; a new alarm carries its `since` as Time. The other journal rows (operator, equipment, sequence, trip handover) go out as `BaseEventType` from their object (`table().sources`: tag, equipment/interlock key, `KS-201`, `IO`, `*` = the unit).
+- **Alarm definitions** live in `control.alarm_defs()` (the DCS builds its `Alarm`s from it), so priorities and texts aren't duplicated.
+- **asyncua 2.1 gaps, worked around here:** (1) an event only reaches monitored items on its exact emitting node, so `_emit()` sends a copy per notifier on the source's path (Server → … → source; uses `monitored_item_srv._monitored_events` / `_trigger_event`, private API pinned by `asyncua==2.1.0`); (2) the server's OfType compared the exact type, so a client filtering on `ConditionType` got nothing: `_eval_el` is patched to include subtypes; (3) asyncua's own ConditionRefresh only knew one emitting node per event, so ConditionRefresh/ConditionRefresh2 are re-bound to `Conditions._refresh_method()` (RefreshStart, retained conditions, RefreshEnd).
+- **Notifiers:** every object on a source's path gets EventNotifier SubscribeToEvents|HistoryRead, HasNotifier from its parent (HasEventSource for a leaf) and the root from `Server`. `walk()` skips a child it already reached by another reference and records `events: true`.
+- **Event history** = the historian's journal (`Historian.journal()`, same rows as `/api/events`). Alarm rows carry their alarm key in the new `events.alarm` column (added by `ALTER TABLE` on old databases; older rows are matched by source and text, `_alarm_key()`, else sent as BaseEventType), so they come back as their condition's events with ActiveState, without AckedState (acks are separate operator rows).
+- **Read-only:** no Acknowledge/Confirm/Shelve methods; acknowledge on the console. Adding them belongs with `opcua-writes-apc`.
+- **Tests:** `test_alarms_and_conditions` (e2e, after the ESD test: OfType ConditionType on the unit, ConditionRefresh, ack, event history = journal), `test_every_alarm_is_one_opcua_condition` (per site). Mutation-checked: dropping the OfType patch or the journal's alarm key fails them.
+
 **Node-RED (`nodered` service).** It is an OPC UA client demo, the IT side of the story.
 - **Image:** the official `nodered/node-red:4.1.4` plus `node-red-contrib-opcua@0.2.355`, installed in `/usr/src/node-red`. `/data` is the `./nodered_data` bind mount, so a palette install there wouldn't survive a fresh checkout. `FLOWS=flows.json` is pinned, as in SHT.
 - **Flow:** `flows.json` was hand-written (no editor export). One tab, `OPC UA → 15-min TWA → CSV`:
@@ -440,7 +452,7 @@ Tuning facts that are easy to break:
 
 Ideas for these are tracked in `ROADMAP.md`.
 
-- **Not built:** OPC UA writes and an APC/MPC layer; OPC UA Alarms & Conditions (alarms are only exposed as `AlarmState` strings and `Diagnostics` counts); the argon column; tank truck loadouts (deliberately not planned; the tanks only fill from the column and drain through the backups); vaporizer outlet temperatures (E-507/E-508 are assumed big enough); business systems (LIMS purity cross-checks, SAP-PM, ERP volumes — research §6).
+- **Not built:** OPC UA writes and an APC/MPC layer (including acknowledging alarms over OPC UA; Alarms & Conditions are read-only); the argon column; tank truck loadouts (deliberately not planned; the tanks only fill from the column and drain through the backups); vaporizer outlet temperatures (E-507/E-508 are assumed big enough); business systems (LIMS purity cross-checks, SAP-PM, ERP volumes — research §6).
 - **Only the PPU is compressible:** the instructor slider speeds up the mole-sieve cycle. Everything else runs in real time. A load change at the default ramp takes ~40 min, and purity recovery after a restart ~1 h. That's intentional (research §4.4) but slow for live demos.
 
 ## Roadmap and parallel work

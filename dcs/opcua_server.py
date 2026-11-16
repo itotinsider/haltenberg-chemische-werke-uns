@@ -17,6 +17,9 @@ Address space (namespace urn:haltenberg:hcw:asu1:dcs, string NodeIds "HCW.ASU1.<
             Interlocks/I-100, I-300, ...     Tripped, FirstOut (one object per configured interlock)
             Diagnostics/                     FieldIOConnected, ActiveAlarms, UnackedAlarms, ...
 
+Alarms & Conditions and the event journal (ua_alarms.py, read-only): every object from the unit down to
+an alarm source is an event notifier; conditions per tag (LevelAlarm), interlock (TRIP), KS-201, I/O (COMM).
+
 Values carry the DCS scan time as SourceTimestamp and Bad_NoCommunication while the field I/O
 link is down. HistoryRead (raw) is answered from the DCS's own historian (historian.py) through a
 custom history storage — the OPC UA server does not keep a second copy of the history.
@@ -108,6 +111,7 @@ class HistorianStorage(HistoryStorageInterface):
     def __init__(self, historian, nodeid_to_point):
         self.historian = historian
         self.map = nodeid_to_point
+        self.alarms = None          # ua_alarms.Conditions: event HistoryRead from the journal
 
     async def init(self):
         pass
@@ -152,7 +156,9 @@ class HistorianStorage(HistoryStorageInterface):
         pass
 
     async def read_event_history(self, source_id, start, end, nb_values, evfilter):
-        return [], None
+        if self.alarms is None:
+            return [], None
+        return await self.alarms.history(source_id, start, end, nb_values)
 
     async def stop(self):
         pass
@@ -165,6 +171,7 @@ class OpcUaServer:
         self.server = Server()
         self.vars = {}          # key (e.g. "FIC-101.PV") -> (nodeid, VariantType)
         self.last = {}
+        self.alarms = None      # ua_alarms.Conditions, made in _build_events()
 
     async def start(self):
         s = self.server
@@ -177,7 +184,9 @@ class OpcUaServer:
         await self._build()
         point_map = {nid: key for key, (nid, vt) in self.vars.items()
                      if key in self.historian.ids and vt == ua.VariantType.Double}
-        s.iserver.history_manager.set_storage(HistorianStorage(self.historian, point_map))
+        storage = HistorianStorage(self.historian, point_map)
+        storage.alarms = self.alarms
+        s.iserver.history_manager.set_storage(storage)
         await s.start()
         log.info("OPC UA server on %s (%d variables, %d historized)", self.endpoint, len(self.vars), len(point_map))
 
@@ -299,9 +308,20 @@ class OpcUaServer:
                               ("UnackedAlarms", 0, ua.VariantType.Int32),
                               ("HistorianSamples", 0, ua.VariantType.UInt64)]:
             await self._var(diag, f"Diagnostics.{name}", name, val, vt)
+        await self._build_events()
+
+    async def _build_events(self):
+        """Event notifiers, Alarms & Conditions (ua_alarms.py); the last step of _build()."""
+        import ua_alarms     # imports native, which imports this module
+        self.alarms = ua_alarms.Conditions(self)
+        await self.alarms.build()
 
     # ---- per-scan update ----
-    async def update(self, snap, ts, scan_count, historian_samples):
+    async def update(self, snap, ts, scan_count, historian_samples, events=()):
+        await self._update_values(snap, ts, scan_count, historian_samples)
+        await self.alarms.update(snap, ts, events)
+
+    async def _update_values(self, snap, ts, scan_count, historian_samples):
         dt = to_dt(ts)
         io_ok = snap["io_ok"]
         values = engine_values(snap, scan_count, historian_samples)

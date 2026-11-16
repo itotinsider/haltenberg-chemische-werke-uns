@@ -66,6 +66,9 @@ A layer only uses names that exist in the layer it reads from, for example:
   - its string NodeId;
   - the data type;
   - historizing, the EURange and the engineering unit.
+  - `events: true` on event notifiers (objects that send Alarms & Conditions events);
+  - and `conditions`: every OPC UA condition by ConditionId, with its type, ConditionName, source
+    object and the DCS alarms it carries with their severity (`dcs/ua_alarms.py`, `native.table()`).
 - `api.json`: the HTTP routes and response shapes (field names, not values) of the DCS and plant APIs, and the historian points.
 - `plant.json`: instructor scenarios and the ground-truth fields.
 - `sites/<site>/`: `dcs.json`, `opcua.json` (every native node, with numeric NodeIds at Vadhana) and

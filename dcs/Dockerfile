@@ -7,7 +7,7 @@ COPY dcs/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY common/iomap.py common/sites.py common/
-COPY dcs/config.py dcs/control.py dcs/historian.py dcs/opcua_server.py dcs/native.py dcs/main.py ./
+COPY dcs/config.py dcs/control.py dcs/historian.py dcs/opcua_server.py dcs/native.py dcs/ua_alarms.py dcs/main.py ./
 COPY dcs/web ./web
 # The standard model's mapping of all sites (generated), for the /mapping page.
 COPY inventory/uns ./uns

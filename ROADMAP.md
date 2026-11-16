@@ -104,6 +104,22 @@ rules above:
 
 ## In progress
 
+### `opcua-alarms-conditions` — OPC UA Alarms & Conditions (read-only)
+- **Status:** 🚧 In progress · **Owner:** Claude (session hcw-opcua-ac, worktree ../hcw-opcua-ac) · **Branch:** `opcua-alarms-conditions` · **PR:** —
+- **Goal:** the console's alarms and event journal on OPC UA as Part 9 Alarms & Conditions (the open successor
+  of DCOM "OPC A&E"), next to the `AlarmState` strings and `Diagnostics` counts, on all three sites.
+- **Touches:** new `dcs/ua_alarms.py`; `dcs/opcua_server.py`, `dcs/native.py` (`table().conditions`/`sources`),
+  `dcs/control.py` (`alarm_defs()`, alarm key on journal rows), `dcs/historian.py` (`events.alarm` column,
+  `journal()`), `dcs/main.py`; `tools/inventory.py` (`events`, `conditions` in `opcua.json`), new
+  `tools/opcua_events.py`; wiki Data access / Global sites / Interface reference, hub card.
+- **Reserves:** no tags or Modbus addresses. OPC UA: EventNotifier on the area objects, ConditionIds
+  `<source id>.<ConditionName>` (`LevelAlarm`, `TRIP`, `SWITCH_DELAYED`, `REGEN_INCOMPLETE`, `COMM`, `AUTOSTART`).
+- **Done when:** a client subscribed on the Server or an area gets condition events on trips and limit
+  alarms (OfType filters included), ConditionRefresh replays active/unacked alarms, the console's ack shows
+  as AckedState, event HistoryRead = the journal; per-site contract and e2e tests; UaExpert check by hand.
+- **Notes:** 2026-11-16 (requested in the session): implement it read-only (no Acknowledge over OPC UA; that goes with
+  `opcua-writes-apc`).
+
 ## Planned
 
 ### `docs-refresh` — Step 5: README, CLAUDE.md and screenshots
@@ -142,9 +158,6 @@ rules above:
 - **Goal:** writable SPs over OPC UA, with an "APC ON/OFF" handshake (research §5.3), so an
   external advanced-control or agent layer can act on the plant.
 
-### `opcua-alarms-conditions` — OPC UA Alarms & Conditions
-- **Status:** 💡 Idea · **Owner:** — · **Branch:** — · **PR:** —
-- **Goal:** expose alarms as A&C events instead of only `AlarmState` strings and `Diagnostics` counts.
 
 ### `business-systems` — LIMS, SAP-PM and ERP
 - **Status:** 💡 Idea · **Owner:** — · **Branch:** — · **PR:** —
