@@ -454,8 +454,34 @@ def make_handler(rt):
     return Handler
 
 
+def check_data_dir(path=DATA_DIR):
+    """Fail early, with the fix, when the DCS can't write its data folder.
+
+    The image runs as `nobody`. On a Linux host Docker creates a missing bind-mount folder as
+    root, so sqlite would only say "unable to open database file"."""
+    try:
+        os.makedirs(path, exist_ok=True)
+        probe = os.path.join(path, f".write-test-{os.getpid()}")
+        with open(probe, "w"):
+            pass
+        os.remove(probe)
+        return True
+    except OSError as ex:
+        try:
+            st = os.stat(path)
+            owner = f"owned by uid {st.st_uid}, mode {st.st_mode & 0o777:o}"
+        except OSError:
+            owner = "missing"
+        log.error("Cannot write the data folder %s (%s; this process is uid %d): %s. On the host, "
+                  "make the folder writable, e.g. `mkdir -p data/port-arden data/vadhana && chmod a+rwx "
+                  "data data/port-arden data/vadhana`, then start again. See the wiki, Getting started.",
+                  path, owner, os.getuid(), ex.strerror or ex)
+        return False
+
+
 async def main():
-    os.makedirs(DATA_DIR, exist_ok=True)
+    if not check_data_dir():
+        sys.exit(1)
     rt = Runtime()
     await rt.opcua.start()
     web = ThreadingHTTPServer(("0.0.0.0", WEB_PORT), make_handler(rt))

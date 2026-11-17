@@ -293,3 +293,17 @@ def test_wiki_links_resolve():
             if not ok:
                 broken.append(f"{page}: {target}")
     assert broken == []
+
+
+def test_dcs_data_folders_come_from_git():
+    """Every host folder a DCS bind-mounts is in git (a .gitkeep, not ignored).
+
+    Otherwise Docker on a Linux host creates it as root and the DCS, running as nobody, can't
+    open its historian ("unable to open database file", Port Arden and Vadhana, Nov 2026)."""
+    compose = read("docker-compose.yml")
+    ignore = read(".gitignore").splitlines()
+    folders = re.findall(r"^\s*- \./(data[^:]*):/app/data\s*$", compose, re.M)
+    assert len(folders) == 3, folders
+    for folder in folders:
+        assert (ROOT / folder / ".gitkeep").is_file(), f"{folder}/.gitkeep missing"
+        assert f"!{folder}/.gitkeep" in ignore, f".gitignore hides {folder}/.gitkeep"

@@ -26,6 +26,20 @@ docker compose up -d --build
 Then open the hub at **http://localhost:8110**. The plant starts at steady state; it doesn't need
 a start-up procedure.
 
+**On a Linux host** (or WSL2 with the repository on the Linux file system) the DCS containers run as
+user `nobody` (uid 65534) and must be able to write their data folders, `data/` (Haltenberg),
+`data/port-arden/` and `data/vadhana/`. These folders come with the repository, but they belong to
+you, so allow the DCS to write them once:
+
+```bash
+chmod a+rwx data data/port-arden data/vadhana
+```
+
+Docker Desktop on macOS and Windows doesn't need this. If a DCS container stops at start-up with
+"Cannot write the data folder" (older versions: `sqlite3.OperationalError: unable to open database
+file`), this is the cause. A folder that was missing when the stack started was created by Docker
+as root; then `docker compose down`, `sudo chown -R $USER data`, the `chmod` above, and start again.
+
 | What | Where |
 |---|---|
 | Hub (all systems) | http://localhost:8110 |
@@ -70,7 +84,7 @@ New to plants? Read [Plant automation in brief](Plant-automation-in-brief) first
 ```bash
 docker compose down              # stop
 rm data/historian.db* data/dcs_state.json   # wipe history and controller state (Haltenberg)
-rm -r data/port-arden data/vadhana          # ... and of the other two sites
+rm data/*/historian.db* data/*/dcs_state.json   # ... and of the other two sites (keep the folders)
 rm exports/*.csv                            # wipe the Node-RED averages
 ```
 

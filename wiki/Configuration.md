@@ -15,6 +15,7 @@ OPC UA presentation, PPU cycle) is in `common/sites.py`, not in the environment.
 | `TWA_WINDOW_MINUTES` | `15` | Node-RED averaging window; override from the shell for a quick demo |
 | `TWA_CSV_FILE` | `/data/exports/asu1_twa_15min.csv` | Where Node-RED appends rows (`exports/` on the host) |
 | `SCAN_SECONDS` | `1` | DCS scan period |
+| `DATA_DIR` | `/app/data` | DCS historian (`historian.db`) and checkpoint (`dcs_state.json`); bind-mounted from `data/`, `data/port-arden/`, `data/vadhana/`. Must be writable for user `nobody`, or the DCS stops at start-up with "Cannot write the data folder" (see [Getting started](Getting-started)) |
 | `PLANT_HOST` / `PLANT_PORT` | `plant` / `5020` | Where the DCS finds the I/O rack (compose service name, not localhost) |
 | `HISTORIAN_DEADBAND_PCT` | `0.25` | Exception deadband, % of tag span |
 | `HISTORIAN_MAX_INTERVAL_SECONDS` | `60` | Heartbeat: store at least this often |
