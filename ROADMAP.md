@@ -104,20 +104,6 @@ rules above:
 
 ## In progress
 
-### `site-data-dirs` — DCS data folders writable on a Linux host
-- **Status:** 🚧 In progress · **Owner:** David (Claude) · **Branch:** `fix-site-data-dirs` · **PR:** —
-- **Goal:** a fresh clone on Linux starts Port Arden and Vadhana; a DCS that can't write its data
-  folder says why and how to fix it, instead of a sqlite traceback.
-- **Touches:** `.gitignore`, `data/port-arden/.gitkeep`, `data/vadhana/.gitkeep`, `dcs/main.py`
-  (`check_data_dir()`), `tests/test_contracts.py`, wiki Getting started and Configuration.
-- **Reserves:** —
-- **Done when:** the folders come from git, the start-up check is verified with a root-owned
-  folder, tests pass.
-- **Notes:** 2026-11-17 David: reported by a user after pulling; the "no events on the Server
-  node" report was not reproducible on `main` (asyncua and node-opcua clients receive events on
-  `i=2253` at all three sites), most likely the crash-looping `hcw-us-dcs` or a stale image.
-  Fully robust alternative (root entrypoint that fixes permissions, then drops to `nobody`) not
-  chosen.
 
 ## Planned
 
@@ -267,3 +253,6 @@ rules above:
   - **Interface (added only):** `events` / `conditions` in `opcua.json`, historian `events.alarm` column,
     `tools/opcua_events.py` (event viewer, no UaExpert needed).
   - **Later:** Acknowledge/Shelve over OPC UA, with `opcua-writes-apc`; a UaExpert check by hand.
+- ✅ **DCS data folders writable on a Linux host** (`site-data-dirs`). `data/port-arden/` and
+  `data/vadhana/` come from git; the DCS stops at start-up with the fix instead of a sqlite error.
+  [PR #15](https://github.com/itotinsider/haltenberg-chemische-werke-uns/pull/15).
