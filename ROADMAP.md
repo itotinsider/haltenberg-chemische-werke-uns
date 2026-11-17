@@ -252,3 +252,6 @@ rules above:
   - **Interface (added only):** `events` / `conditions` in `opcua.json`, historian `events.alarm` column,
     `tools/opcua_events.py` (event viewer, no UaExpert needed).
   - **Later:** Acknowledge/Shelve over OPC UA, with `opcua-writes-apc`; a UaExpert check by hand.
+- ✅ **DCS data folders writable on a Linux host** (`site-data-dirs`). `data/port-arden/` and
+  `data/vadhana/` come from git; the DCS stops at start-up with the fix instead of a sqlite error.
+  [PR #15](https://github.com/itotinsider/haltenberg-chemische-werke-uns/pull/15).

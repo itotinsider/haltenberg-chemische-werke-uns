@@ -5,6 +5,13 @@ __pycache__/
 # runtime state (bind mounts)
 data/*
 !data/.gitkeep
+# the other sites' DCS data folders come from git, so Docker doesn't create them as root
+!data/port-arden/
+!data/vadhana/
+data/port-arden/*
+data/vadhana/*
+!data/port-arden/.gitkeep
+!data/vadhana/.gitkeep
 exports/*
 !exports/.gitkeep
 
