@@ -104,7 +104,6 @@ rules above:
 
 ## In progress
 
-
 ## Planned
 
 ### `docs-refresh` — Step 5: README, CLAUDE.md and screenshots
