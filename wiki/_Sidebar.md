@@ -18,6 +18,7 @@
 - [Operator console](Operator-console)
 - [Instructor station](Instructor-station)
 - [Data access](Data-access)
+- [Browsing OPC UA](Browsing-OPC-UA)
 - [Interface reference](Interface-reference)
 - [Configuration](Configuration)
 

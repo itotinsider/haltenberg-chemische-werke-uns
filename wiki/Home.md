@@ -46,7 +46,7 @@ effects, just like in a real plant.
 | Compare the three sites, map their data | [Global sites](Global-sites), [Standard data model](Standard-data-model) |
 | Learn how the plant and its data work | [Trainers](Trainers): Process, Engineering, IT/OT |
 | Use the screens | [Operator console](Operator-console), [Instructor station](Instructor-station) |
-| Get the data out | [Data access](Data-access) |
+| Get the data out | [Data access](Data-access), [Browsing the OPC UA servers](Browsing-OPC-UA) |
 | Change the code | [Development](Development) |
 
 Plans and work in progress are in

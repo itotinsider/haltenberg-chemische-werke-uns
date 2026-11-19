@@ -55,7 +55,8 @@ as root; then `docker compose down`, `sudo chown -R $USER data`, the `chmod` abo
 | Port Arden (US) hub · OPC UA | http://localhost:8120 · `opc.tcp://localhost:4841/PortArden/ASU7100` |
 | Vadhana (IN) hub · OPC UA | http://localhost:8130 · `opc.tcp://localhost:4842/vadhana/asu2` |
 
-The other two sites are described in [Global sites](Global-sites).
+The other two sites are described in [Global sites](Global-sites). To look inside the OPC UA servers with a generic client, see
+[Browsing the OPC UA servers](Browsing-OPC-UA).
 
 **Hub** — one page linking every system, grouped by ISA-95 level.
 
