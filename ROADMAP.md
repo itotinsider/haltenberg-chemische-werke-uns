@@ -255,3 +255,7 @@ rules above:
 - ✅ **DCS data folders writable on a Linux host** (`site-data-dirs`). `data/port-arden/` and
   `data/vadhana/` come from git; the DCS stops at start-up with the fix instead of a sqlite error.
   [PR #15](https://github.com/itotinsider/haltenberg-chemische-werke-uns/pull/15).
+- ✅ **Wiki: browsing the OPC UA servers** (`docs-opcua-browsing`). A walkthrough with a generic client
+  (Prosys OPC UA Browser, runs on macOS): endpoints of all three sites, address space, attributes,
+  HistoryRead, Alarms & Conditions on the K-503 trip, what differs at Port Arden and Vadhana. Six
+  screenshots. Docs only, no interface change.

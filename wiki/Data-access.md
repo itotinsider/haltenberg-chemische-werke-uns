@@ -12,7 +12,8 @@ their own way: see [Global sites](Global-sites). The **Site mapping explorer**
 ## OPC UA
 
 The standard door for IT systems: `opc.tcp://localhost:4840/hcw/asu1/` (anonymous, SecurityPolicy
-None). Any client works, e.g. UaExpert, asyncua (Python) or Node-RED. From another container on the
+None). Any client works, e.g. Prosys OPC UA Browser, UaExpert, asyncua (Python) or Node-RED.
+[Browsing the OPC UA servers](Browsing-OPC-UA) is a walkthrough with a generic client. From another container on the
 compose network use `opc.tcp://dcs:4840/hcw/asu1/`.
 
 - Namespace `urn:haltenberg:hcw:asu1:dcs`, browse `Objects / HCW / Haltenberg / ASU1`.
@@ -68,8 +69,10 @@ docker run --rm -it --network haltenberg-chemische-werke-uns_default -v "$PWD/to
   --entrypoint python hcw/asu1-dcs:latest /t/opcua_events.py opc.tcp://dcs:4840/hcw/asu1/
 # in another terminal: curl -s -X POST localhost:8111/api/scenarios/gan_compressor_trip/start
 ```
-In **UaExpert** (free, Windows and Linux, needs a Unified Automation account to download), add an
-*Event View* or *Alarms* document and drag the `Server` object or `ASU1` into it. The Port Arden and
+In a generic client, add an event view and drag the `Server` object or `ASU1` into it: an *Event
+View* in the Prosys OPC UA Browser (free, also on macOS; see
+[Browsing the OPC UA servers](Browsing-OPC-UA#alarms-and-events)), or an *Event View* or *Alarms*
+document in **UaExpert** (free, Windows and Linux, needs a Unified Automation account to download). The Port Arden and
 Vadhana servers present the same conditions under their own source names, e.g. `71UZ5003` and
 `02CJA00EZ001` (see [Global sites](Global-sites)).
 
